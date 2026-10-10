@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Argos Board</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Argos <span>Board</span></h1>
+    <p id="conn" class="conn" data-conn="connecting" role="status">
+      <span class="conn-dot" aria-hidden="true"></span><span class="conn-text">Conectando…</span>
+    </p>
+  </header>
+
+  <main>
+    <section id="empty" class="empty" hidden>
+      <h2>No hay agentes conectados</h2>
+      <p>En otra terminal, lanza un agente a través del wrapper:</p>
+      <pre><code>argos-board run -- claude</code></pre>
+    </section>
+    <section id="cards" class="cards" aria-label="Agentes"></section>
+  </main>
+
+  <div id="live" class="sr-only" aria-live="polite" aria-atomic="false"></div>
+
+  <template id="card-tpl">
+    <article class="card" tabindex="0">
+      <header class="card-head">
+        <h2 class="name"></h2>
+        <span class="badge"><span class="badge-icon" aria-hidden="true"></span><span class="badge-text"></span></span>
+      </header>
+      <dl class="meta">
+        <div><dt>Proyecto</dt><dd class="project"></dd></div>
+        <div><dt>Rama</dt><dd class="branch"></dd></div>
+        <div><dt>En este estado</dt><dd class="since"></dd></div>
+        <div><dt>Sesión</dt><dd class="session"></dd></div>
+      </dl>
+      <pre class="lines" aria-label="Últimas líneas de salida"></pre>
+    </article>
+  </template>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
