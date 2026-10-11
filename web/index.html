@@ -1,22 +1,32 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Argos Board</title>
+  <script>
+    // Tema antes del primer pintado (evita el parpadeo). Claro por defecto.
+    try {
+      if (JSON.parse(localStorage.getItem("argos-theme")) === "dark") document.documentElement.dataset.theme = "dark";
+    } catch (e) {}
+  </script>
+  <link rel="preload" href="fonts/montserrat-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
   <header class="top">
-    <h1>Argos <span>Board</span></h1>
-    <p id="conn" class="conn" data-conn="connecting" role="status">
-      <span class="conn-dot" aria-hidden="true"></span><span class="conn-text">Conectando…</span>
-    </p>
+    <h1><span class="mark" aria-hidden="true"></span>Argos <span>Board</span></h1>
+    <div class="top-actions">
+      <p id="conn" class="conn" data-conn="connecting" role="status">
+        <span class="conn-dot" aria-hidden="true"></span><span class="conn-text">Conectando…</span>
+      </p>
+      <button id="theme" class="btn" type="button" aria-pressed="false">Modo oscuro</button>
+    </div>
   </header>
 
   <main>
     <section id="empty" class="empty" hidden>
-      <h2>No hay agentes conectados</h2>
+      <h2>No hay agentes a la vista</h2>
       <p>En otra terminal, lanza un agente a través del wrapper:</p>
       <pre><code>argos-board run -- claude</code></pre>
     </section>
@@ -28,8 +38,14 @@
   <template id="card-tpl">
     <article class="card" tabindex="0">
       <header class="card-head">
-        <h2 class="name"></h2>
-        <span class="badge"><span class="badge-icon" aria-hidden="true"></span><span class="badge-text"></span></span>
+        <div class="title">
+          <span class="kind"></span>
+          <h2 class="name"></h2>
+        </div>
+        <div class="card-actions">
+          <span class="badge"><span class="badge-icon" aria-hidden="true"></span><span class="badge-text"></span></span>
+          <button class="dismiss" type="button" hidden>Quitar</button>
+        </div>
       </header>
       <dl class="meta">
         <div><dt>Proyecto</dt><dd class="project"></dd></div>
@@ -37,7 +53,10 @@
         <div><dt>En este estado</dt><dd class="since"></dd></div>
         <div><dt>Sesión</dt><dd class="session"></dd></div>
       </dl>
-      <pre class="lines" aria-label="Últimas líneas de salida"></pre>
+      <pre class="lines" tabindex="0" aria-label="Salida de la terminal"></pre>
+      <button class="resize" type="button"
+        aria-label="Redimensionar tarjeta: flechas izquierda y derecha cambian el ancho, arriba y abajo la altura; doble clic restablece"
+        title="Arrastra para redimensionar (doble clic restablece)"></button>
     </article>
   </template>
 

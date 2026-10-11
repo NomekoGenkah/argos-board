@@ -9,7 +9,9 @@ use std::time::{Duration, Instant};
 pub const ACTIVITY_WINDOW: Duration = Duration::from_secs(2);
 /// Un estado percibido debe sostenerse este tiempo antes de reportarse.
 pub const HYSTERESIS: Duration = Duration::from_millis(500);
-pub const LAST_LINES: usize = 8;
+/// Tope de líneas enviadas: la pantalla visible completa cabe de sobra; la
+/// página muestra las últimas que quepan en cada tarjeta.
+pub const MAX_LINES: usize = 200;
 
 /// Máquina de estados por actividad de bytes con histéresis.
 /// (Los estados por patrón —`waiting_approval`, `error`— llegan en M3.)
@@ -109,18 +111,26 @@ impl Screen {
         self.parser.screen().contents()
     }
 
-    /// Últimas líneas no vacías de la pantalla, redactadas.
+    /// Líneas de la pantalla visible, redactadas.
     pub fn last_lines(&self) -> Vec<String> {
-        last_lines(&self.contents(), LAST_LINES)
+        last_lines(&self.contents(), MAX_LINES)
     }
 }
 
+/// Últimas `n` líneas de `contents`, sin espacios finales, sin líneas en
+/// blanco al principio ni al final y con las rachas de líneas en blanco
+/// reducidas a una (conserva la estructura de las TUIs sin desperdiciar filas).
 pub fn last_lines(contents: &str, n: usize) -> Vec<String> {
-    let lines: Vec<&str> = contents
-        .lines()
-        .map(str::trim_end)
-        .filter(|l| !l.is_empty())
-        .collect();
+    let mut lines: Vec<&str> = Vec::new();
+    for l in contents.lines().map(str::trim_end) {
+        if l.is_empty() && lines.last().is_none_or(|p| p.is_empty()) {
+            continue;
+        }
+        lines.push(l);
+    }
+    while lines.last().is_some_and(|l| l.is_empty()) {
+        lines.pop();
+    }
     let start = lines.len().saturating_sub(n);
     lines[start..].iter().map(|l| redact(l)).collect()
 }
@@ -169,7 +179,8 @@ mod tests {
             Instant::now(),
         );
         assert_eq!(s.last_lines(), vec!["uno", "dos", "API_KEY=[REDACTED]"]);
-        assert_eq!(last_lines("a\nb\n\nc\n", 2), vec!["b", "c"]);
+        assert_eq!(last_lines("a\nb\n\nc\n", 2), vec!["", "c"]);
+        assert_eq!(last_lines("\n\na\n\n\n\nb  \n\n\n", 10), vec!["a", "", "b"]);
     }
 
     #[test]
