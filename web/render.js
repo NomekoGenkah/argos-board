@@ -40,6 +40,7 @@ const CONN_TEXT = {
 export const COLUMNS = 12;
 export const DEFAULT_CARD = { w: 4, h: 17 };
 const MIN_CARD = { minW: 3, minH: 7 };
+const MAX_FIT_H = 28; // tope al agrandar una tarjeta nueva para que entre su contenido
 const STACK_BELOW_PX = 700; // por debajo, una sola columna (móvil)
 
 export function shortPath(p) {
@@ -92,8 +93,8 @@ export function fillLaunch(el, a, auth) {
 /** Aviso si el wrapper que reporta es de otra versión que el servidor. */
 export function versionWarning(agentVersion, serverVersion) {
   if (!serverVersion || agentVersion === serverVersion) return null;
-  if (!agentVersion) return "Este agente usa un wrapper de una versión anterior. Reinícialo para actualizarlo.";
-  return `Este agente usa otra versión del wrapper (${agentVersion}). Reinícialo para actualizarlo.`;
+  if (!agentVersion) return "Wrapper de una versión anterior: reinícialo para actualizarlo.";
+  return `Wrapper de otra versión (${agentVersion}): reinícialo para actualizarlo.`;
 }
 
 export function createDomRenderer({ cards, empty, conn, live, template, prefs, GridStack, version, sendInput, stop }) {
@@ -149,6 +150,8 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
       // Apiladas en una columna, filas más altas: la pantalla del agente y la consola entran.
       const cell = column === 1 ? 30 : 24;
       if (grid.getCellHeight() !== cell) grid.cellHeight(cell);
+      // En una columna el alto no se guarda: cada tarjeta toma el que necesita.
+      if (column === 1) requestAnimationFrame(() => els.forEach(fitHeight));
       lastColumn = column;
     }, 200),
   ).observe(cards);
@@ -223,8 +226,25 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     cards.append(item);
     const saved = prefs.layout(a.name);
     grid.makeWidget(item, { id: a.id, ...MIN_CARD, ...(saved ?? { ...DEFAULT_CARD, autoPosition: true }) });
-    requestAnimationFrame(() => stickToBottom(item.querySelector(".lines")));
+    requestAnimationFrame(() => {
+      // Una tarjeta nueva (sin tamaño guardado) toma, una sola vez, el alto que
+      // necesita su contenido (p. ej. un agente lanzado: botones, tmux y consola).
+      stickToBottom(item.querySelector(".lines"));
+    });
+    // Otra vez cuando gridstack ya la acomodó (es idempotente).
+    if (!saved) for (const ms of [50, 450]) setTimeout(() => fitHeight(item), ms);
     return item;
+  }
+
+  /** Agranda la tarjeta (nunca la achica) hasta que entre su contenido. Idempotente. */
+  function fitHeight(item) {
+    const card = item.querySelector(".card");
+    const node = item.gridstackNode;
+    if (!node || !item.isConnected || card.scrollHeight <= card.clientHeight + 1) return;
+    // Lo que ocupa el contenido + el margen de la celda, en filas.
+    const chrome = item.offsetHeight - card.clientHeight;
+    const h = Math.min(MAX_FIT_H, Math.ceil((card.scrollHeight + chrome) / grid.getCellHeight()));
+    if (h > node.h) grid.update(item, { h });
   }
 
   // Mayúsculas + flechas: tamaño. Control + flechas: posición.

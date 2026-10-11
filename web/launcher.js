@@ -188,6 +188,6 @@ export function wireStopButton(button, { getAgent, stop, onDone }) {
 export function launchText(agent) {
   if (!agent.launch) return null;
   return agent.launch.attach
-    ? { text: "Lanzado desde la página. Para tomarlo en una terminal:", code: agent.launch.attach }
+    ? { text: "En tmux:", code: agent.launch.attach }
     : { text: "Lanzado desde la página (solo existe aquí).", code: null };
 }
