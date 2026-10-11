@@ -75,7 +75,7 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
   (`tmux -L argos-board attach -t argos-claude-api`); si no, solo existe en la página. *Detener* (con
   confirmación) lo cierra. La primera vez en una carpeta, Claude pregunta si confías en ella: responde desde la
   consola de la tarjeta.
-- Modo claro por defecto; el botón de la cabecera cambia a oscuro.
+- Modo claro por defecto; el selector *Claro / Oscuro* de la cabecera cambia el tema (se recuerda en ese navegador).
 - **Oficina** (botón *Tablero / Oficina* de la cabecera): la misma información en pixel-art, en un solo plano.
   Cada agente es una mascota (Claude, un bicho naranja de bloque; Antigravity, un domo azul que flota con
   antena; OpenCode, un robot blanco con cara de terminal) y **el lugar donde está dice su estado**:

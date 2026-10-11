@@ -6,18 +6,19 @@ import { createAgentDialog } from "./dialog.js";
 import { createLaunchDialog } from "./launcher.js";
 import { prefs } from "./prefs.js";
 
-const themeBtn = document.getElementById("theme");
+// Tema: selector Claro | Oscuro (como el de Tablero | Oficina).
+const themeBtns = { light: document.getElementById("theme-light"), dark: document.getElementById("theme-dark") };
 function applyTheme(t) {
   document.documentElement.dataset.theme = t;
-  themeBtn.textContent = t === "dark" ? "Modo claro" : "Modo oscuro";
-  themeBtn.setAttribute("aria-pressed", String(t === "dark"));
+  for (const [k, b] of Object.entries(themeBtns)) b.setAttribute("aria-pressed", String(k === t));
 }
 applyTheme(prefs.theme());
-themeBtn.addEventListener("click", () => {
-  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-  prefs.setTheme(next);
-  applyTheme(next);
-});
+for (const [t, b] of Object.entries(themeBtns)) {
+  b.addEventListener("click", () => {
+    prefs.setTheme(t);
+    applyTheme(t);
+  });
+}
 
 const store = createStore();
 const { render, relayout, focusAgent } = createDomRenderer({

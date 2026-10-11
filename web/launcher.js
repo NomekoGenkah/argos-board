@@ -5,13 +5,14 @@ import { KINDS } from "./render.js";
 
 const KIND_ORDER = ["claude", "opencode", "agy"];
 
-/** Carpetas recientes: los proyectos de los agentes a la vista, sin repetir. */
-export function recentFolders(agents, limit = 6) {
+/** Carpetas recientes: los proyectos de los agentes a la vista, sin repetir y dentro de las raíces. */
+export function recentFolders(agents, roots = [], limit = 6) {
   const seen = new Set();
+  const inside = (p) => roots.some((r) => p === r || p.startsWith(r.endsWith("/") ? r : `${r}/`));
   return [...agents.values()]
     .sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at))
     .map((a) => a.project)
-    .filter((p) => p && !seen.has(p) && seen.add(p))
+    .filter((p) => p && inside(p) && !seen.has(p) && seen.add(p))
     .slice(0, limit);
 }
 
@@ -115,7 +116,7 @@ export function createLaunchDialog({ dialog, store, onLaunched }) {
   }
 
   function fillRecent() {
-    const folders = recentFolders(last?.agents ?? new Map());
+    const folders = recentFolders(last?.agents ?? new Map(), last?.launchInfo?.roots ?? []);
     recentWrap.hidden = !folders.length;
     recent.replaceChildren(
       ...folders.map((p) => {
