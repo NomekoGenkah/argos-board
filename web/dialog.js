@@ -2,9 +2,10 @@
 // para escribirle, sin salir de la vista.
 
 import { createConsole, inputBlocker } from "./console.js";
-import { LABELS, KINDS } from "./render.js";
+import { LABELS, KINDS, fillLaunch } from "./render.js";
+import { wireStopButton } from "./launcher.js";
 
-export function createAgentDialog({ dialog, sendInput, onBoard }) {
+export function createAgentDialog({ dialog, sendInput, stop, onBoard }) {
   const con = createConsole({ sendInput });
   dialog.querySelector(".console-slot").append(con.el);
   const pre = dialog.querySelector(".lines");
@@ -18,7 +19,17 @@ export function createAgentDialog({ dialog, sendInput, onBoard }) {
     dialog.close();
     onBoard?.(id);
   });
-  dialog.addEventListener("close", () => (agentId = null));
+  dialog.addEventListener("close", () => {
+    agentId = null;
+    stopper.reset();
+    status.textContent = "";
+  });
+  const status = dialog.querySelector(".dialog-status");
+  const stopper = wireStopButton(dialog.querySelector('[data-act="stop"]'), {
+    getAgent: () => last?.agents.get(agentId),
+    stop,
+    onDone: (error) => (status.textContent = error ? `No se pudo detener: ${error}` : "Detenido"),
+  });
 
   function fill() {
     const a = last?.agents.get(agentId);
@@ -38,6 +49,7 @@ export function createAgentDialog({ dialog, sendInput, onBoard }) {
       if (atBottom) pre.scrollTop = pre.scrollHeight;
     }
     con.update(a, last.auth);
+    fillLaunch(dialog, a, last.auth);
     const why = inputBlocker(a, last.auth);
     readonly.hidden = why !== "auth";
     readonly.textContent =

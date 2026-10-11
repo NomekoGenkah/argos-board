@@ -3,6 +3,7 @@
 // las tarjetas; la posición y el tamaño los decide el usuario.
 
 import { createConsole } from "./console.js";
+import { launchText, wireStopButton } from "./launcher.js";
 
 export const LABELS = {
   working: "Trabajando",
@@ -73,6 +74,21 @@ export function tileLayout(n) {
   }));
 }
 
+/** Línea "lanzado desde la página" (y cómo tomarlo en tmux) y el botón Detener. */
+export function fillLaunch(el, a, auth) {
+  const info = launchText(a);
+  const line = el.querySelector(".launch-line");
+  line.hidden = !info;
+  if (info) {
+    line.querySelector(".launch-text").textContent = info.text;
+    const code = line.querySelector(".launch-code");
+    code.hidden = !info.code;
+    code.textContent = info.code ?? "";
+  }
+  const stopBtn = el.querySelector(".stop");
+  stopBtn.hidden = !(a.launch && auth === "ok" && a.state !== "exited");
+}
+
 /** Aviso si el wrapper que reporta es de otra versión que el servidor. */
 export function versionWarning(agentVersion, serverVersion) {
   if (!serverVersion || agentVersion === serverVersion) return null;
@@ -80,7 +96,7 @@ export function versionWarning(agentVersion, serverVersion) {
   return `Este agente usa otra versión del wrapper (${agentVersion}). Reinícialo para actualizarlo.`;
 }
 
-export function createDomRenderer({ cards, empty, conn, live, template, prefs, GridStack, version, sendInput }) {
+export function createDomRenderer({ cards, empty, conn, live, template, prefs, GridStack, version, sendInput, stop }) {
   const els = new Map(); // id -> .grid-stack-item
   const consoles = new Map(); // id -> consola de la tarjeta
   let auth = "none";
@@ -175,6 +191,7 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     const message = ENDED.has(a.state) ? null : versionWarning(a.version, serverVersion);
     warn.hidden = !message;
     warn.textContent = message ?? "";
+    fillLaunch(el, a, auth);
     const dismiss = el.querySelector(".dismiss");
     dismiss.hidden = !ENDED.has(a.state);
     dismiss.setAttribute("aria-label", `Quitar ${a.name} del tablero`);
@@ -194,6 +211,12 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
       cards.querySelector(".card")?.focus();
     });
     item.querySelector(".card").addEventListener("keydown", (ev) => onCardKey(ev, item));
+    wireStopButton(item.querySelector(".stop"), {
+      getAgent: () => current.get(a.id),
+      stop,
+      onDone: (error) => announce(error ? `No se pudo detener ${a.name}: ${error}` : `${a.name} detenido`),
+    });
+    item.querySelector(".stop").setAttribute("aria-label", `Detener ${a.name}`);
     const con = createConsole({ sendInput });
     item.querySelector(".console-slot").append(con.el);
     consoles.set(a.id, con);

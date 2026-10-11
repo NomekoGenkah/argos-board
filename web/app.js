@@ -3,6 +3,7 @@ import { createDomRenderer } from "./render.js";
 import { createAlerts } from "./alerts.js";
 import { createOfficeRenderer } from "./office.js";
 import { createAgentDialog } from "./dialog.js";
+import { createLaunchDialog } from "./launcher.js";
 import { prefs } from "./prefs.js";
 
 const themeBtn = document.getElementById("theme");
@@ -29,6 +30,7 @@ const { render, relayout, focusAgent } = createDomRenderer({
   GridStack: window.GridStack, // web/vendor/gridstack (script clásico)
   version: document.getElementById("version"),
   sendInput: store.sendInput,
+  stop: store.stop,
 });
 
 // Dos vistas de los mismos datos: el Tablero (tarjetas) y la Oficina (pixel-art).
@@ -41,6 +43,7 @@ let view = prefs.view();
 const agentDialog = createAgentDialog({
   dialog: document.getElementById("agent-dialog"),
   sendInput: store.sendInput,
+  stop: store.stop,
   onBoard: (id) => openInBoard(id),
 });
 const office = createOfficeRenderer({ root: officeEl, prefs, onOpen: (id) => agentDialog.open(id) });
@@ -130,8 +133,34 @@ function showWrite({ auth }) {
 }
 writeBtn.addEventListener("click", () => writeDialog.showModal());
 
+// Nuevo agente: al aparecer su tarjeta (o su mascota), se enfoca.
+let focusWhenSeen = null;
+let lastEvent = null;
+const launchDialog = createLaunchDialog({
+  dialog: document.getElementById("launch-dialog"),
+  store,
+  onLaunched: (name) => {
+    focusWhenSeen = name;
+    if (lastEvent) afterLaunch(lastEvent); // pudo aparecer antes que la respuesta
+  },
+});
+const launchBtn = document.getElementById("launch");
+launchBtn.addEventListener("click", () => launchDialog.open());
+function afterLaunch(event) {
+  lastEvent = event;
+  const { agents } = event;
+  launchBtn.hidden = !launchDialog.available();
+  if (!focusWhenSeen) return;
+  const a = [...agents.values()].find((x) => x.name === focusWhenSeen && x.state !== "exited");
+  if (!a) return;
+  focusWhenSeen = null;
+  requestAnimationFrame(() => (view === "board" ? focusAgent(a.id) : office.focusAgent(a.id)));
+}
+
 store.onChange(render);
 store.onChange(office.render);
+store.onChange(launchDialog.render);
+store.onChange(afterLaunch);
 store.onChange(agentDialog.render);
 store.onChange(showWrite);
 store.onChange(alerts.handle);

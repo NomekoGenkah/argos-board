@@ -28,6 +28,7 @@
         <button id="view-board" class="seg-btn" type="button" aria-pressed="true">Tablero</button>
         <button id="view-office" class="seg-btn" type="button" aria-pressed="false">Oficina</button>
       </div>
+      <button id="launch" class="btn launch" type="button" aria-haspopup="dialog" hidden>Nuevo agente</button>
       <button id="write" class="btn write" type="button" aria-haspopup="dialog" hidden></button>
       <button id="notify" class="btn" type="button" hidden>Activar avisos</button>
       <button id="sound" class="btn" type="button" aria-pressed="false" title="Suena cuando un agente te necesita">Sonido</button>
@@ -62,6 +63,37 @@
     <form method="dialog" class="dialog-foot"><button class="btn">Entendido</button></form>
   </dialog>
 
+  <dialog id="launch-dialog" class="panel-dialog launch-dialog" aria-labelledby="launch-dialog-title">
+    <h2 id="launch-dialog-title">Nuevo agente</h2>
+    <form novalidate>
+      <fieldset>
+        <legend>Agente</legend>
+        <div class="launch-kinds"></div>
+      </fieldset>
+      <fieldset>
+        <legend>Carpeta</legend>
+        <div class="launch-recent-wrap">
+          <span class="launch-label">Recientes:</span>
+          <div class="launch-recent"></div>
+        </div>
+        <div class="launch-where">
+          <button type="button" class="btn launch-up" aria-label="Subir a la carpeta de arriba">↑ Subir</button>
+          <code class="launch-path" aria-live="polite"></code>
+        </div>
+        <ul class="launch-dirs" aria-label="Subcarpetas"></ul>
+      </fieldset>
+      <label class="launch-name-label">Nombre (opcional)
+        <input class="launch-name" name="name" maxlength="60" autocomplete="off" spellcheck="false">
+      </label>
+      <p class="launch-note"></p>
+      <p class="launch-status" role="status"></p>
+      <div class="dialog-foot">
+        <button type="button" class="btn" data-act="cancel">Cancelar</button>
+        <button type="submit" class="btn primary">Lanzar aquí</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="agent-dialog" class="panel-dialog agent-dialog" aria-labelledby="agent-dialog-title">
     <header class="dialog-head">
       <div class="title">
@@ -70,10 +102,13 @@
       </div>
       <span class="badge"><span class="badge-icon" aria-hidden="true"></span><span class="badge-text"></span></span>
     </header>
+    <p class="launch-line" hidden><span class="launch-text"></span> <code class="launch-code"></code></p>
     <pre class="lines" tabindex="0" aria-label="Salida de la terminal"></pre>
     <p class="dialog-readonly" hidden></p>
     <div class="console-slot"></div>
     <footer class="dialog-foot">
+      <p class="dialog-status" role="status"></p>
+      <button type="button" class="btn stop" data-act="stop" hidden>Detener</button>
       <button type="button" class="btn" data-act="board">Ver en el tablero</button>
       <button type="button" class="btn" data-act="close">Cerrar</button>
     </footer>
@@ -89,6 +124,7 @@
         </div>
         <div class="card-actions">
           <span class="badge"><span class="badge-icon" aria-hidden="true"></span><span class="badge-text"></span></span>
+          <button class="stop" type="button" hidden>Detener</button>
           <button class="dismiss" type="button" hidden>Quitar</button>
         </div>
       </header>
@@ -99,6 +135,7 @@
         <div><dt>Sesión</dt><dd class="session"></dd></div>
       </dl>
       <p class="version-warn" hidden></p>
+      <p class="launch-line" hidden><span class="launch-text"></span> <code class="launch-code"></code></p>
       <pre class="lines" tabindex="0" aria-label="Salida de la terminal"></pre>
       <div class="console-slot"></div>
     </article>
