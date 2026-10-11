@@ -2,6 +2,7 @@ import { createStore } from "./data.js";
 import { createDomRenderer } from "./render.js";
 import { createAlerts } from "./alerts.js";
 import { createOfficeRenderer } from "./office.js";
+import { createAgentDialog } from "./dialog.js";
 import { prefs } from "./prefs.js";
 
 const themeBtn = document.getElementById("theme");
@@ -27,6 +28,7 @@ const { render, relayout, focusAgent } = createDomRenderer({
   prefs,
   GridStack: window.GridStack, // web/vendor/gridstack (script clásico)
   version: document.getElementById("version"),
+  sendInput: store.sendInput,
 });
 
 // Dos vistas de los mismos datos: el Tablero (tarjetas) y la Oficina (pixel-art).
@@ -35,7 +37,13 @@ const officeEl = document.getElementById("office");
 const viewBtns = { board: document.getElementById("view-board"), office: document.getElementById("view-office") };
 const relayoutBtn = document.getElementById("relayout");
 let view = prefs.view();
-const office = createOfficeRenderer({ root: officeEl, prefs, onOpen: (id) => openInBoard(id) });
+// En la Oficina, un clic en una mascota abre su panel (pantalla + consola).
+const agentDialog = createAgentDialog({
+  dialog: document.getElementById("agent-dialog"),
+  sendInput: store.sendInput,
+  onBoard: (id) => openInBoard(id),
+});
+const office = createOfficeRenderer({ root: officeEl, prefs, onOpen: (id) => agentDialog.open(id) });
 
 function setView(v, { save = true } = {}) {
   view = v;
@@ -101,7 +109,30 @@ soundBtn.addEventListener("click", () => {
 document.addEventListener("pointerdown", () => prefs.sound() && alerts.unlockAudio(), { once: true });
 showSound();
 
+// Permiso para escribir: aviso en la cabecera (no en cada tarjeta).
+const writeBtn = document.getElementById("write");
+const writeDialog = document.getElementById("write-dialog");
+const WRITE_TEXT = {
+  none: ["Solo lectura", "Esta página todavía no tiene permiso para escribir en los agentes."],
+  bad: ["Token inválido", "El token guardado ya no es válido (¿se renovó?). Abre el enlace nuevo."],
+  pending: ["Solo lectura", "Comprobando el permiso para escribir…"],
+  ok: ["Escritura activa", "Esta página puede escribir en los agentes que lo permiten."],
+};
+let lastAuth = null;
+function showWrite({ auth }) {
+  if (auth === lastAuth) return;
+  lastAuth = auth;
+  const [label, text] = WRITE_TEXT[auth] ?? WRITE_TEXT.none;
+  writeBtn.hidden = false;
+  writeBtn.textContent = label;
+  writeBtn.dataset.auth = auth;
+  writeDialog.querySelector(".write-dialog-text").textContent = text;
+}
+writeBtn.addEventListener("click", () => writeDialog.showModal());
+
 store.onChange(render);
 store.onChange(office.render);
+store.onChange(agentDialog.render);
+store.onChange(showWrite);
 store.onChange(alerts.handle);
 store.connect();

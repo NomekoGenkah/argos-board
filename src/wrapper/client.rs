@@ -2,7 +2,7 @@
 //! plano. Nunca bloquea al agente ni escribe en la terminal.
 
 use crate::config;
-use crate::model::IngestMsg;
+use crate::model::{IngestMsg, Input, WrapperCmd};
 use futures_util::{SinkExt, StreamExt};
 use std::time::Duration;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -69,8 +69,36 @@ fn encode(m: &IngestMsg) -> Message {
     Message::text(serde_json::to_string(m).expect("IngestMsg serializable"))
 }
 
-/// Termina cuando se cierra `rx` (el wrapper está saliendo).
-pub async fn run(port: u16, mut rx: UnboundedReceiver<IngestMsg>) {
+/// Mensaje del servidor: por ahora, entrada desde la web para el agente.
+fn handle_incoming(msg: Message, input: Option<&std::sync::mpsc::Sender<Input>>) {
+    let Message::Text(text) = msg else { return };
+    match serde_json::from_str::<WrapperCmd>(&text) {
+        Ok(WrapperCmd::Input { input: cmd }) => {
+            // El servidor ya validó; se valida otra vez por si acaso.
+            let Some(tx) = input else {
+                tracing::warn!("entrada desde la web rechazada: este wrapper no acepta entrada");
+                return;
+            };
+            match cmd.sanitized() {
+                Ok(cmd) => {
+                    let (kind, bytes) = cmd.describe();
+                    tracing::debug!(kind, bytes, "entrada desde la web");
+                    let _ = tx.send(cmd);
+                }
+                Err(e) => tracing::warn!("entrada desde la web inválida: {e}"),
+            }
+        }
+        Err(e) => tracing::warn!("mensaje del servidor inválido: {e}"),
+    }
+}
+
+/// Termina cuando se cierra `rx` (el wrapper está saliendo). Si `input` está,
+/// la entrada que llega desde la web se reenvía por ahí (hacia el PTY).
+pub async fn run(
+    port: u16,
+    mut rx: UnboundedReceiver<IngestMsg>,
+    input: Option<std::sync::mpsc::Sender<Input>>,
+) {
     let mut cache = Cache::default();
     let mut backoff = Duration::from_millis(250);
     loop {
@@ -97,7 +125,7 @@ pub async fn run(port: u16, mut rx: UnboundedReceiver<IngestMsg>) {
                         }
                     },
                     incoming = ws.next() => match incoming {
-                        Some(Ok(_)) => {}
+                        Some(Ok(msg)) => handle_incoming(msg, input.as_ref()),
                         _ => ok = false,
                     },
                 }

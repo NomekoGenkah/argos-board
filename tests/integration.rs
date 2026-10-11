@@ -459,3 +459,133 @@ fn wrapper_log_file_and_version() {
         "versión: {version:?}"
     );
 }
+
+/// #17: con el token de control, la página escribe en el agente a través del
+/// servidor y el wrapper; sin token, con uno falso o con `--no-input`, no.
+#[test]
+fn browser_input_reaches_the_agent() {
+    use futures_util::SinkExt;
+    use tokio_tungstenite::tungstenite::Message;
+
+    let cfg = tempfile::tempdir().unwrap();
+    let port = free_port();
+    let _server = start_server(cfg.path(), port);
+    let control = std::fs::read_to_string(cfg.path().join("control-token")).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(cfg.path().join("control-token"))
+            .unwrap()
+            .permissions()
+            .mode();
+        assert_eq!(mode & 0o777, 0o600);
+    }
+
+    let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fake_agent.sh");
+    let spawn = |name: &str, extra: &[&str]| {
+        Command::new(BIN)
+            .args(["run", "--name", name, "--port", &port.to_string()])
+            .args(extra)
+            .arg("--")
+            .arg(&script)
+            .env("ARGOS_BOARD_CONFIG_DIR", cfg.path())
+            .stdin(Stdio::piped()) // abierto y sin escribir: la respuesta llega desde la web
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap()
+    };
+    let mut wrapper = spawn("fake@web", &[]);
+    // Se mantiene abierto: al cerrarse, el wrapper le mandaría EOF al agente.
+    let _keep_stdin = wrapper.stdin.take();
+    let mut locked = spawn("fake@local", &["--no-input"]);
+
+    let ready = wait_for(port, "los dos prompts", |a| {
+        a.len() == 2
+            && a.iter().all(|x| {
+                x["last_lines"]
+                    .as_array()
+                    .is_some_and(|l| l.iter().any(|s| s.as_str().unwrap().contains("(y/n)")))
+            })
+    });
+    let id_of = |name: &str| {
+        let a = ready.iter().find(|x| x["name"] == name).unwrap();
+        (
+            a["id"].as_str().unwrap().to_string(),
+            a["accepts_input"].clone(),
+        )
+    };
+    let (web_id, web_accepts) = id_of("fake@web");
+    let (local_id, local_accepts) = id_of("fake@local");
+    assert_eq!(web_accepts, true);
+    assert_eq!(local_accepts, false);
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let mut req = format!("ws://127.0.0.1:{port}/ws")
+            .into_client_request()
+            .unwrap();
+        req.headers_mut().insert(
+            "origin",
+            format!("http://localhost:{port}").parse().unwrap(),
+        );
+        let (mut ws, _) = tokio_tungstenite::connect_async(req).await.unwrap();
+        // Manda un mensaje y espera la respuesta del tipo indicado (salteando
+        // las actualizaciones de agentes).
+        let mut ask = async |msg: Value, reply: &str| -> Value {
+            ws.send(Message::text(msg.to_string())).await.unwrap();
+            loop {
+                let m = tokio::time::timeout(Duration::from_secs(5), ws.next())
+                    .await
+                    .expect("sin respuesta")
+                    .unwrap()
+                    .unwrap();
+                let v: Value = serde_json::from_str(m.to_text().unwrap()).unwrap();
+                if v["type"] == reply {
+                    return v;
+                }
+            }
+        };
+        let send_y = |rid: u64, id: &str| {
+            serde_json::json!({"type": "input", "id": id, "rid": rid,
+                "input": {"type": "text", "text": "y", "submit": true}})
+        };
+
+        // Sin autorizar: rechazado.
+        let r = ask(send_y(1, &web_id), "input_result").await;
+        assert_eq!(r["ok"], false);
+        assert!(r["error"].as_str().unwrap().contains("permiso"), "{r}");
+        // Token falso: rechazado.
+        let r = ask(
+            serde_json::json!({"type": "auth", "token": "0".repeat(64)}),
+            "auth_result",
+        )
+        .await;
+        assert_eq!(r["ok"], false);
+        assert_eq!(ask(send_y(2, &web_id), "input_result").await["ok"], false);
+        // Token correcto.
+        let r = ask(
+            serde_json::json!({"type": "auth", "token": control.trim()}),
+            "auth_result",
+        )
+        .await;
+        assert_eq!(r["ok"], true);
+        // Un agente con --no-input no acepta.
+        let r = ask(send_y(3, &local_id), "input_result").await;
+        assert_eq!(r["ok"], false);
+        assert!(r["error"].as_str().unwrap().contains("no acepta"), "{r}");
+        // Tecla fuera de la lista: el mensaje no se acepta (no hay respuesta ni escritura).
+        // Y el texto con Enter llega al agente.
+        let r = ask(send_y(4, &web_id), "input_result").await;
+        assert_eq!(r["ok"], true, "{r}");
+    });
+
+    let out = wrapper.wait_with_output().unwrap();
+    assert_eq!(out.status.code(), Some(3));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("respuesta: y"), "{stdout}");
+
+    // El de --no-input sigue esperando su respuesta local.
+    locked.stdin.as_mut().unwrap().write_all(b"n\n").unwrap();
+    let out = locked.wait_with_output().unwrap();
+    assert!(String::from_utf8_lossy(&out.stdout).contains("respuesta: n"));
+}

@@ -171,13 +171,13 @@ main { padding: 16px; }
   min-width: 0;
   overflow: hidden !important; /* gridstack pone overflow-y: auto en el contenido */
 }
-.card[data-kind="claude"] { --kind: var(--k-claude); }
-.card[data-kind="agy"] { --kind: var(--k-agy); }
-.card[data-kind="opencode"] { --kind: var(--k-opencode); }
-.card[data-state="waiting_input"],
-.card[data-state="waiting_approval"] { outline: 2px solid var(--st-waiting); outline-offset: -1px; }
+:is(.card, .agent-dialog)[data-kind="claude"] { --kind: var(--k-claude); }
+:is(.card, .agent-dialog)[data-kind="agy"] { --kind: var(--k-agy); }
+:is(.card, .agent-dialog)[data-kind="opencode"] { --kind: var(--k-opencode); }
+:is(.card, .agent-dialog)[data-state="waiting_input"],
+:is(.card, .agent-dialog)[data-state="waiting_approval"] { outline: 2px solid var(--st-waiting); outline-offset: -1px; }
 /* Terminadas: fondo y borde apagados, sin bajar el contraste del texto (WCAG AA). */
-.card[data-state="exited"], .card[data-state="disconnected"] {
+:is(.card, .agent-dialog)[data-state="exited"], :is(.card, .agent-dialog)[data-state="disconnected"] {
   --kind: var(--st-ended);
   background: var(--panel-2);
   box-shadow: none;
@@ -220,19 +220,19 @@ main { padding: 16px; }
   font-weight: 700;
   white-space: nowrap;
 }
-.card[data-state="working"] .badge { --st: var(--st-working); }
-.card[data-state="waiting_input"] .badge,
-.card[data-state="waiting_approval"] .badge { --st: var(--st-waiting); background: var(--st-waiting); color: #fff; }
-.card[data-state="error"] .badge { --st: var(--st-error); }
-.card[data-state="exited"] .badge, .card[data-state="disconnected"] .badge { --st: var(--st-ended); }
+:is(.card, .agent-dialog)[data-state="working"] .badge { --st: var(--st-working); }
+:is(.card, .agent-dialog)[data-state="waiting_input"] .badge,
+:is(.card, .agent-dialog)[data-state="waiting_approval"] .badge { --st: var(--st-waiting); background: var(--st-waiting); color: #fff; }
+:is(.card, .agent-dialog)[data-state="error"] .badge { --st: var(--st-error); }
+:is(.card, .agent-dialog)[data-state="exited"] .badge, :is(.card, .agent-dialog)[data-state="disconnected"] .badge { --st: var(--st-ended); }
 .badge-icon::before { content: "●"; }
-.card[data-state="working"] .badge-icon::before { content: "▶"; }
-.card[data-state="waiting_input"] .badge-icon::before { content: "?"; }
-.card[data-state="waiting_approval"] .badge-icon::before { content: "✋"; }
-.card[data-state="idle"] .badge-icon::before { content: "‖"; }
-.card[data-state="error"] .badge-icon::before { content: "!"; }
-.card[data-state="exited"] .badge-icon::before { content: "■"; }
-.card[data-state="disconnected"] .badge-icon::before { content: "×"; }
+:is(.card, .agent-dialog)[data-state="working"] .badge-icon::before { content: "▶"; }
+:is(.card, .agent-dialog)[data-state="waiting_input"] .badge-icon::before { content: "?"; }
+:is(.card, .agent-dialog)[data-state="waiting_approval"] .badge-icon::before { content: "✋"; }
+:is(.card, .agent-dialog)[data-state="idle"] .badge-icon::before { content: "‖"; }
+:is(.card, .agent-dialog)[data-state="error"] .badge-icon::before { content: "!"; }
+:is(.card, .agent-dialog)[data-state="exited"] .badge-icon::before { content: "■"; }
+:is(.card, .agent-dialog)[data-state="disconnected"] .badge-icon::before { content: "×"; }
 
 .dismiss {
   cursor: pointer;
@@ -303,6 +303,10 @@ main { padding: 16px; }
   padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0);
   white-space: nowrap; border: 0;
+}
+
+@media (max-width: 700px) {
+  .meta { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 12px; font-size: 12.5px; }
 }
 
 @media (max-width: 520px) {
@@ -402,3 +406,88 @@ main { padding: 16px; }
   font-size: 11px;
   font-weight: 600;
 }
+
+/* Consola: escribir en el agente */
+.console { display: flex; flex-direction: column; gap: 6px; flex: none; }
+.console[hidden], .console-form[hidden] { display: none; }
+.console-form { display: flex; flex-direction: column; gap: 6px; margin: 0; }
+.console-row { display: flex; gap: 6px; align-items: flex-end; }
+.console-input {
+  flex: 1;
+  min-width: 0;
+  min-height: 34px;
+  max-height: 96px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--term-bg);
+  color: var(--term-text);
+  font: 13px/1.4 var(--mono);
+  resize: none;
+}
+.console-input::placeholder { color: var(--muted); }
+.console-input:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+.console-send {
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+:root[data-theme="dark"] .console-send { color: #10241a; }
+.console-keys { display: flex; flex-wrap: wrap; gap: 4px; }
+.key {
+  min-width: 34px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  font: 600 12px/1.4 var(--mono);
+  cursor: pointer;
+}
+.key:hover { border-color: var(--muted); }
+.key[data-key="ctrl_c"] { margin-left: auto; color: var(--st-error); }
+.console-status { margin: 0; min-height: 1.2em; font-size: 12px; font-weight: 600; color: var(--muted); }
+.console-status[data-kind="ok"] { color: var(--st-working); }
+.console-status[data-kind="error"] { color: var(--accent-strong); }
+.console-note { margin: 0; font-size: 12.5px; color: var(--muted); }
+
+/* Aviso de permiso para escribir (cabecera) */
+.btn.write::before { content: "✎ "; color: var(--muted); }
+.btn.write[data-auth="ok"] { border-color: var(--accent); }
+.btn.write[data-auth="ok"]::before { color: var(--accent); }
+.btn.write[data-auth="bad"] { border-color: var(--accent-strong); color: var(--accent-strong); }
+
+/* Paneles (diálogos) */
+.panel-dialog {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 20px 60px rgb(0 0 0 / .3);
+}
+.panel-dialog::backdrop { background: rgb(25 19 18 / .45); }
+.panel-dialog h2 { margin: 0 0 8px; font-size: 18px; color: var(--heading); }
+.panel-dialog pre {
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--term-bg);
+  color: var(--term-text);
+  font: 12.5px/1.45 var(--mono);
+}
+.panel-dialog code { font-family: var(--mono); font-size: .95em; }
+.dialog-foot { display: flex; justify-content: flex-end; gap: 8px; margin: 12px 0 0; }
+.agent-dialog[open] { display: flex; flex-direction: column; gap: 10px; }
+.agent-dialog { --kind: var(--k-generic); border-left: 6px solid var(--kind); }
+.dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.agent-dialog .lines { margin: 0; height: min(46vh, 420px); white-space: pre; }
+.dialog-readonly { margin: 0; font-size: 13px; color: var(--muted); }

@@ -118,6 +118,15 @@ impl Screen {
         }
     }
 
+    /// Modos de teclado que pidió el agente, para traducir la entrada desde la web.
+    pub fn input_modes(&self) -> super::input::Modes {
+        let s = self.parser.screen();
+        super::input::Modes {
+            application_cursor: s.application_cursor(),
+            bracketed_paste: s.bracketed_paste(),
+        }
+    }
+
     pub fn set_size(&mut self, rows: u16, cols: u16) {
         self.parser.screen_mut().set_size(rows, cols);
     }

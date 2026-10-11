@@ -74,6 +74,9 @@ pub struct AgentSnapshot {
     pub last_output_at: Option<DateTime<Utc>>,
     /// Versión del wrapper que reporta (`None` si es anterior a este campo).
     pub version: Option<String>,
+    /// Si el wrapper acepta entrada desde la web (`false` con `--no-input`,
+    /// `allow_input = false` o un wrapper anterior a esta función).
+    pub accepts_input: bool,
 }
 
 /// Mensajes wrapper → servidor (`/ingest`).
@@ -91,6 +94,9 @@ pub enum IngestMsg {
         /// Versión del wrapper. Opcional: los wrappers viejos no la mandan.
         #[serde(default)]
         version: Option<String>,
+        /// Acepta entrada desde la web. Los wrappers viejos no la mandan: no.
+        #[serde(default)]
+        accepts_input: bool,
     },
     Screen {
         last_lines: Vec<String>,
@@ -106,6 +112,91 @@ pub enum IngestMsg {
     Exit {
         code: i32,
     },
+}
+
+/// Tecla que la web puede mandar a un agente. Es una lista cerrada: el
+/// navegador nunca manda bytes crudos; el wrapper traduce cada tecla.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Key {
+    Enter,
+    Esc,
+    Tab,
+    ShiftTab,
+    Up,
+    Down,
+    Left,
+    Right,
+    Backspace,
+    CtrlC,
+    CtrlD,
+}
+
+/// Tope de texto por mensaje de entrada.
+pub const MAX_INPUT_TEXT: usize = 4096;
+
+/// Entrada desde la web para un agente: texto (y, si `submit`, Enter después)
+/// o una tecla.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Input {
+    Text {
+        text: String,
+        #[serde(default)]
+        submit: bool,
+    },
+    Key {
+        key: Key,
+    },
+}
+
+impl Input {
+    /// Quita los caracteres de control del texto (salvo salto de línea y
+    /// tabulación: una secuencia de escape podría manejar la terminal) y
+    /// rechaza lo vacío o demasiado grande.
+    pub fn sanitized(self) -> Result<Input, &'static str> {
+        match self {
+            Input::Text { text, submit } => {
+                if text.len() > MAX_INPUT_TEXT {
+                    return Err("el texto es demasiado largo");
+                }
+                let text: String = text
+                    .chars()
+                    .filter(|c| !c.is_control() || *c == '\n' || *c == '\t')
+                    .collect();
+                if text.is_empty() && !submit {
+                    return Err("no hay nada que enviar");
+                }
+                Ok(Input::Text { text, submit })
+            }
+            key => Ok(key),
+        }
+    }
+
+    /// Para los logs: qué tipo de entrada fue y cuántos bytes, nunca el contenido.
+    pub fn describe(&self) -> (&'static str, usize) {
+        match self {
+            Input::Text { text, .. } => ("texto", text.len()),
+            Input::Key { .. } => ("tecla", 0),
+        }
+    }
+}
+
+/// Mensajes servidor → wrapper (por la misma conexión `/ingest`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum WrapperCmd {
+    Input { input: Input },
+}
+
+/// Mensajes navegador → servidor (`/ws`).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum FromBrowser {
+    /// Presenta el token de control (el del enlace que imprime `serve`).
+    Auth { token: String },
+    /// `rid` identifica la petición en la respuesta `input_result`.
+    Input { id: Uuid, rid: u64, input: Input },
 }
 
 /// Mensajes servidor → navegador (`/ws`).
@@ -126,6 +217,17 @@ pub enum BrowserMsg {
     AgentRemoved {
         id: Uuid,
     },
+    /// Respuesta a `auth`: con `ok`, esta conexión puede escribir en los agentes.
+    AuthResult {
+        ok: bool,
+    },
+    /// Respuesta a `input`.
+    InputResult {
+        rid: u64,
+        ok: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
 }
 
 #[cfg(test)]
@@ -141,6 +243,40 @@ mod tests {
         );
         assert_eq!(AgentKind::from_program("agy"), AgentKind::Agy);
         assert_eq!(AgentKind::from_program("bash"), AgentKind::Generic);
+    }
+
+    #[test]
+    fn input_wire_format_and_sanitizing() {
+        let i: Input =
+            serde_json::from_str(r#"{"type":"text","text":"hola\u001b[2Jmundo\n","submit":true}"#)
+                .unwrap();
+        assert_eq!(
+            i.sanitized().unwrap(),
+            Input::Text {
+                text: "hola[2Jmundo\n".into(),
+                submit: true
+            }
+        );
+        let k: Input = serde_json::from_str(r#"{"type":"key","key":"ctrl_c"}"#).unwrap();
+        assert_eq!(k, Input::Key { key: Key::CtrlC });
+        // Teclas fuera de la lista: no se aceptan.
+        assert!(serde_json::from_str::<Input>(r#"{"type":"key","key":"f12"}"#).is_err());
+        assert!(serde_json::from_str::<Input>(r#"{"type":"raw","bytes":[27]}"#).is_err());
+        let long = Input::Text {
+            text: "x".repeat(MAX_INPUT_TEXT + 1),
+            submit: false,
+        };
+        assert!(long.sanitized().is_err());
+        let empty = Input::Text {
+            text: "\u{7}".into(),
+            submit: false,
+        };
+        assert!(empty.sanitized().is_err());
+        let msg: FromBrowser = serde_json::from_str(
+            r#"{"type":"input","id":"7f1d6a3e-1111-4222-8333-944455556666","rid":4,"input":{"type":"key","key":"enter"}}"#,
+        )
+        .unwrap();
+        assert!(matches!(msg, FromBrowser::Input { rid: 4, .. }));
     }
 
     #[test]

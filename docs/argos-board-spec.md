@@ -23,9 +23,10 @@ Dentro del alcance (v1):
 - Alerta (notificación del navegador y/o sonido) cuando un agente queda esperando aprobación.
 - Todo en memoria, sin historial en disco.
 - Acceso solo desde `localhost`.
+- Escribir en los agentes desde la página (texto y teclas rápidas), con permiso explícito (sección 8). *(Añadido el 2026-10-11, issues #17 y #18; antes estaba fuera del alcance.)*
 
 Fuera del alcance (v1):
-- Escribir en los agentes o aprobar permisos desde la web.
+- Una terminal completa en el navegador (colores y todas las teclas; issue #19).
 - Persistencia de historial o de salida de sesiones.
 - Acceso desde otros dispositivos de la red.
 - Soporte para Windows nativo (ConPTY) y macOS. El código no debe impedirlos (p. ej. aislar lo específico de Unix detrás de módulos), pero no se prueban en v1.
@@ -77,14 +78,17 @@ Snapshot de un agente (JSON, estable porque lo consumen el tablero y la vista Of
   "git_branch": "main",
   "last_lines": ["...", "..."],
   "last_output_at": "2026-10-10T20:00:05Z",
-  "version": "0.1.0 (abe63f4)"
+  "version": "0.1.0 (abe63f4)",
+  "accepts_input": true
 }
 ```
 
+`accepts_input`: el wrapper acepta entrada desde la página (`false` con `run --no-input`, `allow_input = false` en `config.toml` o un wrapper anterior a esta función).
+
 Endpoints:
 - `GET /api/agents`: snapshot completo.
-- `GET /ws` (navegador): eventos `snapshot`, `agent_added`, `agent_updated`, `agent_removed`.
-- `GET /ingest` (wrapper, WebSocket): eventos `hello` (id, nombre, kind, project, pid, rama, versión del wrapper), `state`, `git`, `screen` (últimas líneas, throttled) y `exit` (código).
+- `GET /ws` (navegador): eventos `snapshot`, `agent_added`, `agent_updated`, `agent_removed`. Para escribir, el navegador manda `{"type":"auth","token":…}` (respuesta `auth_result` con `ok`) y luego `{"type":"input","id":…,"rid":n,"input":…}` (respuesta `input_result` con `rid`, `ok` y `error`). `input` es `{"type":"text","text":…,"submit":bool}` o `{"type":"key","key":…}` con `key` de una lista cerrada: `enter`, `esc`, `tab`, `shift_tab`, `up`, `down`, `left`, `right`, `backspace`, `ctrl_c`, `ctrl_d`.
+- `GET /ingest` (wrapper, WebSocket): eventos `hello` (id, nombre, kind, project, pid, rama, versión del wrapper, `accepts_input`), `state`, `git`, `screen` (últimas líneas, throttled) y `exit` (código). Por la misma conexión, el servidor le manda al wrapper `{"type":"input","input":…}`.
 
 ## 5. Estados y detección (la parte frágil: tratarla con cuidado)
 
@@ -105,7 +109,7 @@ Reglas:
 - Histéresis: no cambiar de estado por parpadeos de menos de ~500 ms.
 - Nota de producto: si un agente se ejecuta sin permisos (p. ej. `agy --dangerously-skip-permissions`), `waiting_approval` no ocurrirá, pero `waiting_input` sí (el agente puede seguir haciendo preguntas). Por defecto `agy` usa el modo `request-review`.
 
-## 6. Página web (solo lectura)
+## 6. Página web
 
 - Una página con una tarjeta por agente sobre un **lienzo**: el usuario mueve (arrastrando la cabecera) y redimensiona cada tarjeta; las tarjetas se empujan entre sí y nunca se superponen. Posición y tamaño se recuerdan por nombre de agente en el navegador. Las actualizaciones en vivo no mueven tarjetas. Las tarjetas nuevas se colocan en el primer hueco libre, y un botón "Reordenar" las acomoda por estado (esperando respuesta o aprobación primero) y luego por nombre. En pantallas estrechas se apilan en una columna.
   *(Cambio respecto a la versión inicial, que ordenaba siempre por estado: el reordenamiento automático hacía saltar las tarjetas cada vez que un agente producía salida.)*
@@ -115,6 +119,7 @@ Reglas:
 - Tarjetas `exited`/`disconnected` quedan atenuadas y desaparecen tras 10 minutos.
 - HTML, CSS y JS planos, sin framework ni build. Se permiten librerías JS sin dependencias ni build, incluidas en `web/vendor/` con su licencia y embebidas en el binario (nunca desde un CDN: sin llamadas de red salientes). Hoy: gridstack.js para el lienzo. Separar claramente la capa de **datos** (WebSocket + estado) de la capa de **render** así conviven el tablero (DOM) y la Oficina (canvas, sección 9) sin tocar el resto.
 - Responsive y accesible (contraste, foco, `aria-live` para cambios de estado). Verificado con axe (WCAG 2.1 AA) en ambos temas y a 360 px; el orden del DOM sigue la posición visual del lienzo y solo se anuncian, agrupados, los cambios que requieren atención.
+- **Escribir en un agente** (si la página tiene permiso y el agente lo acepta): cada tarjeta tiene una caja de texto (Enter envía el texto y luego Enter; Mayús+Enter agrega una línea; con la caja vacía, ↑, ↓ y Esc van directo al agente) y teclas rápidas ↑ ↓ Enter Esc Tab Ctrl+C. En la Oficina, un clic en una mascota abre un panel con su pantalla en vivo y la misma consola. La cabecera dice si la página tiene permiso ("Escritura activa" / "Solo lectura") y explica cómo conseguirlo.
 - La cabecera muestra la versión del servidor (versión + commit). `version` en el snapshot es la del wrapper (`null` si es anterior a ese campo); si no coincide, la tarjeta lo avisa. El evento `snapshot` de `/ws` incluye `server_version`.
 
 ## 7. Proyecto y rama git
@@ -126,6 +131,12 @@ Reglas:
 
 - Bind solo a loopback. En el WebSocket del navegador validar la cabecera `Origin`/`Host` (evita rebinding DNS y páginas externas leyendo el tablero).
 - El endpoint de ingesta exige un token generado al iniciar `serve` y guardado en un archivo con permisos `0600` en el directorio de configuración; el wrapper lo lee de ahí.
+- **Entrada desde la página.** Quien pueda escribir en un agente en modo automático puede ejecutar comandos en la máquina, así que:
+  - La página necesita un **token de control** distinto del de ingesta (`control-token`, `0600`), que `serve` imprime en la terminal como enlace `http://localhost:<puerto>/#k=<token>`. Va en el fragmento (no viaja en las peticiones HTTP); la página lo guarda en el navegador y lo presenta por `/ws`. Sin él, la página funciona en solo lectura. Se conserva entre reinicios; borrar el archivo lo renueva (y desautoriza a todos los navegadores).
+  - Cada wrapper decide si acepta entrada: por defecto sí; `run --no-input` o `allow_input = false` en `config.toml` lo apagan. El wrapper ignora la entrada si no la acepta, aunque el servidor se la mande.
+  - El navegador nunca manda bytes crudos: texto sin caracteres de control (salvo salto de línea y tabulación), como mucho 4096 bytes por mensaje, o teclas de una lista cerrada que el wrapper traduce según los modos de la terminal (cursor de aplicación, pegado entre corchetes). Máximo 30 entradas por segundo por página.
+  - El contenido de la entrada nunca va a los logs (solo agente, tipo y tamaño).
+  - Si se escribe a la vez en la terminal y en la página, las teclas se mezclan (no se bloquea).
 - La salida de terminal puede contener secretos. No se escribe a disco, no sale de la máquina y se aplica una redacción básica por regex (claves tipo `sk-...`, `Bearer ...`, variables `*_KEY=`/`*_TOKEN=`) antes de enviar `last_lines`.
 - Sin llamadas de red salientes.
 

@@ -44,6 +44,9 @@ enum Cmd {
         /// Guarda la pantalla en DIR en cada cambio de estado (para calibrar patrones).
         #[arg(long, value_name = "DIR")]
         dump_screens: Option<PathBuf>,
+        /// No aceptar entrada desde la página (por defecto se acepta).
+        #[arg(long)]
+        no_input: bool,
         /// Comando del agente, después de `--`.
         #[arg(last = true, required = true)]
         command: Vec<String>,
@@ -72,6 +75,7 @@ fn main() {
             project,
             port,
             dump_screens,
+            no_input,
             command,
         } => {
             // El wrapper nunca escribe logs en la terminal del agente; solo a un
@@ -82,6 +86,7 @@ fn main() {
                 project,
                 port,
                 dump_screens,
+                no_input,
                 command,
             };
             match wrapper::run(opts) {

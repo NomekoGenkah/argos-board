@@ -4,7 +4,7 @@ pub mod state;
 
 use crate::VERSION;
 use crate::config;
-use crate::model::{BrowserMsg, IngestMsg};
+use crate::model::{BrowserMsg, FromBrowser, IngestMsg, WrapperCmd};
 use anyhow::{Context, Result};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Request, State};
@@ -27,8 +27,13 @@ struct Assets;
 struct AppState {
     board: Arc<Board>,
     token: Arc<str>,
+    /// Autoriza a la página a escribir en los agentes (va en el enlace de `serve`).
+    control: Arc<str>,
     port: u16,
 }
+
+/// Máximo de entradas por segundo de una misma página.
+const INPUT_RATE: u32 = 30;
 
 pub async fn serve(port: u16) -> Result<()> {
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
@@ -44,6 +49,7 @@ pub async fn serve(port: u16) -> Result<()> {
         })?;
     let port = listener.local_addr()?.port();
     let token = config::create_token().context("creando el token de ingesta")?;
+    let control = config::control_token().context("creando el token de control")?;
 
     let board = Arc::new(Board::new());
     let sweeper = board.clone();
@@ -58,9 +64,14 @@ pub async fn serve(port: u16) -> Result<()> {
     let app = router(AppState {
         board,
         token: token.into(),
+        control: control.clone().into(),
         port,
     });
     eprintln!("argos-board {VERSION} escuchando en http://localhost:{port}");
+    // El enlace con el token va al usuario por la terminal, nunca a un log.
+    eprintln!(
+        "Para escribir en los agentes desde la página, abre: http://localhost:{port}/#k={control}"
+    );
     axum::serve(listener, app).await?;
     Ok(())
 }
@@ -117,10 +128,90 @@ async fn browser_ws(
     if header_str(&headers, header::ORIGIN).is_none() {
         return (StatusCode::FORBIDDEN, "falta Origin").into_response();
     }
-    ws.on_upgrade(move |socket| browser_session(socket, st.board))
+    ws.max_message_size(64 * 1024)
+        .on_upgrade(move |socket| browser_session(socket, st.board, st.control))
 }
 
-async fn browser_session(mut socket: WebSocket, board: Arc<Board>) {
+/// Comparación en tiempo constante respecto al contenido.
+fn same_secret(given: &str, secret: &str) -> bool {
+    given.len() == secret.len()
+        && given
+            .bytes()
+            .zip(secret.bytes())
+            .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+            == 0
+}
+
+/// Ventana de un segundo para limitar el ritmo de entradas.
+struct RateLimit {
+    window: std::time::Instant,
+    count: u32,
+}
+
+impl RateLimit {
+    fn allow(&mut self) -> bool {
+        if self.window.elapsed() >= Duration::from_secs(1) {
+            self.window = std::time::Instant::now();
+            self.count = 0;
+        }
+        self.count += 1;
+        self.count <= INPUT_RATE
+    }
+}
+
+/// Atiende un mensaje del navegador. Devuelve la respuesta, si hay.
+fn handle_browser_msg(
+    board: &Board,
+    control: &str,
+    authorized: &mut bool,
+    rate: &mut RateLimit,
+    text: &str,
+) -> Option<BrowserMsg> {
+    let msg = match serde_json::from_str::<FromBrowser>(text) {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::warn!("mensaje del navegador inválido: {e}");
+            return None;
+        }
+    };
+    match msg {
+        FromBrowser::Auth { token } => {
+            *authorized = same_secret(&token, control);
+            if !*authorized {
+                tracing::warn!("token de control inválido desde la página");
+            }
+            Some(BrowserMsg::AuthResult { ok: *authorized })
+        }
+        FromBrowser::Input { id, rid, input } => {
+            let result = if !*authorized {
+                Err(
+                    "esta página no tiene permiso para escribir (abre el enlace que imprime `argos-board serve`)",
+                )
+            } else if !rate.allow() {
+                Err("demasiadas entradas seguidas; espera un momento")
+            } else {
+                input.sanitized().and_then(|input| {
+                    let (kind, bytes) = input.describe();
+                    // Nunca el contenido: puede tener secretos.
+                    tracing::info!(agent = %id, kind, bytes, "entrada desde la web");
+                    board.send_input(id, input)
+                })
+            };
+            Some(BrowserMsg::InputResult {
+                rid,
+                ok: result.is_ok(),
+                error: result.err().map(str::to_string),
+            })
+        }
+    }
+}
+
+async fn browser_session(mut socket: WebSocket, board: Arc<Board>, control: Arc<str>) {
+    let mut authorized = false;
+    let mut rate = RateLimit {
+        window: std::time::Instant::now(),
+        count: 0,
+    };
     let (agents, mut rx) = board.subscribe();
     if send_json(
         &mut socket,
@@ -149,6 +240,13 @@ async fn browser_session(mut socket: WebSocket, board: Arc<Board>) {
             }
             incoming = socket.recv() => match incoming {
                 Some(Ok(Message::Close(_))) | None | Some(Err(_)) => return,
+                Some(Ok(Message::Text(text))) => {
+                    if let Some(reply) = handle_browser_msg(&board, &control, &mut authorized, &mut rate, &text)
+                        && send_json(&mut socket, &reply).await.is_err()
+                    {
+                        return;
+                    }
+                }
                 Some(Ok(_)) => {}
             },
         }
@@ -166,13 +264,7 @@ fn token_ok(headers: &HeaderMap, token: &str) -> bool {
     else {
         return false;
     };
-    // Comparación en tiempo constante respecto al contenido.
-    given.len() == token.len()
-        && given
-            .bytes()
-            .zip(token.bytes())
-            .fold(0u8, |acc, (a, b)| acc | (a ^ b))
-            == 0
+    same_secret(given, token)
 }
 
 async fn ingest_ws(
@@ -190,7 +282,22 @@ async fn ingest_ws(
 async fn ingest_session(mut socket: WebSocket, board: Arc<Board>) {
     let conn = board.new_conn();
     let mut agent = None;
-    while let Some(Ok(msg)) = socket.recv().await {
+    // Entrada desde la web para este wrapper.
+    let (input_tx, mut input_rx) = tokio::sync::mpsc::unbounded_channel::<WrapperCmd>();
+    loop {
+        let msg = tokio::select! {
+            m = socket.recv() => match m {
+                Some(Ok(m)) => m,
+                _ => break,
+            },
+            Some(cmd) = input_rx.recv() => {
+                let text = serde_json::to_string(&cmd).expect("WrapperCmd serializable");
+                if socket.send(Message::Text(text.into())).await.is_err() {
+                    break;
+                }
+                continue;
+            }
+        };
         let text = match msg {
             Message::Text(t) => t,
             Message::Close(_) => break,
@@ -204,6 +311,7 @@ async fn ingest_session(mut socket: WebSocket, board: Arc<Board>) {
                 }
                 if let Some(id) = board.apply(conn, agent, m) {
                     agent = Some(id);
+                    board.attach_input(conn, id, input_tx.clone());
                 }
             }
             Err(e) => tracing::warn!("mensaje de ingesta inválido: {e}"),

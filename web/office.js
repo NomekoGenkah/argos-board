@@ -388,7 +388,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     b.querySelector(".plate-name").textContent = a.name;
     b.setAttribute(
       "aria-label",
-      `${a.name} (${KINDS[a.kind] ?? a.kind}): ${LABELS[a.state] ?? a.state}, ${WHERE[ZONE_OF[a.state] ?? "office"]}. Abrir su tarjeta en el tablero`,
+      `${a.name} (${KINDS[a.kind] ?? a.kind}): ${LABELS[a.state] ?? a.state}, ${WHERE[ZONE_OF[a.state] ?? "office"]}. Abrir su panel para ver su pantalla y escribirle`,
     );
   }
 

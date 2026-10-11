@@ -28,6 +28,7 @@
         <button id="view-board" class="seg-btn" type="button" aria-pressed="true">Tablero</button>
         <button id="view-office" class="seg-btn" type="button" aria-pressed="false">Oficina</button>
       </div>
+      <button id="write" class="btn write" type="button" aria-haspopup="dialog" hidden></button>
       <button id="notify" class="btn" type="button" hidden>Activar avisos</button>
       <button id="sound" class="btn" type="button" aria-pressed="false" title="Suena cuando un agente te necesita">Sonido</button>
       <button id="relayout" class="btn" type="button" title="Ordena las tarjetas por estado y restablece su tamaño">Reordenar</button>
@@ -51,6 +52,33 @@
 
   <div id="live" class="sr-only" aria-live="polite" aria-atomic="false"></div>
 
+  <dialog id="write-dialog" class="panel-dialog" aria-labelledby="write-dialog-title">
+    <h2 id="write-dialog-title">Escribir en los agentes</h2>
+    <p class="write-dialog-text"></p>
+    <p>Al arrancar, <code>argos-board serve</code> imprime un enlace con un token:</p>
+    <pre><code>Para escribir en los agentes desde la página, abre: http://localhost:8787/#k=…</code></pre>
+    <p>Ábrelo una vez en este navegador; la página lo recuerda. Para quitarle el permiso a todos los navegadores,
+      borra <code>~/.config/argos-board/control-token</code> y reinicia el servidor.</p>
+    <form method="dialog" class="dialog-foot"><button class="btn">Entendido</button></form>
+  </dialog>
+
+  <dialog id="agent-dialog" class="panel-dialog agent-dialog" aria-labelledby="agent-dialog-title">
+    <header class="dialog-head">
+      <div class="title">
+        <span class="kind"></span>
+        <h2 id="agent-dialog-title" class="name"></h2>
+      </div>
+      <span class="badge"><span class="badge-icon" aria-hidden="true"></span><span class="badge-text"></span></span>
+    </header>
+    <pre class="lines" tabindex="0" aria-label="Salida de la terminal"></pre>
+    <p class="dialog-readonly" hidden></p>
+    <div class="console-slot"></div>
+    <footer class="dialog-foot">
+      <button type="button" class="btn" data-act="board">Ver en el tablero</button>
+      <button type="button" class="btn" data-act="close">Cerrar</button>
+    </footer>
+  </dialog>
+
   <template id="card-tpl">
     <div class="grid-stack-item">
     <article class="card grid-stack-item-content" tabindex="0" aria-describedby="cards-help">
@@ -72,6 +100,7 @@
       </dl>
       <p class="version-warn" hidden></p>
       <pre class="lines" tabindex="0" aria-label="Salida de la terminal"></pre>
+      <div class="console-slot"></div>
     </article>
     </div>
   </template>
