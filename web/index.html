@@ -24,6 +24,10 @@
       <p id="conn" class="conn" data-conn="connecting" role="status">
         <span class="conn-dot" aria-hidden="true"></span><span class="conn-text">Conectando…</span>
       </p>
+      <div class="seg" role="group" aria-label="Vista">
+        <button id="view-board" class="seg-btn" type="button" aria-pressed="true">Tablero</button>
+        <button id="view-office" class="seg-btn" type="button" aria-pressed="false">Oficina</button>
+      </div>
       <button id="notify" class="btn" type="button" hidden>Activar avisos</button>
       <button id="sound" class="btn" type="button" aria-pressed="false" title="Suena cuando un agente te necesita">Sonido</button>
       <button id="relayout" class="btn" type="button" title="Ordena las tarjetas por estado y restablece su tamaño">Reordenar</button>
@@ -38,6 +42,7 @@
       <pre><code>argos-board run -- claude</code></pre>
     </section>
     <section id="cards" class="grid-stack" aria-label="Agentes" aria-describedby="cards-help"></section>
+    <section id="office" class="office" aria-label="Oficina: un escritorio por agente" hidden></section>
     <p id="cards-help" class="sr-only">
       Arrastra la cabecera de una tarjeta para moverla y su borde o esquina para redimensionarla.
       Con el teclado, sobre una tarjeta: Mayúsculas y flechas cambian el tamaño; Control y flechas la mueven.

@@ -28,7 +28,6 @@ Fuera del alcance (v1):
 - Escribir en los agentes o aprobar permisos desde la web.
 - Persistencia de historial o de salida de sesiones.
 - Acceso desde otros dispositivos de la red.
-- Skin pixel-art (v2; ver sección 9, solo se prepara el modelo de datos).
 - Soporte para Windows nativo (ConPTY) y macOS. El código no debe impedirlos (p. ej. aislar lo específico de Unix detrás de módulos), pero no se prueban en v1.
 
 ### 2.1 Nota sobre WSL2
@@ -64,7 +63,7 @@ Fuera del alcance (v1):
 
 ## 4. Modelo de datos y API
 
-Snapshot de un agente (JSON, estable porque lo consumirá también la futura skin pixel-art):
+Snapshot de un agente (JSON, estable porque lo consumen el tablero y la vista Oficina, sección 9):
 
 ```json
 {
@@ -114,7 +113,7 @@ Reglas:
 - Indicador de conexión con el servidor y reconexión automática del WebSocket.
 - Alerta al entrar en `waiting_input` o `waiting_approval`: notificación del navegador (pedir permiso con un botón explícito del usuario), sonido opcional, y contador en el título de la pestaña. Sin alertas duplicadas por el mismo evento (clave: agente + estado + `state_since`; las ya avisadas se recuerdan por pestaña en `sessionStorage`, y al abrir la página no se avisa de lo que ya estaba esperando: lo muestra el contador).
 - Tarjetas `exited`/`disconnected` quedan atenuadas y desaparecen tras 10 minutos.
-- HTML, CSS y JS planos, sin framework ni build. Se permiten librerías JS sin dependencias ni build, incluidas en `web/vendor/` con su licencia y embebidas en el binario (nunca desde un CDN: sin llamadas de red salientes). Hoy: gridstack.js para el lienzo. Separar claramente la capa de **datos** (WebSocket + estado) de la capa de **render** para poder cambiar después a un renderizador de canvas pixel-art sin tocar el resto.
+- HTML, CSS y JS planos, sin framework ni build. Se permiten librerías JS sin dependencias ni build, incluidas en `web/vendor/` con su licencia y embebidas en el binario (nunca desde un CDN: sin llamadas de red salientes). Hoy: gridstack.js para el lienzo. Separar claramente la capa de **datos** (WebSocket + estado) de la capa de **render** así conviven el tablero (DOM) y la Oficina (canvas, sección 9) sin tocar el resto.
 - Responsive y accesible (contraste, foco, `aria-live` para cambios de estado). Verificado con axe (WCAG 2.1 AA) en ambos temas y a 360 px; el orden del DOM sigue la posición visual del lienzo y solo se anuncian, agrupados, los cambios que requieren atención.
 - La cabecera muestra la versión del servidor (versión + commit). `version` en el snapshot es la del wrapper (`null` si es anterior a ese campo); si no coincide, la tarjeta lo avisa. El evento `snapshot` de `/ws` incluye `server_version`.
 
@@ -130,9 +129,22 @@ Reglas:
 - La salida de terminal puede contener secretos. No se escribe a disco, no sale de la máquina y se aplica una redacción básica por regex (claves tipo `sk-...`, `Bearer ...`, variables `*_KEY=`/`*_TOKEN=`) antes de enviar `last_lines`.
 - Sin llamadas de red salientes.
 
-## 9. Preparación para v2 (pixel-art)
+## 9. Vista Oficina (pixel-art)
 
-No se implementa ahora. Solo mantener: el modelo de datos de la sección 4 estable, un campo `kind` por agente (para elegir sprite) y la separación datos/render del frontend.
+*(Antes "preparación para v2"; implementada el 2026-10-11, issue #16.)* Una segunda vista de los mismos datos, elegida con un botón *Tablero / Oficina* de la cabecera y recordada en el navegador. Objetivo: ver de un vistazo quién trabaja, quién espera una decisión y quién terminó, sin complejidad de juego.
+
+- Renderizador propio (`web/office.js`, canvas 2D con escala entera y `image-rendering: pixelated`) suscrito a la capa de datos como el tablero y las alertas. Sprites propios definidos como texto (`web/sprites.js`), recoloreados por `kind`; sin assets externos ni dependencias.
+- Cada agente es una **mascota** de una misma familia de bichitos de bloque, con forma y color propios por `kind`: Claude (bloque naranja con cuatro patas), Antigravity (domo azul que flota, con antena), OpenCode (robot blanco con la cara como pantalla de terminal; trabajando muestra `>_`), otros (cubito marrón).
+- **Lugares en un mismo plano**, cada uno con su piso, tabiques y cartel; el lugar dice el estado de un vistazo:
+  - *Te esperan* (`waiting_input`, `waiting_approval`): fila frente al escritorio del usuario, por orden de llegada (`state_since`); con un cartel **?** que saltan o un papel para firmar y globo ✋. El cartel de la zona muestra cuántos esperan.
+  - *Oficina* (`working`, `error`, `disconnected`): en su escritorio. Tecleando con el monitor como miniatura de `last_lines`; con error, ojos en X, monitor rojo con humo y globo **!**; desconectado, gris con estática y globo "…".
+  - *Cocina* (`idle`): sentados a una mesa con su taza.
+  - *Salida* (`exited`): junto a la puerta con un maletín, despidiéndose.
+- Cada agente conserva su escritorio (asiento estable por nombre, guardado en el navegador) aunque esté en otro lugar; el escritorio vacío muestra su nombre y un salvapantallas. Al cambiar de estado la mascota camina de un lugar a otro; un agente nuevo entra por la puerta.
+- La pared tiene una ventana con el cielo según la hora, un calendario con mes y día, el ojo de Argos (mira al primero de la fila) y un reloj con segundero.
+- Lo interactivo es HTML sobre el canvas (que es `aria-hidden`): un botón por agente, que sigue a la mascota, con una placa con nombre, estado y tiempo; abre la tarjeta del agente en el Tablero. El orden de Tab va por lugar (te esperan, oficina, cocina, salida).
+- Se usa la escala entera más grande con la que el plano entra en la pantalla; en pantallas estrechas los lugares se apilan.
+- Con `prefers-reduced-motion` no hay animaciones. Verificado con axe (WCAG 2.1 AA) en ambos temas y a 360 px.
 
 ## 10. Stack sugerido (verificar las últimas versiones estables)
 
