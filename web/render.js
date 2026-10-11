@@ -2,7 +2,7 @@
 // datos y lo pinta. Las actualizaciones en vivo solo cambian el contenido de
 // las tarjetas; la posición y el tamaño los decide el usuario.
 
-const LABELS = {
+export const LABELS = {
   working: "Trabajando",
   waiting_input: "Esperando tu respuesta",
   waiting_approval: "Esperando aprobación",
@@ -12,7 +12,7 @@ const LABELS = {
   disconnected: "Desconectado",
 };
 
-const KINDS = {
+export const KINDS = {
   claude: "Claude Code",
   opencode: "OpenCode",
   agy: "Antigravity",

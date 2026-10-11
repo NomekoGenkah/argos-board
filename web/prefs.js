@@ -20,6 +20,7 @@ function save(key, value) {
 
 const layouts = load("argos-layout", {}); // nombre del agente -> { x, y, w, h }
 const dismissed = load("argos-dismissed", {}); // id -> state_since al quitarla
+let seats = load("argos-seats", {}); // nombre del agente -> escritorio en la Oficina
 try {
   localStorage.removeItem("argos-sizes"); // formato anterior a gridstack
 } catch {
@@ -32,6 +33,24 @@ export const prefs = {
   },
   setSound(on) {
     save("argos-sound", Boolean(on));
+  },
+
+  view() {
+    return load("argos-view", "board") === "office" ? "office" : "board";
+  },
+  setView(v) {
+    save("argos-view", v);
+  },
+
+  // Escritorio de cada agente en la Oficina, por nombre (como el lienzo).
+  seats() {
+    return seats;
+  },
+  setSeats(next, replace = false) {
+    const merged = replace ? { ...next } : { ...seats, ...next };
+    if (JSON.stringify(merged) === JSON.stringify(seats)) return;
+    seats = merged;
+    save("argos-seats", seats);
   },
 
   theme() {

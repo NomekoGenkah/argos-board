@@ -28,7 +28,6 @@ Fuera del alcance (v1):
 - Escribir en los agentes o aprobar permisos desde la web.
 - Persistencia de historial o de salida de sesiones.
 - Acceso desde otros dispositivos de la red.
-- Skin pixel-art (v2; ver sección 9, solo se prepara el modelo de datos).
 - Soporte para Windows nativo (ConPTY) y macOS. El código no debe impedirlos (p. ej. aislar lo específico de Unix detrás de módulos), pero no se prueban en v1.
 
 ### 2.1 Nota sobre WSL2
@@ -64,7 +63,7 @@ Fuera del alcance (v1):
 
 ## 4. Modelo de datos y API
 
-Snapshot de un agente (JSON, estable porque lo consumirá también la futura skin pixel-art):
+Snapshot de un agente (JSON, estable porque lo consumen el tablero y la vista Oficina, sección 9):
 
 ```json
 {
@@ -114,7 +113,7 @@ Reglas:
 - Indicador de conexión con el servidor y reconexión automática del WebSocket.
 - Alerta al entrar en `waiting_input` o `waiting_approval`: notificación del navegador (pedir permiso con un botón explícito del usuario), sonido opcional, y contador en el título de la pestaña. Sin alertas duplicadas por el mismo evento (clave: agente + estado + `state_since`; las ya avisadas se recuerdan por pestaña en `sessionStorage`, y al abrir la página no se avisa de lo que ya estaba esperando: lo muestra el contador).
 - Tarjetas `exited`/`disconnected` quedan atenuadas y desaparecen tras 10 minutos.
-- HTML, CSS y JS planos, sin framework ni build. Se permiten librerías JS sin dependencias ni build, incluidas en `web/vendor/` con su licencia y embebidas en el binario (nunca desde un CDN: sin llamadas de red salientes). Hoy: gridstack.js para el lienzo. Separar claramente la capa de **datos** (WebSocket + estado) de la capa de **render** para poder cambiar después a un renderizador de canvas pixel-art sin tocar el resto.
+- HTML, CSS y JS planos, sin framework ni build. Se permiten librerías JS sin dependencias ni build, incluidas en `web/vendor/` con su licencia y embebidas en el binario (nunca desde un CDN: sin llamadas de red salientes). Hoy: gridstack.js para el lienzo. Separar claramente la capa de **datos** (WebSocket + estado) de la capa de **render** así conviven el tablero (DOM) y la Oficina (canvas, sección 9) sin tocar el resto.
 - Responsive y accesible (contraste, foco, `aria-live` para cambios de estado). Verificado con axe (WCAG 2.1 AA) en ambos temas y a 360 px; el orden del DOM sigue la posición visual del lienzo y solo se anuncian, agrupados, los cambios que requieren atención.
 - La cabecera muestra la versión del servidor (versión + commit). `version` en el snapshot es la del wrapper (`null` si es anterior a ese campo); si no coincide, la tarjeta lo avisa. El evento `snapshot` de `/ws` incluye `server_version`.
 
@@ -130,9 +129,16 @@ Reglas:
 - La salida de terminal puede contener secretos. No se escribe a disco, no sale de la máquina y se aplica una redacción básica por regex (claves tipo `sk-...`, `Bearer ...`, variables `*_KEY=`/`*_TOKEN=`) antes de enviar `last_lines`.
 - Sin llamadas de red salientes.
 
-## 9. Preparación para v2 (pixel-art)
+## 9. Vista Oficina (pixel-art)
 
-No se implementa ahora. Solo mantener: el modelo de datos de la sección 4 estable, un campo `kind` por agente (para elegir sprite) y la separación datos/render del frontend.
+*(Antes "preparación para v2"; implementada el 2026-10-11, issue #16.)* Una segunda vista de los mismos datos, elegida con un botón *Tablero / Oficina* de la cabecera y recordada en el navegador. Objetivo: ver de un vistazo quién trabaja, quién espera una decisión y quién terminó, sin complejidad de juego.
+
+- Renderizador propio (`web/office.js`, canvas 2D con escala entera y `image-rendering: pixelated`) suscrito a la capa de datos como el tablero y las alertas. Sprites propios definidos como texto (`web/sprites.js`), recoloreados por `kind`; sin assets externos ni dependencias.
+- Una oficina vista desde arriba: un escritorio por agente con su personaje. La ropa tiene el color del tipo de agente; pelo, piel y el objeto del escritorio salen de un hash del nombre (el mismo agente se ve siempre igual).
+- Cada estado se distingue por la postura, no solo por el color: de espaldas tecleando (`working`), girado saludando con globo **?** y foco rojo en el piso (`waiting_input`), girado mostrando un papel con globo ✋ (`waiting_approval`), recostado (`idle`), agarrándose la cabeza con monitor rojo (`error`), silla vacía (`exited`), gris con estática (`disconnected`). El monitor muestra una miniatura de `last_lines`.
+- Lo interactivo es HTML sobre el canvas (que es `aria-hidden`): un botón por escritorio con una placa con nombre, estado y tiempo; abre la tarjeta del agente en el Tablero. El orden de Tab sigue la posición visual.
+- Asientos estables por nombre de agente (en el navegador): las actualizaciones no mueven a nadie, los nuevos ocupan el primer hueco y *Reordenar* los acomoda por estado.
+- Con `prefers-reduced-motion` no hay animaciones. Verificado con axe (WCAG 2.1 AA) en ambos temas y a 360 px.
 
 ## 10. Stack sugerido (verificar las últimas versiones estables)
 

@@ -63,6 +63,21 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
   enfoca la tarjeta). *Sonido* agrega un pitido corto. Un aviso por cada vez que el agente se pone a esperar: no se
   repite por salida nueva ni al recargar la página.
 - Modo claro por defecto; el botón de la cabecera cambia a oscuro.
+- **Oficina** (botón *Tablero / Oficina* de la cabecera): la misma información en pixel-art. Cada agente es un
+  personaje en su escritorio, vestido con el color de su tipo, y su postura dice el estado de lejos:
+  - **trabajando**: de espaldas, tecleando, con el monitor lleno de código; el monitor es una miniatura de su
+    pantalla real;
+  - **esperando tu respuesta**: gira la silla, te saluda con un globo **?** rojo y se ilumina el piso;
+  - **esperando aprobación**: te muestra un papel para firmar (globo ✋);
+  - **inactivo**: recostado con las manos en la nuca;
+  - **error**: agarrándose la cabeza, con el monitor en rojo;
+  - **terminado**: la silla vacía con la chaqueta colgada;
+  - **desconectado**: un fantasma gris frente a un monitor con estática.
+
+  El ojo de Argos en la pared mira al agente que te necesita. Las ventanas y el reloj siguen la hora real.
+  Al hacer clic en un escritorio (o con Tab y Enter) se abre su tarjeta en el Tablero. Los escritorios no se
+  mueven con las actualizaciones; los nuevos ocupan el primer hueco libre y *Reordenar* los acomoda por estado.
+  Con `prefers-reduced-motion` no hay animaciones. La vista elegida se recuerda en ese navegador.
 
 - **Versión**: la cabecera muestra la versión del servidor (`v0.1.0 (abe63f4)`: versión y commit del build). Si un
   agente usa un wrapper de otra versión (por ejemplo, porque reinstalaste y no lo reiniciaste), su tarjeta lo avisa.
@@ -153,6 +168,7 @@ Estructura:
 - `src/server/` — `serve`: axum, estado en memoria, WebSockets `/ws` (navegador) e `/ingest` (wrapper).
 - `src/wrapper/` — `run`: PTY, modo raw, emulador `vt100`, detección por actividad, cliente de ingesta, dumps.
 - `src/model.rs` — snapshot de agente y mensajes (contrato estable, ver spec §4).
-- `web/` — página embebida en el binario. `data.js` (datos/WebSocket) está separado de `render.js` (DOM);
+- `web/` — página embebida en el binario. `data.js` (datos/WebSocket) está separado de `render.js` (DOM) y de
+  `office.js` (la Oficina en canvas; sus sprites, dibujados como texto, están en `sprites.js`);
   `prefs.js` guarda las preferencias locales. `web/fonts/` incluye Montserrat (licencia OFL, `OFL.txt`) y
   `web/vendor/gridstack/` incluye gridstack.js 14.0.0 (MIT) para el lienzo.

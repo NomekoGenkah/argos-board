@@ -313,3 +313,75 @@ main { padding: 16px; }
 
 .btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 .btn:disabled { cursor: default; opacity: .75; }
+
+/* Selector de vista (Tablero / Oficina) */
+.seg { display: inline-flex; padding: 2px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel-2); }
+.seg-btn {
+  padding: 5px 13px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.seg-btn[aria-pressed="true"] { background: var(--panel); color: var(--heading); box-shadow: 0 0 0 1px var(--border), 0 1px 2px rgb(0 0 0 / .08); }
+.seg-btn:not([aria-pressed="true"]) { color: var(--muted); }
+
+/* Oficina (pixel-art): canvas decorativo + botones encima de cada escritorio */
+.office { display: flex; justify-content: center; }
+.office[hidden] { display: none; }
+.office-stage {
+  position: relative;
+  max-width: 100%;
+  border: 3px solid var(--heading);
+  border-radius: 4px;
+  box-shadow: 6px 6px 0 color-mix(in srgb, var(--heading) 22%, transparent);
+  overflow: hidden;
+}
+.office-stage canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+.desks { position: absolute; inset: 0; }
+.desk {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+.desk:hover { background: rgb(255 255 255 / .07); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); }
+.desk:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }
+.plate {
+  position: absolute;
+  top: var(--plate-top);
+  left: 6px;
+  right: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 3px 6px 4px;
+  background: var(--panel);
+  border: 2px solid var(--heading);
+  border-radius: 3px;
+  box-shadow: 3px 3px 0 rgb(0 0 0 / .22);
+  text-align: center;
+  line-height: 1.2;
+}
+.plate-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; color: var(--heading); }
+.plate-state { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; font-size: 11px; font-weight: 600; color: var(--muted); }
+.plate-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plate .dot { flex: none; width: 7px; height: 7px; background: var(--st-idle); }
+.desk[data-state="working"] .dot { background: var(--st-working-dot); }
+.desk[data-state="waiting_input"] .plate,
+.desk[data-state="waiting_approval"] .plate { border-color: var(--st-waiting); }
+.desk[data-state="waiting_input"] .plate-state,
+.desk[data-state="waiting_approval"] .plate-state { color: var(--accent-strong); }
+.desk[data-state="waiting_input"] .dot,
+.desk[data-state="waiting_approval"] .dot { background: var(--st-waiting); }
+.desk[data-state="error"] .dot { background: var(--st-error); }
+.desk[data-state="exited"] .dot, .desk[data-state="disconnected"] .dot { background: var(--st-ended); }
+@media (max-width: 520px) {
+  .plate-name { font-size: 11px; }
+  .plate-state { font-size: 10px; }
+}

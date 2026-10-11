@@ -1,6 +1,7 @@
 import { createStore } from "./data.js";
 import { createDomRenderer } from "./render.js";
 import { createAlerts } from "./alerts.js";
+import { createOfficeRenderer } from "./office.js";
 import { prefs } from "./prefs.js";
 
 const themeBtn = document.getElementById("theme");
@@ -27,9 +28,39 @@ const { render, relayout, focusAgent } = createDomRenderer({
   GridStack: window.GridStack, // web/vendor/gridstack (script clásico)
   version: document.getElementById("version"),
 });
-document.getElementById("relayout").addEventListener("click", relayout);
 
-const alerts = createAlerts({ prefs, baseTitle: document.title, onActivate: focusAgent });
+// Dos vistas de los mismos datos: el Tablero (tarjetas) y la Oficina (pixel-art).
+const cardsEl = document.getElementById("cards");
+const officeEl = document.getElementById("office");
+const viewBtns = { board: document.getElementById("view-board"), office: document.getElementById("view-office") };
+const relayoutBtn = document.getElementById("relayout");
+let view = prefs.view();
+const office = createOfficeRenderer({ root: officeEl, prefs, onOpen: (id) => openInBoard(id) });
+
+function setView(v, { save = true } = {}) {
+  view = v;
+  if (save) prefs.setView(v);
+  cardsEl.hidden = v !== "board";
+  officeEl.hidden = v !== "office";
+  for (const [k, b] of Object.entries(viewBtns)) b.setAttribute("aria-pressed", String(k === v));
+  relayoutBtn.title =
+    v === "board" ? "Ordena las tarjetas por estado y restablece su tamaño" : "Ordena los escritorios por estado";
+  office.setActive(v === "office");
+}
+function openInBoard(id) {
+  setView("board");
+  requestAnimationFrame(() => focusAgent(id));
+}
+viewBtns.board.addEventListener("click", () => setView("board"));
+viewBtns.office.addEventListener("click", () => setView("office"));
+relayoutBtn.addEventListener("click", () => (view === "board" ? relayout() : office.relayout()));
+setView(view, { save: false });
+
+const alerts = createAlerts({
+  prefs,
+  baseTitle: document.title,
+  onActivate: (id) => (view === "board" ? focusAgent(id) : office.focusAgent(id)),
+});
 
 // Botón de avisos: el permiso solo se pide con un clic explícito.
 const notifyBtn = document.getElementById("notify");
@@ -71,5 +102,6 @@ document.addEventListener("pointerdown", () => prefs.sound() && alerts.unlockAud
 showSound();
 
 store.onChange(render);
+store.onChange(office.render);
 store.onChange(alerts.handle);
 store.connect();
