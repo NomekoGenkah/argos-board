@@ -245,3 +245,53 @@ fn security_checks() {
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("ya está en uso"));
 }
+
+/// Un wrapper (simulado) reporta `waiting_input` y el servidor lo publica tal cual.
+#[test]
+fn ingest_waiting_input_state() {
+    use futures_util::SinkExt;
+    use tokio_tungstenite::tungstenite::Message;
+
+    let cfg = tempfile::tempdir().unwrap();
+    let port = free_port();
+    let _server = start_server(cfg.path(), port);
+    let token = std::fs::read_to_string(cfg.path().join("token")).unwrap();
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let mut req = format!("ws://127.0.0.1:{port}/ingest").into_client_request().unwrap();
+        req.headers_mut()
+            .insert("authorization", format!("Bearer {}", token.trim()).parse().unwrap());
+        let (mut ws, _) = tokio_tungstenite::connect_async(req).await.unwrap();
+        let now = "2026-10-11T00:00:00Z";
+        for msg in [
+            serde_json::json!({"type": "hello", "id": "7f1d6a3e-1111-4222-8333-944455556666", "name": "falso@pregunta",
+                "kind": "claude", "project": "/tmp/p", "pid": 1, "started_at": now, "git_branch": "main"}),
+            serde_json::json!({"type": "state", "state": "waiting_input", "since": now}),
+        ] {
+            ws.send(Message::text(msg.to_string())).await.unwrap();
+        }
+        // El navegador también recibe el estado por /ws.
+        let mut req = format!("ws://127.0.0.1:{port}/ws").into_client_request().unwrap();
+        req.headers_mut()
+            .insert("origin", format!("http://localhost:{port}").parse().unwrap());
+        let (mut browser, _) = tokio_tungstenite::connect_async(req).await.unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let snap: Value = serde_json::from_str(browser.next().await.unwrap().unwrap().to_text().unwrap()).unwrap();
+            let agents = snap["agents"].as_array().cloned().unwrap_or_else(|| vec![snap["agent"].clone()]);
+            if agents.iter().any(|a| a["state"] == "waiting_input") {
+                break;
+            }
+            assert!(Instant::now() < deadline, "no llegó waiting_input al navegador");
+        }
+        let a = wait_for(port, "waiting_input en la API", |a| {
+            a.iter().any(|x| x["state"] == "waiting_input")
+        });
+        assert_eq!(a[0]["name"], "falso@pregunta");
+        drop(ws);
+    });
+
+    // Sin `exit`, cerrar la ingesta deja al agente desconectado.
+    wait_for(port, "disconnected", |a| a[0]["state"] == "disconnected");
+}

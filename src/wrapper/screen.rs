@@ -14,7 +14,7 @@ pub const HYSTERESIS: Duration = Duration::from_millis(500);
 pub const MAX_LINES: usize = 200;
 
 /// Máquina de estados por actividad de bytes con histéresis.
-/// (Los estados por patrón —`waiting_approval`, `error`— llegan en M3.)
+/// (Los estados por patrón —`waiting_input`, `waiting_approval`, `error`— llegan en M3.)
 pub struct Activity {
     last_output: Option<Instant>,
     reported: AgentState,

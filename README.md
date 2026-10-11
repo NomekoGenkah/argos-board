@@ -6,9 +6,10 @@ Solo observa: no lanza, detiene ni controla agentes.
 
 Especificación completa: [`docs/argos-board-spec.md`](docs/argos-board-spec.md).
 
-> **Estado: MVP.** Hoy detecta `working` / `idle` por actividad de salida, además de `exited` y
-> `disconnected`. La detección de `waiting_approval` / `error` necesita calibrarse con sesiones reales
-> (ver `--dump-screens` más abajo) y llegará en el hito M3.
+> **Estado: MVP.** Hoy detecta `working` / `idle` por cambios en la pantalla del agente, además de `exited` y
+> `disconnected`. Los estados `waiting_input` (el agente hizo una pregunta y espera tu respuesta),
+> `waiting_approval` (pide permiso) y `error` ya existen en el modelo, pero su detección por patrones llega
+> en el hito M3 (ya hay pantallas reales calibradas en `tests/fixtures/screens/`).
 
 ```
  terminal 1: argos-board run -- claude   ──┐
@@ -69,7 +70,7 @@ argos-board run --dump-screens ~/argos-dumps/claude -- claude
 
 Guarda la pantalla completa (texto) en cada cambio de estado (`working` → `idle`, etc.) y al terminar. Úsalo
 para capturar cómo se ve de verdad el prompt de aprobación de cada agente; con esos textos se escribirán los
-patrones de `waiting_approval`. **Los dumps pueden contener secretos de la sesión** (no se redactan): no los
+patrones de `waiting_input` y `waiting_approval`. **Los dumps pueden contener secretos de la sesión** (no se redactan): no los
 subas al repo sin revisarlos.
 
 ## Seguridad

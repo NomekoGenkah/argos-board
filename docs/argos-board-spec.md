@@ -71,7 +71,7 @@ Snapshot de un agente (JSON, estable porque lo consumirá también la futura ski
   "id": "uuid",
   "name": "claude@proyecto-a",
   "kind": "claude | opencode | agy | generic",
-  "state": "working | waiting_approval | idle | error | exited | disconnected",
+  "state": "working | waiting_input | waiting_approval | idle | error | exited | disconnected",
   "state_since": "2026-10-10T20:00:00Z",
   "started_at": "2026-10-10T19:40:00Z",
   "project": "/ruta/al/proyecto",
@@ -91,6 +91,7 @@ Endpoints:
 | Estado | Significado |
 |---|---|
 | `working` | Hay salida reciente del PTY (p. ej. en los últimos ~2 s) y no hay prompt de aprobación |
+| `waiting_input` | La pantalla actual coincide con un patrón de "hizo una pregunta y espera respuesta" del perfil del agente (p. ej. un menú de opciones). Es el caso habitual en modo automático, donde los agentes no piden permisos sino decisiones |
 | `waiting_approval` | La pantalla actual coincide con un patrón de "pide permiso" del perfil del agente |
 | `idle` | Sin salida reciente y sin prompt de aprobación (esperando al usuario) |
 | `error` | La pantalla coincide con un patrón de error/limite de cuota del perfil |
@@ -102,15 +103,15 @@ Reglas:
 - Los patrones viven en un perfil por agente, en un TOML configurable (`~/.config/argos-board/config.toml`), con valores por defecto embebidos.
 - **No inventar los textos exactos de los prompts de aprobación.** Implementar un modo `argos-board run --dump-screens <dir> -- <cmd>` que guarde snapshots de pantalla en cada cambio de estado percibido, para calibrar los patrones con sesiones reales de cada agente. Los perfiles iniciales deben quedar marcados como "sin calibrar" hasta hacerlo.
 - Histéresis: no cambiar de estado por parpadeos de menos de ~500 ms.
-- Nota de producto: si un agente se ejecuta sin permisos (p. ej. `agy --dangerously-skip-permissions`), `waiting_approval` no ocurrirá. Por defecto `agy` usa el modo `request-review`.
+- Nota de producto: si un agente se ejecuta sin permisos (p. ej. `agy --dangerously-skip-permissions`), `waiting_approval` no ocurrirá, pero `waiting_input` sí (el agente puede seguir haciendo preguntas). Por defecto `agy` usa el modo `request-review`.
 
 ## 6. Página web (solo lectura)
 
-- Una página con una tarjeta por agente sobre un **lienzo**: el usuario mueve (arrastrando la cabecera) y redimensiona cada tarjeta; las tarjetas se empujan entre sí y nunca se superponen. Posición y tamaño se recuerdan por nombre de agente en el navegador. Las actualizaciones en vivo no mueven tarjetas. Las tarjetas nuevas se colocan en el primer hueco libre, y un botón "Reordenar" las acomoda por estado (esperando aprobación primero) y luego por nombre. En pantallas estrechas se apilan en una columna.
+- Una página con una tarjeta por agente sobre un **lienzo**: el usuario mueve (arrastrando la cabecera) y redimensiona cada tarjeta; las tarjetas se empujan entre sí y nunca se superponen. Posición y tamaño se recuerdan por nombre de agente en el navegador. Las actualizaciones en vivo no mueven tarjetas. Las tarjetas nuevas se colocan en el primer hueco libre, y un botón "Reordenar" las acomoda por estado (esperando respuesta o aprobación primero) y luego por nombre. En pantallas estrechas se apilan en una columna.
   *(Cambio respecto a la versión inicial, que ordenaba siempre por estado: el reordenamiento automático hacía saltar las tarjetas cada vez que un agente producía salida.)*
 - Cada tarjeta: nombre, indicador de estado con color y texto (no solo color), proyecto (ruta corta), rama git, "en este estado desde hace X" y duración de la sesión, y un recuadro monoespaciado con la salida de la pantalla del agente (unas 8 líneas con el tamaño por defecto; más al agrandar la tarjeta).
 - Indicador de conexión con el servidor y reconexión automática del WebSocket.
-- Alerta al entrar en `waiting_approval`: notificación del navegador (pedir permiso con un botón explícito del usuario), sonido opcional, y contador en el título de la pestaña. Sin alertas duplicadas por el mismo evento.
+- Alerta al entrar en `waiting_input` o `waiting_approval`: notificación del navegador (pedir permiso con un botón explícito del usuario), sonido opcional, y contador en el título de la pestaña. Sin alertas duplicadas por el mismo evento.
 - Tarjetas `exited`/`disconnected` quedan atenuadas y desaparecen tras 10 minutos.
 - HTML, CSS y JS planos, sin framework ni build. Se permiten librerías JS sin dependencias ni build, incluidas en `web/vendor/` con su licencia y embebidas en el binario (nunca desde un CDN: sin llamadas de red salientes). Hoy: gridstack.js para el lienzo. Separar claramente la capa de **datos** (WebSocket + estado) de la capa de **render** para poder cambiar después a un renderizador de canvas pixel-art sin tocar el resto.
 - Responsive y accesible (contraste, foco, `aria-live` para cambios de estado).
