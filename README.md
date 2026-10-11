@@ -48,15 +48,18 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
 
 - Una tarjeta por agente, con el color del agente en el borde: Claude Code naranja, Antigravity (`agy`) azul,
   OpenCode blanco y cualquier otro comando marrón. El estado se muestra con texto, icono y color.
-- **Redimensionar**: arrastra el tirador de la esquina inferior derecha. A lo ancho, la tarjeta ocupa más
-  columnas; a lo alto, muestra más líneas de la pantalla del agente. También funciona con el teclado (enfoca el
-  tirador y usa las flechas). Doble clic restablece el tamaño. El tamaño se recuerda por nombre de agente.
+- **Lienzo**: arrastra la cabecera de una tarjeta para moverla y su borde derecho, inferior o la esquina para
+  redimensionarla. Las tarjetas se empujan entre sí y nunca se superponen; las actualizaciones en vivo no las
+  mueven. Al agrandar una tarjeta se ve más de la pantalla del agente. Con el teclado, sobre una tarjeta:
+  Mayús+flechas cambia el tamaño y Ctrl+flechas la mueve. *Reordenar* (cabecera) las acomoda por estado y
+  restablece los tamaños. La posición y el tamaño se recuerdan por nombre de agente. En pantallas estrechas
+  (< 700 px) se apilan en una columna.
 - **Quitar**: las tarjetas terminadas o desconectadas tienen un botón *Quitar* que las oculta en ese navegador.
   Si el agente vuelve a cambiar de estado (p. ej. se reconecta), reaparece. El servidor igual las borra solo
   a los 10 minutos.
 - Modo claro por defecto; el botón de la cabecera cambia a oscuro.
 
-Las preferencias (tema, tamaños, tarjetas quitadas) se guardan solo en el navegador (`localStorage`).
+Las preferencias (tema, lienzo, tarjetas quitadas) se guardan solo en el navegador (`localStorage`).
 
 ### Calibrar la detección de estados
 
@@ -106,4 +109,5 @@ Estructura:
 - `src/wrapper/` — `run`: PTY, modo raw, emulador `vt100`, detección por actividad, cliente de ingesta, dumps.
 - `src/model.rs` — snapshot de agente y mensajes (contrato estable, ver spec §4).
 - `web/` — página embebida en el binario. `data.js` (datos/WebSocket) está separado de `render.js` (DOM);
-  `prefs.js` guarda las preferencias locales. `web/fonts/` incluye Montserrat (licencia OFL, `OFL.txt`).
+  `prefs.js` guarda las preferencias locales. `web/fonts/` incluye Montserrat (licencia OFL, `OFL.txt`) y
+  `web/vendor/gridstack/` incluye gridstack.js 14.0.0 (MIT) para el lienzo.

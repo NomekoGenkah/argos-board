@@ -106,12 +106,13 @@ Reglas:
 
 ## 6. Página web (solo lectura)
 
-- Una página con una tarjeta por agente, ordenadas por estado (esperando aprobación primero) y luego por nombre.
-- Cada tarjeta: nombre, indicador de estado con color y texto (no solo color), proyecto (ruta corta), rama git, "en este estado desde hace X" y duración de la sesión, y un recuadro monoespaciado con las últimas ~8 líneas de salida.
+- Una página con una tarjeta por agente sobre un **lienzo**: el usuario mueve (arrastrando la cabecera) y redimensiona cada tarjeta; las tarjetas se empujan entre sí y nunca se superponen. Posición y tamaño se recuerdan por nombre de agente en el navegador. Las actualizaciones en vivo no mueven tarjetas. Las tarjetas nuevas se colocan en el primer hueco libre, y un botón "Reordenar" las acomoda por estado (esperando aprobación primero) y luego por nombre. En pantallas estrechas se apilan en una columna.
+  *(Cambio respecto a la versión inicial, que ordenaba siempre por estado: el reordenamiento automático hacía saltar las tarjetas cada vez que un agente producía salida.)*
+- Cada tarjeta: nombre, indicador de estado con color y texto (no solo color), proyecto (ruta corta), rama git, "en este estado desde hace X" y duración de la sesión, y un recuadro monoespaciado con la salida de la pantalla del agente (unas 8 líneas con el tamaño por defecto; más al agrandar la tarjeta).
 - Indicador de conexión con el servidor y reconexión automática del WebSocket.
 - Alerta al entrar en `waiting_approval`: notificación del navegador (pedir permiso con un botón explícito del usuario), sonido opcional, y contador en el título de la pestaña. Sin alertas duplicadas por el mismo evento.
 - Tarjetas `exited`/`disconnected` quedan atenuadas y desaparecen tras 10 minutos.
-- HTML, CSS y JS planos, sin framework ni build. Separar claramente la capa de **datos** (WebSocket + estado) de la capa de **render** para poder cambiar después a un renderizador de canvas pixel-art sin tocar el resto.
+- HTML, CSS y JS planos, sin framework ni build. Se permiten librerías JS sin dependencias ni build, incluidas en `web/vendor/` con su licencia y embebidas en el binario (nunca desde un CDN: sin llamadas de red salientes). Hoy: gridstack.js para el lienzo. Separar claramente la capa de **datos** (WebSocket + estado) de la capa de **render** para poder cambiar después a un renderizador de canvas pixel-art sin tocar el resto.
 - Responsive y accesible (contraste, foco, `aria-live` para cambios de estado).
 
 ## 7. Proyecto y rama git
@@ -132,7 +133,7 @@ No se implementa ahora. Solo mantener: el modelo de datos de la sección 4 estab
 
 ## 10. Stack sugerido (verificar las últimas versiones estables)
 
-`tokio`, `axum` (con WebSocket), `portable-pty`, `vt100`, `crossterm` (modo raw y tamaño), `rust-embed`, `serde`/`serde_json`, `clap`, `regex`, `toml`, `directories`, `tracing`, `anyhow`.
+`tokio`, `axum` (con WebSocket), `portable-pty`, `vt100`, `crossterm` (modo raw y tamaño), `rust-embed`, `serde`/`serde_json`, `clap`, `regex`, `toml`, `directories`, `tracing`, `anyhow`. Frontend: gridstack.js (vendorizado en `web/vendor/`).
 
 ## 11. Hitos
 
