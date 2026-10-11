@@ -5,14 +5,16 @@ export function createStore() {
   const agents = new Map(); // id -> snapshot (modelo de la sección 4 de la spec)
   const listeners = new Set();
   let conn = "connecting"; // connecting | open | closed
+  let serverVersion = null;
 
   const emit = (change) => {
-    for (const fn of listeners) fn({ agents, conn, change });
+    for (const fn of listeners) fn({ agents, conn, change, serverVersion });
   };
 
   function apply(msg) {
     switch (msg.type) {
       case "snapshot":
+        serverVersion = msg.server_version ?? null;
         agents.clear();
         for (const a of msg.agents) agents.set(a.id, a);
         emit({ kind: "snapshot" });

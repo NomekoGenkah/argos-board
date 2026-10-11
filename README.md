@@ -64,7 +64,13 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
   repite por salida nueva ni al recargar la página.
 - Modo claro por defecto; el botón de la cabecera cambia a oscuro.
 
-Las preferencias (tema, lienzo, tarjetas quitadas) se guardan solo en el navegador (`localStorage`).
+- **Versión**: la cabecera muestra la versión del servidor (`v0.1.0 (abe63f4)`: versión y commit del build). Si un
+  agente usa un wrapper de otra versión (por ejemplo, porque reinstalaste y no lo reiniciaste), su tarjeta lo avisa.
+- **Accesibilidad**: sin fallos de axe (WCAG 2.1 AA) en modo claro, oscuro y a 360 px; el orden del teclado sigue la
+  posición visual de las tarjetas; los lectores de pantalla oyen solo los cambios importantes (pregunta, permiso,
+  error, terminado, desconectado), agrupados.
+
+Las preferencias (tema, lienzo, tarjetas quitadas, sonido) se guardan solo en el navegador (`localStorage`).
 
 ### Perfiles de detección
 
@@ -111,12 +117,28 @@ subas al repo sin revisarlos.
   No abras el servidor a `0.0.0.0`.
 - Mantén el repo y `target/` dentro del sistema de archivos de WSL (`~/...`), no en `/mnt/c/...`.
 
-## Limitaciones conocidas del MVP
+### Depurar el wrapper
 
-- `working`/`idle` se basa solo en actividad de salida: escribir en el prompt (eco) cuenta como actividad.
+El wrapper nunca escribe en la terminal del agente. Para ver qué hace (conexión con el servidor, cambios de estado y
+si vinieron de un patrón, código de salida), pide un log a un archivo:
+
+```sh
+ARGOS_BOARD_LOG=/tmp/argos-wrapper.log argos-board run -- claude
+```
+
+`argos-board --version` muestra la versión y el commit del binario instalado.
+
+## Comportamiento del wrapper
+
+- Propaga el código de salida del agente; si el agente muere por una señal, sale con `128 + N` como la shell
+  (130 con Ctrl+C, 143 con `kill`).
+- Si su entrada viene de un pipe o archivo y se acaba, el agente recibe EOF (como Ctrl+D).
+
+## Limitaciones conocidas
+
+- Escribir en el prompt (eco) cuenta como actividad: mientras escribes, la tarjeta dice *Trabajando*.
 - Si se mata el wrapper con `SIGKILL` la terminal puede quedar en modo raw (no se puede interceptar);
   ejecuta `reset`. Con `SIGTERM`/`SIGHUP` se restaura correctamente.
-- Si el hijo muere por una señal, el código de salida propagado es `1`.
 
 ## Desarrollo
 

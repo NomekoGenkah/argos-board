@@ -27,7 +27,7 @@
   --st-waiting: #d93619;
   --st-idle: #74625e;
   --st-error: #994739;
-  --st-ended: #8a7c78;
+  --st-ended: #6e625f;
 
   /* Colores por agente (excepción a la paleta) */
   --k-claude: #e07a39;
@@ -58,7 +58,7 @@
   --st-waiting: #d93619;
   --st-idle: #b4a5a1;
   --st-error: #e0806c;
-  --st-ended: #8f817d;
+  --st-ended: #a99a96;
 
   --k-claude: #f08a48;
   --k-agy: #5b93ec;
@@ -112,7 +112,9 @@ button { font: inherit; color: inherit; }
   border-radius: 4px;
   background: linear-gradient(135deg, var(--st-waiting) 0 50%, var(--st-working-dot) 50% 100%);
 }
-.top-actions { display: flex; align-items: center; gap: 16px; }
+.brand { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.version { color: var(--muted); font-size: 12px; font-weight: 500; }
+.top-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px 12px; }
 
 .btn {
   padding: 6px 14px;
@@ -121,6 +123,7 @@ button { font: inherit; color: inherit; }
   background: var(--panel-2);
   font-size: 13px;
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
 }
 .btn:hover { border-color: var(--muted); }
@@ -173,7 +176,12 @@ main { padding: 16px; }
 .card[data-kind="opencode"] { --kind: var(--k-opencode); }
 .card[data-state="waiting_input"],
 .card[data-state="waiting_approval"] { outline: 2px solid var(--st-waiting); outline-offset: -1px; }
-.card[data-state="exited"], .card[data-state="disconnected"] { opacity: .6; }
+/* Terminadas: fondo y borde apagados, sin bajar el contraste del texto (WCAG AA). */
+.card[data-state="exited"], .card[data-state="disconnected"] {
+  --kind: var(--st-ended);
+  background: var(--panel-2);
+  box-shadow: none;
+}
 
 .card-head { cursor: grab; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -250,6 +258,16 @@ main { padding: 16px; }
 .meta dt::after { content: ":"; }
 .meta dd { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .meta .branch { font-family: var(--mono); font-weight: 400; }
+
+.version-warn {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--st-waiting) 10%, var(--panel));
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 500;
+}
 
 .lines {
   margin: 0;

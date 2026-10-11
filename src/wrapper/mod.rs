@@ -112,12 +112,22 @@ pub fn run(opts: RunOptions) -> Result<i32> {
         });
     }
     // stdin → PTY (bytes tal cual: Ctrl+C y demás llegan al hijo).
+    let stdin_is_tty = std::io::IsTerminal::is_terminal(&std::io::stdin());
     std::thread::spawn(move || {
         let mut stdin = std::io::stdin();
         let mut buf = [0u8; 4096];
         loop {
             match stdin.read(&mut buf) {
-                Ok(0) | Err(_) => break,
+                Ok(0) => {
+                    // Fin de la entrada (stdin redirigido): el agente recibe EOF
+                    // como si se hubiera pulsado Ctrl+D. En una terminal no ocurre.
+                    if !stdin_is_tty {
+                        let _ = pty_writer.write_all(&[0x04]);
+                        let _ = pty_writer.flush();
+                    }
+                    break;
+                }
+                Err(_) => break,
                 Ok(n) => {
                     if pty_writer.write_all(&buf[..n]).is_err() {
                         break;
@@ -150,6 +160,7 @@ pub fn run(opts: RunOptions) -> Result<i32> {
             pid,
             started_at,
             git_branch: branch.clone(),
+            version: Some(crate::VERSION.to_string()),
         });
         let _ = tx.send(IngestMsg::State { state: AgentState::Idle, since: started_at });
 
@@ -164,16 +175,17 @@ pub fn run(opts: RunOptions) -> Result<i32> {
                 res = &mut wait => break res,
                 _ = tick.tick() => {
                     let now = Instant::now();
-                    let (changed, lines, out_at) = {
+                    let (changed, pattern, lines, out_at) = {
                         let mut s = screen.lock().unwrap();
                         let pattern = profile.classify(&s.contents());
                         let changed = s.activity.tick(now, pattern);
                         if let (Some(st), Some(d)) = (changed, dumper.as_mut()) {
                             d.dump(st.as_str(), s.size(), &s.contents());
                         }
-                        (changed, s.last_lines(), s.last_output_at)
+                        (changed, pattern, s.last_lines(), s.last_output_at)
                     };
                     if let Some(state) = changed {
+                        tracing::debug!(state = state.as_str(), por_patron = pattern.is_some(), "cambio de estado");
                         let _ = tx.send(IngestMsg::State { state, since: Utc::now() });
                     }
                     if lines != last_lines {
@@ -209,9 +221,10 @@ pub fn run(opts: RunOptions) -> Result<i32> {
         let _ = tokio::task::spawn_blocking(move || reader_done_rx.recv_timeout(Duration::from_millis(300))).await;
 
         let code = match status {
-            Ok(Ok(st)) => st.exit_code() as i32,
+            Ok(Ok(st)) => exit_code(&st),
             _ => 1,
         };
+        tracing::info!(code, "el agente terminó");
         {
             let s = screen.lock().unwrap();
             let _ = tx.send(IngestMsg::Screen { last_lines: s.last_lines(), last_output_at: s.last_output_at });
@@ -227,6 +240,35 @@ pub fn run(opts: RunOptions) -> Result<i32> {
     rt.shutdown_timeout(Duration::from_millis(100));
     drop(raw);
     Ok(code)
+}
+
+/// Código de salida al estilo de la shell: el del hijo, o 128 + N si murió por
+/// la señal N (130 con Ctrl+C, 143 con `kill`).
+fn exit_code(status: &portable_pty::ExitStatus) -> i32 {
+    match status.signal() {
+        Some(name) => signal_number(name).map_or(1, |n| 128 + n),
+        None => status.exit_code() as i32,
+    }
+}
+
+/// portable-pty solo da el nombre de la señal (el texto de `strsignal`, que
+/// puede venir traducido): se busca el número que produce ese mismo texto.
+#[cfg(unix)]
+fn signal_number(name: &str) -> Option<i32> {
+    if let Some(n) = name.strip_prefix("Signal ").and_then(|n| n.parse().ok()) {
+        return Some(n);
+    }
+    (1..65).find(|&n| {
+        // SAFETY: strsignal devuelve un puntero a una cadena estática (o NULL);
+        // se copia enseguida y solo se llama una vez, al terminar el agente.
+        let ptr = unsafe { libc::strsignal(n) };
+        !ptr.is_null() && unsafe { std::ffi::CStr::from_ptr(ptr) }.to_string_lossy() == name
+    })
+}
+
+#[cfg(not(unix))]
+fn signal_number(_name: &str) -> Option<i32> {
+    None
 }
 
 #[cfg(unix)]
@@ -289,5 +331,23 @@ mod signals {
         pub async fn next(&mut self) -> Event {
             std::future::pending().await
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn signal_numbers_from_names() {
+        for n in [2, 9, 15] {
+            let name = unsafe { std::ffi::CStr::from_ptr(libc::strsignal(n)) }
+                .to_string_lossy()
+                .into_owned();
+            assert_eq!(signal_number(&name), Some(n), "{name}");
+        }
+        assert_eq!(signal_number("Signal 42"), Some(42));
+        assert_eq!(signal_number("no es una señal"), None);
+        assert_eq!(exit_code(&portable_pty::ExitStatus::with_exit_code(3)), 3);
     }
 }

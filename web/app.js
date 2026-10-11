@@ -25,6 +25,7 @@ const { render, relayout, focusAgent } = createDomRenderer({
   template: document.getElementById("card-tpl"),
   prefs,
   GridStack: window.GridStack, // web/vendor/gridstack (script clásico)
+  version: document.getElementById("version"),
 });
 document.getElementById("relayout").addEventListener("click", relayout);
 

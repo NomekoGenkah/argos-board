@@ -365,3 +365,97 @@ fn invalid_user_config_warns_and_runs() {
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(err.contains("config.toml inválido"), "{err}");
 }
+
+/// #7: si el agente muere por una señal, el wrapper sale con 128 + N, como la shell.
+#[test]
+fn exit_code_for_signals_is_128_plus_n() {
+    let cfg = tempfile::tempdir().unwrap();
+    let out = Command::new(BIN)
+        .args([
+            "run",
+            "--port",
+            &free_port().to_string(),
+            "--",
+            "sh",
+            "-c",
+            "kill -TERM $$",
+        ])
+        .env("ARGOS_BOARD_CONFIG_DIR", cfg.path())
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(143), "SIGTERM → 143");
+}
+
+/// #7: al cerrarse un stdin redirigido, el agente recibe EOF (no se queda colgado).
+#[test]
+fn closing_redirected_stdin_sends_eof() {
+    let cfg = tempfile::tempdir().unwrap();
+    let mut child = Command::new(BIN)
+        .args([
+            "run",
+            "--port",
+            &free_port().to_string(),
+            "--",
+            "sh",
+            "-c",
+            "cat >/dev/null; echo fin-de-entrada",
+        ])
+        .env("ARGOS_BOARD_CONFIG_DIR", cfg.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(b"hola\n").unwrap(); // se cierra al soltarlo
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while child.try_wait().unwrap().is_none() {
+        assert!(Instant::now() < deadline, "el agente no recibió EOF");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let out = child.wait_with_output().unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    assert!(String::from_utf8_lossy(&out.stdout).contains("fin-de-entrada"));
+}
+
+/// #7: ARGOS_BOARD_LOG escribe el log del wrapper en un archivo, no en la terminal.
+/// También comprueba que la API publica la versión del wrapper.
+#[test]
+fn wrapper_log_file_and_version() {
+    let cfg = tempfile::tempdir().unwrap();
+    let log = cfg.path().join("wrapper.log");
+    let port = free_port();
+    let _server = start_server(cfg.path(), port);
+    let out = Command::new(BIN)
+        .args([
+            "run",
+            "--name",
+            "con-log",
+            "--port",
+            &port.to_string(),
+            "--",
+            "sh",
+            "-c",
+            "echo hola; sleep 1",
+        ])
+        .env("ARGOS_BOARD_CONFIG_DIR", cfg.path())
+        .env("ARGOS_BOARD_LOG", &log)
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    assert!(
+        out.stderr.is_empty(),
+        "nada en la terminal: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let text = std::fs::read_to_string(&log).unwrap();
+    assert!(text.contains("conectado al servidor"), "{text}");
+    assert!(text.contains("el agente terminó"), "{text}");
+
+    let a = wait_for(port, "exited", |a| a.iter().any(|x| x["state"] == "exited"));
+    let version = a[0]["version"].as_str().unwrap_or_default();
+    assert!(
+        version.starts_with(env!("CARGO_PKG_VERSION")),
+        "versión: {version:?}"
+    );
+}

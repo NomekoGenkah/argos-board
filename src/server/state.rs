@@ -75,6 +75,7 @@ impl Board {
             pid: _,
             started_at,
             git_branch,
+            version,
         } = msg
         {
             let (event_new, entry) = match agents.remove(&id) {
@@ -84,6 +85,7 @@ impl Board {
                     e.snap.project = project;
                     e.snap.started_at = started_at;
                     e.snap.git_branch = git_branch;
+                    e.snap.version = version;
                     if e.snap.state == AgentState::Disconnected {
                         e.snap.state = AgentState::Idle;
                         e.snap.state_since = now;
@@ -106,6 +108,7 @@ impl Board {
                             git_branch,
                             last_lines: Vec::new(),
                             last_output_at: None,
+                            version,
                         },
                         conn,
                         ended_at: None,
@@ -206,6 +209,7 @@ mod tests {
             pid: Some(1),
             started_at: Utc::now(),
             git_branch: "main".into(),
+            version: Some("0.0.0 (test)".into()),
         }
     }
 

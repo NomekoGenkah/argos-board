@@ -16,7 +16,10 @@
 </head>
 <body>
   <header class="top">
-    <h1><span class="mark" aria-hidden="true"></span>Argos <span>Board</span></h1>
+    <div class="brand">
+      <h1><span class="mark" aria-hidden="true"></span>Argos <span>Board</span></h1>
+      <span id="version" class="version"></span>
+    </div>
     <div class="top-actions">
       <p id="conn" class="conn" data-conn="connecting" role="status">
         <span class="conn-dot" aria-hidden="true"></span><span class="conn-text">Conectando…</span>
@@ -62,6 +65,7 @@
         <div><dt>En este estado</dt><dd class="since"></dd></div>
         <div><dt>Sesión</dt><dd class="session"></dd></div>
       </dl>
+      <p class="version-warn" hidden></p>
       <pre class="lines" tabindex="0" aria-label="Salida de la terminal"></pre>
     </article>
     </div>

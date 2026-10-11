@@ -75,6 +75,7 @@ pub async fn run(port: u16, mut rx: UnboundedReceiver<IngestMsg>) {
     let mut backoff = Duration::from_millis(250);
     loop {
         if let Some(mut ws) = connect(port).await {
+            tracing::info!(port, "conectado al servidor");
             backoff = Duration::from_millis(250);
             let mut ok = true;
             for m in cache.all() {
@@ -102,6 +103,7 @@ pub async fn run(port: u16, mut rx: UnboundedReceiver<IngestMsg>) {
                 }
             }
         }
+        tracing::debug!(port, ?backoff, "sin conexión con el servidor; se reintenta");
         // Espera con backoff sin dejar de consumir eventos.
         let sleep = tokio::time::sleep(backoff);
         tokio::pin!(sleep);

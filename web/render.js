@@ -19,6 +19,11 @@ const KINDS = {
   generic: "Comando",
 };
 
+// Solo estos cambios se anuncian a lectores de pantalla: working ↔ idle cambia
+// cada pocos segundos y saturaría los anuncios.
+const ANNOUNCED = new Set(["waiting_input", "waiting_approval", "error", "exited", "disconnected"]);
+const ANNOUNCE_DELAY_MS = 1500;
+
 const ORDER = ["waiting_input", "waiting_approval", "error", "working", "idle", "disconnected", "exited"];
 const ENDED = new Set(["exited", "disconnected"]);
 
@@ -66,10 +71,18 @@ export function tileLayout(n) {
   }));
 }
 
-export function createDomRenderer({ cards, empty, conn, live, template, prefs, GridStack }) {
+/** Aviso si el wrapper que reporta es de otra versión que el servidor. */
+export function versionWarning(agentVersion, serverVersion) {
+  if (!serverVersion || agentVersion === serverVersion) return null;
+  if (!agentVersion) return "Este agente usa un wrapper de una versión anterior. Reinícialo para actualizarlo.";
+  return `Este agente usa otra versión del wrapper (${agentVersion}). Reinícialo para actualizarlo.`;
+}
+
+export function createDomRenderer({ cards, empty, conn, live, template, prefs, GridStack, version }) {
   const els = new Map(); // id -> .grid-stack-item
   let current = new Map();
   let lastEvent = null;
+  let serverVersion = null;
 
   const grid = GridStack.init(
     {
@@ -88,7 +101,21 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
   // Se guarda solo el lienzo de escritorio; el apilado de móvil es derivado.
   // Al volver a escritorio, gridstack recoloca a su manera: se restaura lo guardado.
   // (gridstack no emite "change" al cambiar de columnas: se vigila el ancho.)
+  /**
+   * El orden del teclado (Tab) y de los lectores de pantalla sigue al DOM, no a
+   * la posición visual: se reordena el DOM por fila y columna del lienzo.
+   */
+  function syncDomOrder() {
+    const items = [...cards.querySelectorAll(":scope > .grid-stack-item")].filter((i) => i.gridstackNode);
+    const sorted = [...items].sort((a, b) => a.gridstackNode.y - b.gridstackNode.y || a.gridstackNode.x - b.gridstackNode.x);
+    if (sorted.every((item, i) => item === items[i])) return;
+    const focused = document.activeElement;
+    for (const item of sorted) cards.append(item);
+    if (focused && cards.contains(focused) && document.activeElement !== focused) focused.focus({ preventScroll: true });
+  }
+
   grid.on("change", () => {
+    syncDomOrder();
     if (grid.getColumn() !== COLUMNS) return;
     // El fantasma de arrastre también es un nodo, pero sin tarjeta: se ignora.
     prefs.setLayouts(grid.engine.nodes.filter((n) => n.el?.dataset.name).map((n) => [n.el.dataset.name, n]));
@@ -137,6 +164,10 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
       pre.textContent = text;
       if (atBottom) stickToBottom(pre);
     }
+    const warn = el.querySelector(".version-warn");
+    const message = ENDED.has(a.state) ? null : versionWarning(a.version, serverVersion);
+    warn.hidden = !message;
+    warn.textContent = message ?? "";
     const dismiss = el.querySelector(".dismiss");
     dismiss.hidden = !ENDED.has(a.state);
     dismiss.setAttribute("aria-label", `Quitar ${a.name} del tablero`);
@@ -202,11 +233,19 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     }
   }
 
+  // Los anuncios se agrupan: varios cambios seguidos se leen en un solo mensaje.
+  let pending = [];
+  let flushTimer = null;
   function announce(text) {
-    const p = document.createElement("p");
-    p.textContent = text;
-    live.append(p);
-    while (live.childElementCount > 5) live.firstElementChild.remove();
+    pending.push(text);
+    flushTimer ??= setTimeout(() => {
+      const p = document.createElement("p");
+      p.textContent = pending.join(". ");
+      live.append(p);
+      while (live.childElementCount > 3) live.firstElementChild.remove();
+      pending = [];
+      flushTimer = null;
+    }, ANNOUNCE_DELAY_MS);
   }
 
   function rerender() {
@@ -215,13 +254,22 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
 
   function render(event) {
     const { agents, conn: connState, change } = event;
+    if (event.serverVersion && event.serverVersion !== serverVersion) {
+      serverVersion = event.serverVersion;
+      version.textContent = `v${serverVersion}`;
+    }
     lastEvent = event;
     conn.dataset.conn = connState;
     conn.querySelector(".conn-text").textContent = CONN_TEXT[connState];
     current = agents;
 
     if (change.kind === "snapshot") prefs.pruneDismissed(new Set(agents.keys()));
-    if (change.kind === "agent_updated" && change.prev && change.prev.state !== change.agent.state) {
+    if (
+      change.kind === "agent_updated" &&
+      change.prev &&
+      change.prev.state !== change.agent.state &&
+      ANNOUNCED.has(change.agent.state)
+    ) {
       announce(`${change.agent.name}: ${LABELS[change.agent.state] ?? change.agent.state}`);
     } else if (change.kind === "agent_added") {
       announce(`Nuevo agente: ${change.agent.name}`);
@@ -241,6 +289,7 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
       if (!item) {
         item = createCard(a);
         els.set(a.id, item);
+        syncDomOrder();
       }
       fill(item, a);
     }

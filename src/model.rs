@@ -72,6 +72,8 @@ pub struct AgentSnapshot {
     pub git_branch: String,
     pub last_lines: Vec<String>,
     pub last_output_at: Option<DateTime<Utc>>,
+    /// Versión del wrapper que reporta (`None` si es anterior a este campo).
+    pub version: Option<String>,
 }
 
 /// Mensajes wrapper → servidor (`/ingest`).
@@ -86,6 +88,9 @@ pub enum IngestMsg {
         pid: Option<u32>,
         started_at: DateTime<Utc>,
         git_branch: String,
+        /// Versión del wrapper. Opcional: los wrappers viejos no la mandan.
+        #[serde(default)]
+        version: Option<String>,
     },
     Screen {
         last_lines: Vec<String>,
@@ -107,10 +112,20 @@ pub enum IngestMsg {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum BrowserMsg {
-    Snapshot { agents: Vec<AgentSnapshot> },
-    AgentAdded { agent: AgentSnapshot },
-    AgentUpdated { agent: AgentSnapshot },
-    AgentRemoved { id: Uuid },
+    Snapshot {
+        agents: Vec<AgentSnapshot>,
+        /// Versión del servidor, para que la página detecte wrappers de otra versión.
+        server_version: &'static str,
+    },
+    AgentAdded {
+        agent: AgentSnapshot,
+    },
+    AgentUpdated {
+        agent: AgentSnapshot,
+    },
+    AgentRemoved {
+        id: Uuid,
+    },
 }
 
 #[cfg(test)]
