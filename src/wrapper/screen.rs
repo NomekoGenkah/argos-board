@@ -13,8 +13,10 @@ pub const HYSTERESIS: Duration = Duration::from_millis(500);
 /// página muestra las últimas que quepan en cada tarjeta.
 pub const MAX_LINES: usize = 200;
 
-/// Máquina de estados por actividad de bytes con histéresis.
-/// (Los estados por patrón —`waiting_input`, `waiting_approval`, `error`— llegan en M3.)
+/// Máquina de estados con histéresis. Combina la actividad (cambios de texto
+/// en pantalla) con el estado que indiquen los patrones del perfil del agente;
+/// el patrón tiene prioridad (p. ej. Claude hace parpadear un `●` mientras pide
+/// permiso, así que la pantalla nunca parece quieta).
 pub struct Activity {
     last_output: Option<Instant>,
     reported: AgentState,
@@ -46,9 +48,10 @@ impl Activity {
         }
     }
 
-    /// Devuelve el nuevo estado si cambió (tras la histéresis).
-    pub fn tick(&mut self, now: Instant) -> Option<AgentState> {
-        let p = self.perceived(now);
+    /// Devuelve el nuevo estado si cambió (tras la histéresis). `pattern` es el
+    /// estado que indica la pantalla según el perfil, si alguno coincide.
+    pub fn tick(&mut self, now: Instant, pattern: Option<AgentState>) -> Option<AgentState> {
+        let p = pattern.unwrap_or_else(|| self.perceived(now));
         if p == self.reported {
             self.candidate = None;
             return None;
@@ -161,15 +164,15 @@ mod tests {
         let t0 = Instant::now();
         let ms = |n| t0 + Duration::from_millis(n);
         let mut a = Activity::new();
-        assert_eq!(a.tick(t0), None);
+        assert_eq!(a.tick(t0, None), None);
 
         a.output(ms(0));
-        assert_eq!(a.tick(ms(100)), None, "aún dentro de la histéresis");
-        assert_eq!(a.tick(ms(700)), Some(AgentState::Working));
+        assert_eq!(a.tick(ms(100), None), None, "aún dentro de la histéresis");
+        assert_eq!(a.tick(ms(700), None), Some(AgentState::Working));
 
         // Sin salida durante > 2 s → idle tras la histéresis.
-        assert_eq!(a.tick(ms(2100)), None);
-        assert_eq!(a.tick(ms(2700)), Some(AgentState::Idle));
+        assert_eq!(a.tick(ms(2100), None), None);
+        assert_eq!(a.tick(ms(2700), None), Some(AgentState::Idle));
     }
 
     #[test]
@@ -178,13 +181,13 @@ mod tests {
         let ms = |n| t0 + Duration::from_millis(n);
         let mut a = Activity::new();
         a.output(ms(0));
-        assert_eq!(a.tick(ms(600)), None, "primer tick: candidato");
-        assert_eq!(a.tick(ms(1200)), Some(AgentState::Working));
+        assert_eq!(a.tick(ms(600), None), None, "primer tick: candidato");
+        assert_eq!(a.tick(ms(1200), None), Some(AgentState::Working));
         // Pausa breve: idle percibido < 500 ms y vuelve la salida.
-        assert_eq!(a.tick(ms(2100)), None);
+        assert_eq!(a.tick(ms(2100), None), None);
         a.output(ms(2300));
-        assert_eq!(a.tick(ms(2400)), None);
-        assert_eq!(a.tick(ms(3000)), None);
+        assert_eq!(a.tick(ms(2400), None), None);
+        assert_eq!(a.tick(ms(3000), None), None);
         assert_eq!(a.reported(), AgentState::Working);
     }
 
@@ -206,8 +209,8 @@ mod tests {
         let ms = |n| t0 + Duration::from_millis(n);
         let mut s = Screen::new(5, 40);
         s.process(b"> esperando\r\n", ms(0));
-        assert_eq!(s.activity.tick(ms(600)), None);
-        assert_eq!(s.activity.tick(ms(1200)), Some(AgentState::Working));
+        assert_eq!(s.activity.tick(ms(600), None), None);
+        assert_eq!(s.activity.tick(ms(1200), None), Some(AgentState::Working));
         // Cursor que parpadea y redibujo idéntico de la línea: no es actividad.
         for i in 0..20u64 {
             s.process(
@@ -215,12 +218,39 @@ mod tests {
                 ms(1300 + i * 200),
             );
         }
-        assert_eq!(s.activity.tick(ms(5300)), None);
-        assert_eq!(s.activity.tick(ms(5900)), Some(AgentState::Idle));
+        assert_eq!(s.activity.tick(ms(5300), None), None);
+        assert_eq!(s.activity.tick(ms(5900), None), Some(AgentState::Idle));
         // Un cambio real de texto sí lo es.
         s.process(b"\r\nnueva salida", ms(6000));
-        assert_eq!(s.activity.tick(ms(6100)), None);
-        assert_eq!(s.activity.tick(ms(6700)), Some(AgentState::Working));
+        assert_eq!(s.activity.tick(ms(6100), None), None);
+        assert_eq!(s.activity.tick(ms(6700), None), Some(AgentState::Working));
+    }
+
+    #[test]
+    fn pattern_wins_over_activity_with_hysteresis() {
+        let t0 = Instant::now();
+        let ms = |n| t0 + Duration::from_millis(n);
+        let mut a = Activity::new();
+        let ask = Some(AgentState::WaitingInput);
+        // Hay salida reciente (algo parpadea), pero la pantalla muestra una pregunta.
+        a.output(ms(0));
+        assert_eq!(a.tick(ms(100), ask), None, "histéresis");
+        a.output(ms(400));
+        assert_eq!(a.tick(ms(700), ask), Some(AgentState::WaitingInput));
+        a.output(ms(900));
+        assert_eq!(
+            a.tick(ms(1000), ask),
+            None,
+            "sigue esperando aunque haya actividad"
+        );
+        // Un parpadeo de menos de 500 ms sin el patrón no cambia el estado.
+        assert_eq!(a.tick(ms(1100), None), None);
+        assert_eq!(a.tick(ms(1300), ask), None);
+        assert_eq!(a.reported(), AgentState::WaitingInput);
+        // El usuario responde: desaparece el patrón y hay actividad → working.
+        a.output(ms(1500));
+        assert_eq!(a.tick(ms(1500), None), None);
+        assert_eq!(a.tick(ms(2100), None), Some(AgentState::Working));
     }
 
     #[test]

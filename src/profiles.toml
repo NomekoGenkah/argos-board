@@ -1,0 +1,35 @@
+# Perfiles de detección por agente (valores por defecto, embebidos en el binario).
+#
+# Cada patrón es una expresión regular (sintaxis del crate `regex`) que se busca en
+# las últimas líneas de la pantalla del agente. Si coincide, el estado del patrón
+# tiene prioridad sobre la detección por actividad.
+#
+# Calibrados con sesiones reales el 2026-10-11 (ver tests/fixtures/screens/README.md).
+# Una lista vacía significa "sin calibrar": ese estado no se detecta para ese agente.
+#
+# Para cambiarlos, crea ~/.config/argos-board/config.toml con las mismas tablas;
+# cada lista que pongas reemplaza a la de aquí.
+
+[profiles.claude]
+# Claude Code 2.1.296: menú de preguntas (AskUserQuestion) y diálogo de confianza.
+waiting_input = ['Enter to select · ↑/↓ to navigate', 'Enter to confirm · Esc to cancel']
+# Permiso para usar una herramienta (solo fuera de modo auto).
+waiting_approval = ['Esc to cancel · Tab to amend']
+error = []
+
+[profiles.opencode]
+# OpenCode 1.18.35: herramienta de preguntas.
+waiting_input = ['↑↓ select\s+enter submit']
+waiting_approval = []
+error = []
+
+[profiles.agy]
+# Antigravity CLI 1.3.3: herramienta de preguntas y diálogo de confianza.
+waiting_input = ['enter Select · esc Skip', '↑/↓ Navigate · enter Confirm']
+waiting_approval = []
+error = []
+
+[profiles.generic]
+waiting_input = []
+waiting_approval = []
+error = []

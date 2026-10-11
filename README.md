@@ -6,10 +6,10 @@ Solo observa: no lanza, detiene ni controla agentes.
 
 Especificación completa: [`docs/argos-board-spec.md`](docs/argos-board-spec.md).
 
-> **Estado: MVP.** Hoy detecta `working` / `idle` por cambios en la pantalla del agente, además de `exited` y
-> `disconnected`. Los estados `waiting_input` (el agente hizo una pregunta y espera tu respuesta),
-> `waiting_approval` (pide permiso) y `error` ya existen en el modelo, pero su detección por patrones llega
-> en el hito M3 (ya hay pantallas reales calibradas en `tests/fixtures/screens/`).
+> **Estados:** `working` / `idle` (por cambios en la pantalla del agente), `waiting_input` (el agente te hizo una
+> pregunta y espera tu respuesta), `waiting_approval` (pide permiso), `error`, `exited` y `disconnected`.
+> `waiting_input` está calibrado para `claude`, `opencode` y `agy`; `waiting_approval` solo para `claude`; `error`
+> todavía no tiene patrones (ver *Perfiles de detección*).
 
 ```
  terminal 1: argos-board run -- claude   ──┐
@@ -58,9 +58,31 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
 - **Quitar**: las tarjetas terminadas o desconectadas tienen un botón *Quitar* que las oculta en ese navegador.
   Si el agente vuelve a cambiar de estado (p. ej. se reconecta), reaparece. El servidor igual las borra solo
   a los 10 minutos.
+- **Avisos**: cuando un agente pasa a *Esperando tu respuesta* o *Esperando aprobación*, la pestaña muestra un
+  contador (`(1) Argos Board`) y, si activas *Activar avisos*, el navegador muestra una notificación (al hacer clic,
+  enfoca la tarjeta). *Sonido* agrega un pitido corto. Un aviso por cada vez que el agente se pone a esperar: no se
+  repite por salida nueva ni al recargar la página.
 - Modo claro por defecto; el botón de la cabecera cambia a oscuro.
 
 Las preferencias (tema, lienzo, tarjetas quitadas) se guardan solo en el navegador (`localStorage`).
+
+### Perfiles de detección
+
+Cada agente tiene patrones (expresiones regulares) que se buscan en las últimas líneas de su pantalla; si uno
+coincide, ese estado manda sobre la actividad. Los valores por defecto están en
+[`src/profiles.toml`](src/profiles.toml), calibrados con sesiones reales (`tests/fixtures/screens/`). Para
+cambiarlos, crea `~/.config/argos-board/config.toml` con las mismas tablas; cada lista que pongas reemplaza a la
+por defecto:
+
+```toml
+[profiles.claude]
+error = ['usage limit reached']
+
+[profiles.generic]          # cualquier otro comando
+waiting_input = ['\(y/n\)']
+```
+
+Si el archivo tiene un error, `argos-board run` lo avisa al arrancar y usa los valores por defecto.
 
 ### Calibrar la detección de estados
 
@@ -69,8 +91,8 @@ argos-board run --dump-screens ~/argos-dumps/claude -- claude
 ```
 
 Guarda la pantalla completa (texto) en cada cambio de estado (`working` → `idle`, etc.) y al terminar. Úsalo
-para capturar cómo se ve de verdad el prompt de aprobación de cada agente; con esos textos se escribirán los
-patrones de `waiting_input` y `waiting_approval`. **Los dumps pueden contener secretos de la sesión** (no se redactan): no los
+para capturar cómo se ve de verdad una pantalla nueva (otro agente, una versión nueva, un error) y escribir sus
+patrones. **Los dumps pueden contener secretos de la sesión** (no se redactan): no los
 subas al repo sin revisarlos.
 
 ## Seguridad

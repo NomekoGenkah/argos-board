@@ -292,3 +292,6 @@ main { padding: 16px; }
   main { padding: 16px; }
   .card-head { flex-direction: column; }
 }
+
+.btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.btn:disabled { cursor: default; opacity: .75; }

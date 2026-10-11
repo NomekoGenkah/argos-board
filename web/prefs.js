@@ -27,6 +27,13 @@ try {
 }
 
 export const prefs = {
+  sound() {
+    return load("argos-sound", false) === true;
+  },
+  setSound(on) {
+    save("argos-sound", Boolean(on));
+  },
+
   theme() {
     return load("argos-theme", "light") === "dark" ? "dark" : "light";
   },

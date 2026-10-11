@@ -101,7 +101,7 @@ Endpoints:
 Reglas:
 - La detección combina (a) actividad de bytes recientes y (b) regex sobre el contenido de pantalla del `vt100`, no sobre el flujo crudo.
 - Los patrones viven en un perfil por agente, en un TOML configurable (`~/.config/argos-board/config.toml`), con valores por defecto embebidos.
-- **No inventar los textos exactos de los prompts de aprobación.** Implementar un modo `argos-board run --dump-screens <dir> -- <cmd>` que guarde snapshots de pantalla en cada cambio de estado percibido, para calibrar los patrones con sesiones reales de cada agente. Los perfiles iniciales deben quedar marcados como "sin calibrar" hasta hacerlo.
+- **No inventar los textos exactos de los prompts de aprobación.** Implementar un modo `argos-board run --dump-screens <dir> -- <cmd>` que guarde snapshots de pantalla en cada cambio de estado percibido, para calibrar los patrones con sesiones reales de cada agente. Los perfiles iniciales deben quedar marcados como "sin calibrar" hasta hacerlo. *(Hecho el 2026-10-11 para `waiting_input` en los tres agentes y `waiting_approval` en `claude`; una lista de patrones vacía en `src/profiles.toml` significa "sin calibrar". Los patrones se buscan en las últimas 25 líneas de la pantalla y tienen prioridad sobre la actividad.)*
 - Histéresis: no cambiar de estado por parpadeos de menos de ~500 ms.
 - Nota de producto: si un agente se ejecuta sin permisos (p. ej. `agy --dangerously-skip-permissions`), `waiting_approval` no ocurrirá, pero `waiting_input` sí (el agente puede seguir haciendo preguntas). Por defecto `agy` usa el modo `request-review`.
 
@@ -111,7 +111,7 @@ Reglas:
   *(Cambio respecto a la versión inicial, que ordenaba siempre por estado: el reordenamiento automático hacía saltar las tarjetas cada vez que un agente producía salida.)*
 - Cada tarjeta: nombre, indicador de estado con color y texto (no solo color), proyecto (ruta corta), rama git, "en este estado desde hace X" y duración de la sesión, y un recuadro monoespaciado con la salida de la pantalla del agente (unas 8 líneas con el tamaño por defecto; más al agrandar la tarjeta).
 - Indicador de conexión con el servidor y reconexión automática del WebSocket.
-- Alerta al entrar en `waiting_input` o `waiting_approval`: notificación del navegador (pedir permiso con un botón explícito del usuario), sonido opcional, y contador en el título de la pestaña. Sin alertas duplicadas por el mismo evento.
+- Alerta al entrar en `waiting_input` o `waiting_approval`: notificación del navegador (pedir permiso con un botón explícito del usuario), sonido opcional, y contador en el título de la pestaña. Sin alertas duplicadas por el mismo evento (clave: agente + estado + `state_since`; las ya avisadas se recuerdan por pestaña en `sessionStorage`, y al abrir la página no se avisa de lo que ya estaba esperando: lo muestra el contador).
 - Tarjetas `exited`/`disconnected` quedan atenuadas y desaparecen tras 10 minutos.
 - HTML, CSS y JS planos, sin framework ni build. Se permiten librerías JS sin dependencias ni build, incluidas en `web/vendor/` con su licencia y embebidas en el binario (nunca desde un CDN: sin llamadas de red salientes). Hoy: gridstack.js para el lienzo. Separar claramente la capa de **datos** (WebSocket + estado) de la capa de **render** para poder cambiar después a un renderizador de canvas pixel-art sin tocar el resto.
 - Responsive y accesible (contraste, foco, `aria-live` para cambios de estado).
