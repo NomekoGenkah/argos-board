@@ -16,13 +16,15 @@ themeBtn.addEventListener("click", () => {
 });
 
 const store = createStore();
-const render = createDomRenderer({
+const { render, relayout } = createDomRenderer({
   cards: document.getElementById("cards"),
   empty: document.getElementById("empty"),
   conn: document.getElementById("conn"),
   live: document.getElementById("live"),
   template: document.getElementById("card-tpl"),
   prefs,
+  GridStack: window.GridStack, // web/vendor/gridstack (script clásico)
 });
+document.getElementById("relayout").addEventListener("click", relayout);
 store.onChange(render);
 store.connect();

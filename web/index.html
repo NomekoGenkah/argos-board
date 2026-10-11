@@ -11,6 +11,7 @@
     } catch (e) {}
   </script>
   <link rel="preload" href="fonts/montserrat-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="vendor/gridstack/gridstack.min.css">
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -20,6 +21,7 @@
       <p id="conn" class="conn" data-conn="connecting" role="status">
         <span class="conn-dot" aria-hidden="true"></span><span class="conn-text">Conectando…</span>
       </p>
+      <button id="relayout" class="btn" type="button" title="Ordena las tarjetas por estado y restablece su tamaño">Reordenar</button>
       <button id="theme" class="btn" type="button" aria-pressed="false">Modo oscuro</button>
     </div>
   </header>
@@ -30,13 +32,18 @@
       <p>En otra terminal, lanza un agente a través del wrapper:</p>
       <pre><code>argos-board run -- claude</code></pre>
     </section>
-    <section id="cards" class="cards" aria-label="Agentes"></section>
+    <section id="cards" class="grid-stack" aria-label="Agentes" aria-describedby="cards-help"></section>
+    <p id="cards-help" class="sr-only">
+      Arrastra la cabecera de una tarjeta para moverla y su borde o esquina para redimensionarla.
+      Con el teclado, sobre una tarjeta: Mayúsculas y flechas cambian el tamaño; Control y flechas la mueven.
+    </p>
   </main>
 
   <div id="live" class="sr-only" aria-live="polite" aria-atomic="false"></div>
 
   <template id="card-tpl">
-    <article class="card" tabindex="0">
+    <div class="grid-stack-item">
+    <article class="card grid-stack-item-content" tabindex="0" aria-describedby="cards-help">
       <header class="card-head">
         <div class="title">
           <span class="kind"></span>
@@ -54,12 +61,11 @@
         <div><dt>Sesión</dt><dd class="session"></dd></div>
       </dl>
       <pre class="lines" tabindex="0" aria-label="Salida de la terminal"></pre>
-      <button class="resize" type="button"
-        aria-label="Redimensionar tarjeta: flechas izquierda y derecha cambian el ancho, arriba y abajo la altura; doble clic restablece"
-        title="Arrastra para redimensionar (doble clic restablece)"></button>
     </article>
+    </div>
   </template>
 
+  <script src="vendor/gridstack/gridstack-all.js"></script>
   <script type="module" src="app.js"></script>
 </body>
 </html>

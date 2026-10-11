@@ -18,10 +18,13 @@ function save(key, value) {
   }
 }
 
-export const DEFAULT_SIZE = { span: 1, lines: 8 };
-
-const sizes = load("argos-sizes", {}); // nombre del agente -> { span, lines }
+const layouts = load("argos-layout", {}); // nombre del agente -> { x, y, w, h }
 const dismissed = load("argos-dismissed", {}); // id -> state_since al quitarla
+try {
+  localStorage.removeItem("argos-sizes"); // formato anterior a gridstack
+} catch {
+  /* nada */
+}
 
 export const prefs = {
   theme() {
@@ -31,13 +34,18 @@ export const prefs = {
     save("argos-theme", t);
   },
 
-  size(name) {
-    return { ...DEFAULT_SIZE, ...(sizes[name] ?? {}) };
+  // Posición y tamaño de la tarjeta en el lienzo, por nombre de agente (el id
+  // cambia en cada sesión; el nombre se mantiene).
+  layout(name) {
+    return layouts[name] ?? null;
   },
-  setSize(name, size) {
-    if (size.span === DEFAULT_SIZE.span && size.lines === DEFAULT_SIZE.lines) delete sizes[name];
-    else sizes[name] = { span: size.span, lines: size.lines };
-    save("argos-sizes", sizes);
+  setLayouts(entries) {
+    for (const [name, l] of entries) layouts[name] = { x: l.x, y: l.y, w: l.w, h: l.h };
+    save("argos-layout", layouts);
+  },
+  clearLayouts() {
+    for (const k of Object.keys(layouts)) delete layouts[k];
+    save("argos-layout", layouts);
   },
 
   // Una tarjeta quitada vuelve a aparecer si el agente cambia de estado

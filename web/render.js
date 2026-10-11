@@ -1,5 +1,6 @@
-// Capa de RENDER (DOM). Recibe el estado de la capa de datos y lo pinta.
-// Las preferencias locales (tamaños, tarjetas quitadas) llegan por `prefs`.
+// Capa de RENDER (DOM + lienzo gridstack). Recibe el estado de la capa de
+// datos y lo pinta. Las actualizaciones en vivo solo cambian el contenido de
+// las tarjetas; la posición y el tamaño los decide el usuario.
 
 const LABELS = {
   working: "Trabajando",
@@ -26,8 +27,11 @@ const CONN_TEXT = {
   closed: "Sin conexión, reintentando…",
 };
 
-export const MIN_LINES = 3;
-export const MAX_LINES = 80;
+// Lienzo: 12 columnas de ancho, filas de 24 px.
+export const COLUMNS = 12;
+export const DEFAULT_CARD = { w: 4, h: 14 };
+const MIN_CARD = { minW: 3, minH: 7 };
+const STACK_BELOW_PX = 700; // por debajo, una sola columna (móvil)
 
 export function shortPath(p) {
   if (!p) return "";
@@ -51,44 +55,72 @@ export function sortAgents(list) {
   });
 }
 
-export const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-
-/**
- * Columnas que caben y su ancho. Se calcula desde el ancho disponible (igual
- * que `auto-fill` en el CSS) y no leyendo la grilla, porque una tarjeta que
- * ocupa N columnas fuerza a que existan N aunque no quepan.
- */
-export function columnsFor(width, colMin, gap) {
-  const min = Math.min(width, colMin);
-  const cols = Math.max(1, Math.floor((width + gap) / (min + gap)));
-  return { cols, colWidth: (width - gap * (cols - 1)) / cols, gap };
+/** Posiciones en mosaico para `n` tarjetas del tamaño por defecto. */
+export function tileLayout(n) {
+  const perRow = Math.floor(COLUMNS / DEFAULT_CARD.w);
+  return Array.from({ length: n }, (_, i) => ({
+    x: (i % perRow) * DEFAULT_CARD.w,
+    y: Math.floor(i / perRow) * DEFAULT_CARD.h,
+    ...DEFAULT_CARD,
+  }));
 }
 
-function gridMetrics(container) {
-  const cs = getComputedStyle(container);
-  return columnsFor(container.clientWidth, parseFloat(cs.getPropertyValue("--col-min")) || 400, parseFloat(cs.columnGap) || 0);
-}
-
-export function createDomRenderer({ cards, empty, conn, live, template, prefs }) {
-  const els = new Map(); // id -> article
+export function createDomRenderer({ cards, empty, conn, live, template, prefs, GridStack }) {
+  const els = new Map(); // id -> .grid-stack-item
   let current = new Map();
   let lastEvent = null;
 
-  function applySize(el, name) {
-    const { span, lines } = prefs.size(name);
-    const { cols } = gridMetrics(cards);
-    el.style.gridColumn = `span ${clamp(span, 1, cols)}`;
-    el.style.setProperty("--lines", clamp(lines, MIN_LINES, MAX_LINES));
+  const grid = GridStack.init(
+    {
+      column: COLUMNS,
+      cellHeight: 24,
+      margin: 8,
+      float: false, // las tarjetas suben y se empujan, nunca se superponen
+      animate: true,
+      handle: ".card-head",
+      resizable: { handles: "e, se, s" },
+      columnOpts: { breakpoints: [{ w: STACK_BELOW_PX, c: 1 }], layout: "list" },
+    },
+    cards,
+  );
+
+  // Se guarda solo el lienzo de escritorio; el apilado de móvil es derivado.
+  // Al volver a escritorio, gridstack recoloca a su manera: se restaura lo guardado.
+  // (gridstack no emite "change" al cambiar de columnas: se vigila el ancho.)
+  grid.on("change", () => {
+    if (grid.getColumn() !== COLUMNS) return;
+    // El fantasma de arrastre también es un nodo, pero sin tarjeta: se ignora.
+    prefs.setLayouts(grid.engine.nodes.filter((n) => n.el?.dataset.name).map((n) => [n.el.dataset.name, n]));
+  });
+  let lastColumn = grid.getColumn();
+  new ResizeObserver(() =>
+    // Después del cambio de columnas de gridstack (que va con throttle).
+    setTimeout(() => {
+      const column = grid.getColumn();
+      if (column === COLUMNS && lastColumn !== COLUMNS) restoreSaved();
+      lastColumn = column;
+    }, 200),
+  ).observe(cards);
+
+  function restoreSaved() {
+    grid.batchUpdate();
+    for (const item of els.values()) {
+      const l = prefs.layout(item.dataset.name);
+      if (l) grid.update(item, l);
+    }
+    grid.batchUpdate(false);
   }
+  grid.on("resizestop", (_, el) => stickToBottom(el.querySelector(".lines")));
 
   function stickToBottom(pre) {
     pre.scrollTop = pre.scrollHeight;
   }
 
-  function fill(el, a) {
+  function fill(item, a) {
+    const el = item.querySelector(".card");
+    item.dataset.name = a.name;
     el.dataset.state = a.state;
     el.dataset.kind = a.kind;
-    el.dataset.name = a.name;
     el.querySelector(".kind").textContent = KINDS[a.kind] ?? a.kind;
     el.querySelector(".name").textContent = a.name;
     el.querySelector(".badge-text").textContent = LABELS[a.state] ?? a.state;
@@ -111,90 +143,61 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs })
   }
 
   function createCard(a) {
-    const el = template.content.firstElementChild.cloneNode(true);
-    el.querySelector(".dismiss").addEventListener("click", () => {
+    const item = template.content.firstElementChild.cloneNode(true);
+    item.dataset.name = a.name;
+    item.querySelector(".dismiss").addEventListener("click", () => {
       const agent = current.get(a.id);
       if (!agent) return;
-      // El foco pasa a la tarjeta siguiente (o a la anterior) para no perderlo.
-      const next = el.nextElementSibling ?? el.previousElementSibling;
       prefs.dismiss(agent);
       announce(`${agent.name} quitado del tablero`);
       rerender();
-      (next ?? cards).focus?.();
+      cards.querySelector(".card")?.focus();
     });
-    setupResize(el);
-    applySize(el, a.name);
-    requestAnimationFrame(() => stickToBottom(el.querySelector(".lines")));
-    return el;
+    item.querySelector(".card").addEventListener("keydown", (ev) => onCardKey(ev, item));
+    cards.append(item);
+    const saved = prefs.layout(a.name);
+    grid.makeWidget(item, { id: a.id, ...MIN_CARD, ...(saved ?? { ...DEFAULT_CARD, autoPosition: true }) });
+    requestAnimationFrame(() => stickToBottom(item.querySelector(".lines")));
+    return item;
   }
 
-  function setupResize(el) {
-    const handle = el.querySelector(".resize");
-    const pre = el.querySelector(".lines");
+  // Mayúsculas + flechas: tamaño. Control + flechas: posición.
+  function onCardKey(ev, item) {
+    if (!ev.shiftKey && !ev.ctrlKey) return;
+    const delta = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[ev.key];
+    if (!delta) return;
+    ev.preventDefault();
+    const n = item.gridstackNode;
+    const [dx, dy] = delta;
+    if (ev.shiftKey) {
+      grid.update(item, { w: Math.max(MIN_CARD.minW, n.w + dx), h: Math.max(MIN_CARD.minH, n.h + dy * 2) });
+      announce(`Tamaño: ${item.gridstackNode.w} de ${COLUMNS} columnas`);
+    } else {
+      grid.update(item, { x: Math.max(0, n.x + dx), y: Math.max(0, n.y + dy) });
+      announce(`Posición: columna ${item.gridstackNode.x + 1}, fila ${item.gridstackNode.y + 1}`);
+    }
+    item.querySelector(".card").focus();
+  }
 
-    const commit = (span, lines) => {
-      prefs.setSize(el.dataset.name, { span, lines });
-      applySize(el, el.dataset.name);
-      stickToBottom(pre);
-    };
-
-    handle.addEventListener("pointerdown", (ev) => {
-      ev.preventDefault();
-      handle.setPointerCapture(ev.pointerId);
-      el.classList.add("resizing");
-      const start = { x: ev.clientX, y: ev.clientY, w: el.offsetWidth, h: pre.clientHeight };
-      const lineH = parseFloat(getComputedStyle(pre).lineHeight) || 18;
-      const startLines = prefs.size(el.dataset.name).lines;
-      let size = prefs.size(el.dataset.name);
-
-      const move = (e) => {
-        const m = gridMetrics(cards);
-        const w = start.w + (e.clientX - start.x);
-        const span = clamp(Math.round((w + m.gap) / (m.colWidth + m.gap)), 1, m.cols);
-        const lines = clamp(Math.round(startLines + (e.clientY - start.y) / lineH), MIN_LINES, MAX_LINES);
-        size = { span, lines };
-        el.style.gridColumn = `span ${span}`;
-        el.style.setProperty("--lines", lines);
-        stickToBottom(pre);
-      };
-      const up = () => {
-        handle.removeEventListener("pointermove", move);
-        handle.removeEventListener("pointerup", up);
-        handle.removeEventListener("pointercancel", up);
-        el.classList.remove("resizing");
-        commit(size.span, size.lines);
-      };
-      handle.addEventListener("pointermove", move);
-      handle.addEventListener("pointerup", up);
-      handle.addEventListener("pointercancel", up);
-    });
-
-    handle.addEventListener("dblclick", () => commit(1, 8));
-
-    handle.addEventListener("keydown", (ev) => {
-      const { span, lines } = prefs.size(el.dataset.name);
-      const { cols } = gridMetrics(cards);
-      const moves = {
-        ArrowRight: [clamp(span + 1, 1, cols), lines],
-        ArrowLeft: [clamp(span - 1, 1, cols), lines],
-        ArrowDown: [span, clamp(lines + 2, MIN_LINES, MAX_LINES)],
-        ArrowUp: [span, clamp(lines - 2, MIN_LINES, MAX_LINES)],
-      };
-      const m = moves[ev.key];
-      if (!m) return;
-      ev.preventDefault();
-      commit(...m);
-      announce(`Ancho ${m[0]} columna${m[0] > 1 ? "s" : ""}, ${m[1]} líneas`);
-    });
+  /** Ordena por estado y restablece tamaños (botón "Reordenar"). */
+  function relayout() {
+    const visible = sortAgents([...current.values()].filter((a) => els.has(a.id)));
+    const slots = tileLayout(visible.length);
+    prefs.clearLayouts();
+    grid.batchUpdate();
+    visible.forEach((a, i) => grid.update(els.get(a.id), slots[i]));
+    grid.batchUpdate(false);
+    grid.compact();
+    announce("Tarjetas reordenadas por estado");
   }
 
   function tickTimes() {
     const now = Date.now();
-    for (const [id, el] of els) {
+    for (const [id, item] of els) {
       const a = current.get(id);
       if (!a) continue;
-      el.querySelector(".since").textContent = formatDuration(now - Date.parse(a.state_since));
-      el.querySelector(".session").textContent = formatDuration(now - Date.parse(a.started_at));
+      item.querySelector(".since").textContent = formatDuration(now - Date.parse(a.state_since));
+      item.querySelector(".session").textContent = formatDuration(now - Date.parse(a.started_at));
     }
   }
 
@@ -223,34 +226,27 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs })
       announce(`Nuevo agente: ${change.agent.name}`);
     }
 
+    // Las tarjetas nuevas se agregan en orden de estado; las existentes no se mueven.
     const visible = sortAgents([...agents.values()].filter((a) => !prefs.isDismissed(a)));
     const visibleIds = new Set(visible.map((a) => a.id));
-    for (const [id, el] of els) {
+    for (const [id, item] of els) {
       if (!visibleIds.has(id)) {
-        el.remove();
+        grid.removeWidget(item);
         els.delete(id);
       }
     }
-    visible.forEach((a, i) => {
-      let el = els.get(a.id);
-      if (!el) {
-        el = createCard(a);
-        els.set(a.id, el);
+    for (const a of visible) {
+      let item = els.get(a.id);
+      if (!item) {
+        item = createCard(a);
+        els.set(a.id, item);
       }
-      fill(el, a);
-      // Reordena sin recrear nodos (mantiene el foco).
-      if (cards.children[i] !== el) cards.insertBefore(el, cards.children[i] ?? null);
-    });
+      fill(item, a);
+    }
     empty.hidden = visible.length > 0 || connState !== "open";
     tickTimes();
   }
 
-  // Al cambiar el ancho de la ventana cambia el número de columnas: se
-  // reajustan los anchos guardados para no desbordar la grilla.
-  new ResizeObserver(() => {
-    for (const el of els.values()) applySize(el, el.dataset.name);
-  }).observe(cards);
-
   setInterval(tickTimes, 1000);
-  return render;
+  return { render, relayout };
 }
