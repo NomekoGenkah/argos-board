@@ -81,6 +81,15 @@ pub struct Screen {
     parser: vt100::Parser,
     pub activity: Activity,
     pub last_output_at: Option<DateTime<Utc>>,
+    /// Hash del texto visible tras el último cambio real de pantalla.
+    content_hash: u64,
+}
+
+fn hash_text(text: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut h);
+    h.finish()
 }
 
 impl Screen {
@@ -89,13 +98,21 @@ impl Screen {
             parser: vt100::Parser::new(rows, cols, 0),
             activity: Activity::new(),
             last_output_at: None,
+            content_hash: hash_text(""),
         }
     }
 
+    /// Procesa salida del PTY. Solo cuenta como actividad si cambia el texto
+    /// visible: algunos agentes (p. ej. `agy`) emiten bytes sin parar mientras
+    /// esperan (cursor, redibujados idénticos) y nunca parecerían inactivos.
     pub fn process(&mut self, bytes: &[u8], now: Instant) {
         self.parser.process(bytes);
-        self.activity.output(now);
-        self.last_output_at = Some(Utc::now());
+        let h = hash_text(&self.parser.screen().contents());
+        if h != self.content_hash {
+            self.content_hash = h;
+            self.activity.output(now);
+            self.last_output_at = Some(Utc::now());
+        }
     }
 
     pub fn set_size(&mut self, rows: u16, cols: u16) {
@@ -181,6 +198,29 @@ mod tests {
         assert_eq!(s.last_lines(), vec!["uno", "dos", "API_KEY=[REDACTED]"]);
         assert_eq!(last_lines("a\nb\n\nc\n", 2), vec!["", "c"]);
         assert_eq!(last_lines("\n\na\n\n\n\nb  \n\n\n", 10), vec!["a", "", "b"]);
+    }
+
+    #[test]
+    fn redraws_without_text_changes_are_not_activity() {
+        let t0 = Instant::now();
+        let ms = |n| t0 + Duration::from_millis(n);
+        let mut s = Screen::new(5, 40);
+        s.process(b"> esperando\r\n", ms(0));
+        assert_eq!(s.activity.tick(ms(600)), None);
+        assert_eq!(s.activity.tick(ms(1200)), Some(AgentState::Working));
+        // Cursor que parpadea y redibujo idéntico de la línea: no es actividad.
+        for i in 0..20u64 {
+            s.process(
+                b"\x1b[?25l\x1b[?25h\x1b[1;1H> esperando",
+                ms(1300 + i * 200),
+            );
+        }
+        assert_eq!(s.activity.tick(ms(5300)), None);
+        assert_eq!(s.activity.tick(ms(5900)), Some(AgentState::Idle));
+        // Un cambio real de texto sí lo es.
+        s.process(b"\r\nnueva salida", ms(6000));
+        assert_eq!(s.activity.tick(ms(6100)), None);
+        assert_eq!(s.activity.tick(ms(6700)), Some(AgentState::Working));
     }
 
     #[test]

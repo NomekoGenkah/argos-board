@@ -1,0 +1,44 @@
+# agente: opencode
+# categoria: pregunta
+# descripcion: Herramienta de preguntas de OpenCode: opciones esperando respuesta.
+# origen: dump (idle), 2026-10-11, terminal 120x40
+---
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃  Antes de hacer nada, usa tu herramienta para hacerme una pregunta de opción múltiple: ¿prefiero que el saludo de   
+  ┃  saludo.py sea en español o en inglés? Espera mi respuesta y luego aplica el cambio.                                
+  ┃                                                                                                                     
+                                                                                                                        
+     + Thought: 222ms                                                                                                   
+                                                                                                                        
+     → Asked 1 question                                                                                                 
+                                                                                                                        
+     ▣  Build · DeepSeek V4.1 Flash                                                                                     
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃  ¿Prefieres que el saludo de saludo.py sea en español o en inglés?                                                  
+  ┃                                                                                                                     
+  ┃  1. Español                                                                                                         
+  ┃     El saludo será en español (ej. "Hola")                                                                          
+  ┃  2. Inglés                                                                                                          
+  ┃     El saludo será en inglés (ej. "Hello")                                                                          
+  ┃  3. Type your own answer                                                                                            
+  ┃                                                                                                                     
+  ┃  ↑↓ select  enter submit  esc dismiss                                                                               
+  ┃

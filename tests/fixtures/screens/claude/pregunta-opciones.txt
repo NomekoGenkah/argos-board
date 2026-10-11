@@ -1,0 +1,27 @@
+# agente: claude
+# categoria: pregunta
+# descripcion: Herramienta de preguntas (AskUserQuestion) en modo auto: menú de opciones esperando respuesta.
+# origen: dump (idle), 2026-10-11, terminal 120x40
+---
+
+ ▐▛███▛█   Claude Code v2.1.296
+▝▜██████▀  Haiku 5.5 · Claude Pro
+ ▝▝   ▝▝   /tmp/argos-calib/proyecto
+
+
+❯ Antes de hacer nada, usa tu herramienta para hacerme una pregunta de opción múltiple: ¿prefiero que el saludo de      
+  saludo.py sea en español o en inglés? Espera mi respuesta y luego aplica el cambio.                                   
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ☐ Idioma 
+
+¿Prefieres que el saludo de saludo.py sea en español o en inglés?
+
+❯ 1. Español
+     El saludo se muestra en español.
+  2. English
+     El saludo se muestra en inglés.
+  3. Type something.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  4. Chat about this
+
+Enter to select · ↑/↓ to navigate · Esc to cancel
