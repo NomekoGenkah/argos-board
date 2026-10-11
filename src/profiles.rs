@@ -113,10 +113,7 @@ impl Profile {
 
     /// Lee `config.toml` del directorio de configuración, si existe.
     pub fn load(kind: AgentKind) -> (Profile, Vec<String>) {
-        let user = crate::config::config_dir()
-            .ok()
-            .and_then(|d| std::fs::read_to_string(d.join("config.toml")).ok());
-        Self::build(kind, user.as_deref())
+        Self::build(kind, crate::config::user_config().as_deref())
     }
 
     /// Estado que indica la pantalla, si algún patrón coincide.

@@ -1,11 +1,11 @@
 //! Estado en memoria de todos los agentes + difusión a los navegadores.
 
-use crate::model::{AgentSnapshot, AgentState, BrowserMsg, IngestMsg};
+use crate::model::{AgentSnapshot, AgentState, BrowserMsg, IngestMsg, Input, WrapperCmd};
 use chrono::Utc;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 use uuid::Uuid;
 
 /// Tiempo que una tarjeta `exited`/`disconnected` sigue visible.
@@ -18,6 +18,8 @@ struct Entry {
     /// ya se reconectó.
     conn: u64,
     ended_at: Option<Instant>,
+    /// Canal hacia el wrapper (su conexión de ingesta), para la entrada desde la web.
+    input: Option<mpsc::UnboundedSender<WrapperCmd>>,
 }
 
 pub struct Board {
@@ -76,6 +78,7 @@ impl Board {
             started_at,
             git_branch,
             version,
+            accepts_input,
         } = msg
         {
             let (event_new, entry) = match agents.remove(&id) {
@@ -86,6 +89,8 @@ impl Board {
                     e.snap.started_at = started_at;
                     e.snap.git_branch = git_branch;
                     e.snap.version = version;
+                    e.snap.accepts_input = accepts_input;
+                    e.input = None;
                     if e.snap.state == AgentState::Disconnected {
                         e.snap.state = AgentState::Idle;
                         e.snap.state_since = now;
@@ -109,9 +114,11 @@ impl Board {
                             last_lines: Vec::new(),
                             last_output_at: None,
                             version,
+                            accepts_input,
                         },
                         conn,
                         ended_at: None,
+                        input: None,
                     },
                 ),
             };
@@ -163,13 +170,42 @@ impl Board {
         None
     }
 
+    /// Canal por el que la conexión `conn` recibe la entrada para `agent`.
+    pub fn attach_input(&self, conn: u64, agent: Uuid, tx: mpsc::UnboundedSender<WrapperCmd>) {
+        let mut agents = self.agents.lock().unwrap();
+        if let Some(e) = agents.get_mut(&agent).filter(|e| e.conn == conn) {
+            e.input = Some(tx);
+        }
+    }
+
+    /// Manda entrada (ya validada) al wrapper de un agente.
+    pub fn send_input(&self, agent: Uuid, input: Input) -> Result<(), &'static str> {
+        let agents = self.agents.lock().unwrap();
+        let e = agents.get(&agent).ok_or("ese agente ya no está")?;
+        match e.snap.state {
+            AgentState::Exited => return Err("el agente terminó"),
+            AgentState::Disconnected => return Err("el agente está desconectado"),
+            _ => {}
+        }
+        if !e.snap.accepts_input {
+            return Err("este agente no acepta entrada desde la web");
+        }
+        let tx = e.input.as_ref().ok_or("el agente está desconectado")?;
+        tx.send(WrapperCmd::Input { input })
+            .map_err(|_| "el agente está desconectado")
+    }
+
     /// La conexión `conn` se cerró. Si no hubo `exit`, el agente queda `disconnected`.
     pub fn connection_closed(&self, conn: u64, agent: Uuid) {
         let mut agents = self.agents.lock().unwrap();
         let Some(e) = agents.get_mut(&agent) else {
             return;
         };
-        if e.conn != conn || e.snap.state == AgentState::Exited {
+        if e.conn != conn {
+            return;
+        }
+        e.input = None;
+        if e.snap.state == AgentState::Exited {
             return;
         }
         e.snap.state = AgentState::Disconnected;
@@ -210,7 +246,47 @@ mod tests {
             started_at: Utc::now(),
             git_branch: "main".into(),
             version: Some("0.0.0 (test)".into()),
+            accepts_input: true,
         }
+    }
+
+    #[test]
+    fn input_routing() {
+        let b = Board::new();
+        let id = Uuid::new_v4();
+        let c1 = b.new_conn();
+        b.apply(c1, None, hello(id));
+        let text = || Input::Text {
+            text: "hola".into(),
+            submit: true,
+        };
+        // Sin canal todavía (o sin agente): error, nunca pánico.
+        assert!(b.send_input(Uuid::new_v4(), text()).is_err());
+        assert!(b.send_input(id, text()).is_err());
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        // Una conexión vieja no puede engancharse a la entrada.
+        b.attach_input(c1 + 99, id, tx.clone());
+        assert!(b.send_input(id, text()).is_err());
+        b.attach_input(c1, id, tx);
+        b.send_input(id, text()).unwrap();
+        assert_eq!(rx.try_recv().unwrap(), WrapperCmd::Input { input: text() });
+        // Terminado o desconectado: ya no se escribe.
+        b.connection_closed(c1, id);
+        assert_eq!(b.send_input(id, text()), Err("el agente está desconectado"));
+        // Un wrapper con --no-input rechaza siempre.
+        let id2 = Uuid::new_v4();
+        let c2 = b.new_conn();
+        let mut h = hello(id2);
+        if let IngestMsg::Hello { accepts_input, .. } = &mut h {
+            *accepts_input = false;
+        }
+        b.apply(c2, None, h);
+        let (tx, _rx) = mpsc::unbounded_channel();
+        b.attach_input(c2, id2, tx);
+        assert_eq!(
+            b.send_input(id2, text()),
+            Err("este agente no acepta entrada desde la web")
+        );
     }
 
     #[test]

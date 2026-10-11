@@ -1,0 +1,64 @@
+// Panel de un agente (desde la Oficina): su pantalla en vivo y la consola
+// para escribirle, sin salir de la vista.
+
+import { createConsole, inputBlocker } from "./console.js";
+import { LABELS, KINDS } from "./render.js";
+
+export function createAgentDialog({ dialog, sendInput, onBoard }) {
+  const con = createConsole({ sendInput });
+  dialog.querySelector(".console-slot").append(con.el);
+  const pre = dialog.querySelector(".lines");
+  const readonly = dialog.querySelector(".dialog-readonly");
+  let agentId = null;
+  let last = null; // último evento de la capa de datos
+
+  dialog.querySelector('[data-act="close"]').addEventListener("click", () => dialog.close());
+  dialog.querySelector('[data-act="board"]').addEventListener("click", () => {
+    const id = agentId;
+    dialog.close();
+    onBoard?.(id);
+  });
+  dialog.addEventListener("close", () => (agentId = null));
+
+  function fill() {
+    const a = last?.agents.get(agentId);
+    if (!a) {
+      if (dialog.open) dialog.close(); // el agente ya no está
+      return;
+    }
+    dialog.dataset.state = a.state;
+    dialog.dataset.kind = a.kind;
+    dialog.querySelector(".kind").textContent = KINDS[a.kind] ?? a.kind;
+    dialog.querySelector(".name").textContent = a.name;
+    dialog.querySelector(".badge-text").textContent = LABELS[a.state] ?? a.state;
+    const text = a.last_lines.join("\n");
+    if (pre.textContent !== text) {
+      const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 8;
+      pre.textContent = text;
+      if (atBottom) pre.scrollTop = pre.scrollHeight;
+    }
+    con.update(a, last.auth);
+    const why = inputBlocker(a, last.auth);
+    readonly.hidden = why !== "auth";
+    readonly.textContent =
+      last.auth === "bad"
+        ? "El token del enlace no es válido: abre el enlace que imprime argos-board serve para poder escribir."
+        : "Solo lectura: abre el enlace con token que imprime argos-board serve para poder escribir.";
+  }
+
+  return {
+    render(event) {
+      last = event;
+      if (agentId) fill();
+    },
+    open(id) {
+      agentId = id;
+      fill();
+      if (!agentId) return;
+      if (!dialog.open) dialog.showModal();
+      pre.scrollTop = pre.scrollHeight;
+      const a = last.agents.get(id);
+      if (inputBlocker(a, last.auth) === null) con.focus();
+    },
+  };
+}

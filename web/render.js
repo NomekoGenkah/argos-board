@@ -2,6 +2,8 @@
 // datos y lo pinta. Las actualizaciones en vivo solo cambian el contenido de
 // las tarjetas; la posición y el tamaño los decide el usuario.
 
+import { createConsole } from "./console.js";
+
 export const LABELS = {
   working: "Trabajando",
   waiting_input: "Esperando tu respuesta",
@@ -35,7 +37,7 @@ const CONN_TEXT = {
 
 // Lienzo: 12 columnas de ancho, filas de 24 px.
 export const COLUMNS = 12;
-export const DEFAULT_CARD = { w: 4, h: 14 };
+export const DEFAULT_CARD = { w: 4, h: 17 };
 const MIN_CARD = { minW: 3, minH: 7 };
 const STACK_BELOW_PX = 700; // por debajo, una sola columna (móvil)
 
@@ -78,8 +80,10 @@ export function versionWarning(agentVersion, serverVersion) {
   return `Este agente usa otra versión del wrapper (${agentVersion}). Reinícialo para actualizarlo.`;
 }
 
-export function createDomRenderer({ cards, empty, conn, live, template, prefs, GridStack, version }) {
+export function createDomRenderer({ cards, empty, conn, live, template, prefs, GridStack, version, sendInput }) {
   const els = new Map(); // id -> .grid-stack-item
+  const consoles = new Map(); // id -> consola de la tarjeta
+  let auth = "none";
   let current = new Map();
   let lastEvent = null;
   let serverVersion = null;
@@ -126,6 +130,9 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     setTimeout(() => {
       const column = grid.getColumn();
       if (column === COLUMNS && lastColumn !== COLUMNS) restoreSaved();
+      // Apiladas en una columna, filas más altas: la pantalla del agente y la consola entran.
+      const cell = column === 1 ? 30 : 24;
+      if (grid.getCellHeight() !== cell) grid.cellHeight(cell);
       lastColumn = column;
     }, 200),
   ).observe(cards);
@@ -172,6 +179,7 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     dismiss.hidden = !ENDED.has(a.state);
     dismiss.setAttribute("aria-label", `Quitar ${a.name} del tablero`);
     el.setAttribute("aria-label", `${a.name} (${KINDS[a.kind] ?? a.kind}): ${LABELS[a.state] ?? a.state}`);
+    consoles.get(a.id)?.update(a, auth);
   }
 
   function createCard(a) {
@@ -186,6 +194,9 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
       cards.querySelector(".card")?.focus();
     });
     item.querySelector(".card").addEventListener("keydown", (ev) => onCardKey(ev, item));
+    const con = createConsole({ sendInput });
+    item.querySelector(".console-slot").append(con.el);
+    consoles.set(a.id, con);
     cards.append(item);
     const saved = prefs.layout(a.name);
     grid.makeWidget(item, { id: a.id, ...MIN_CARD, ...(saved ?? { ...DEFAULT_CARD, autoPosition: true }) });
@@ -195,6 +206,7 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
 
   // Mayúsculas + flechas: tamaño. Control + flechas: posición.
   function onCardKey(ev, item) {
+    if (ev.target !== ev.currentTarget) return; // no robar teclas a la consola ni a los botones
     if (!ev.shiftKey && !ev.ctrlKey) return;
     const delta = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[ev.key];
     if (!delta) return;
@@ -259,6 +271,7 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
       version.textContent = `v${serverVersion}`;
     }
     lastEvent = event;
+    auth = event.auth ?? "none";
     conn.dataset.conn = connState;
     conn.querySelector(".conn-text").textContent = CONN_TEXT[connState];
     current = agents;
@@ -282,6 +295,7 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
       if (!visibleIds.has(id)) {
         grid.removeWidget(item);
         els.delete(id);
+        consoles.delete(id);
       }
     }
     for (const a of visible) {

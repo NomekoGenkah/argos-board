@@ -2,11 +2,12 @@
 
 mod client;
 mod dump;
+mod input;
 pub mod screen;
 mod term;
 
 use crate::git;
-use crate::model::{AgentKind, AgentState, IngestMsg};
+use crate::model::{AgentKind, AgentState, IngestMsg, Input};
 use crate::profiles::Profile;
 use anyhow::{Context, Result, bail};
 use chrono::Utc;
@@ -23,6 +24,8 @@ pub struct RunOptions {
     pub project: Option<PathBuf>,
     pub port: u16,
     pub dump_screens: Option<PathBuf>,
+    /// No aceptar entrada desde la web.
+    pub no_input: bool,
     pub command: Vec<String>,
 }
 
@@ -56,6 +59,12 @@ pub fn run(opts: RunOptions) -> Result<i32> {
     for w in warnings {
         eprintln!("argos-board: {w}");
     }
+    let (allow_input, warning) =
+        crate::config::allow_input(crate::config::user_config().as_deref());
+    if let Some(w) = warning {
+        eprintln!("argos-board: {w}");
+    }
+    let accepts_input = allow_input && !opts.no_input;
     let name = opts.name.clone().unwrap_or_else(|| {
         let bin = std::path::Path::new(&program)
             .file_name()
@@ -86,7 +95,8 @@ pub fn run(opts: RunOptions) -> Result<i32> {
     let mut killer = child.clone_killer();
     let master = pair.master;
     let mut pty_reader = master.try_clone_reader()?;
-    let mut pty_writer = master.take_writer()?;
+    // Lo comparten el teclado local y la entrada desde la web.
+    let pty_writer: Arc<Mutex<Box<dyn Write + Send>>> = Arc::new(Mutex::new(master.take_writer()?));
 
     let raw = term::RawModeGuard::enable().context("activando modo raw")?;
     let screen = Arc::new(Mutex::new(Screen::new(rows, cols)));
@@ -113,7 +123,9 @@ pub fn run(opts: RunOptions) -> Result<i32> {
     }
     // stdin → PTY (bytes tal cual: Ctrl+C y demás llegan al hijo).
     let stdin_is_tty = std::io::IsTerminal::is_terminal(&std::io::stdin());
+    let local_writer = pty_writer.clone();
     std::thread::spawn(move || {
+        let pty_writer = local_writer;
         let mut stdin = std::io::stdin();
         let mut buf = [0u8; 4096];
         loop {
@@ -122,20 +134,44 @@ pub fn run(opts: RunOptions) -> Result<i32> {
                     // Fin de la entrada (stdin redirigido): el agente recibe EOF
                     // como si se hubiera pulsado Ctrl+D. En una terminal no ocurre.
                     if !stdin_is_tty {
-                        let _ = pty_writer.write_all(&[0x04]);
-                        let _ = pty_writer.flush();
+                        let mut w = pty_writer.lock().unwrap();
+                        let _ = w.write_all(&[0x04]);
+                        let _ = w.flush();
                     }
                     break;
                 }
                 Err(_) => break,
                 Ok(n) => {
-                    if pty_writer.write_all(&buf[..n]).is_err() {
+                    let mut w = pty_writer.lock().unwrap();
+                    if w.write_all(&buf[..n]).is_err() {
                         break;
                     }
-                    let _ = pty_writer.flush();
+                    let _ = w.flush();
                 }
             }
         }
+    });
+
+    // Entrada desde la web → PTY, en orden y con la pausa antes del Enter.
+    let input_tx = accepts_input.then(|| {
+        let (tx, rx) = std::sync::mpsc::channel::<Input>();
+        let screen = screen.clone();
+        let writer = pty_writer.clone();
+        std::thread::spawn(move || {
+            for cmd in rx {
+                let modes = screen.lock().unwrap().input_modes();
+                for (i, chunk) in input::chunks(&cmd, modes).iter().enumerate() {
+                    if i > 0 {
+                        std::thread::sleep(input::SUBMIT_DELAY);
+                    }
+                    let mut w = writer.lock().unwrap();
+                    if w.write_all(chunk).and_then(|_| w.flush()).is_err() {
+                        return;
+                    }
+                }
+            }
+        });
+        tx
     });
 
     let mut dumper = opts.dump_screens.as_ref().and_then(|d| {
@@ -148,7 +184,7 @@ pub fn run(opts: RunOptions) -> Result<i32> {
         .build()?;
     let code = rt.block_on(async move {
         let (tx, rx) = mpsc::unbounded_channel();
-        let client = tokio::spawn(client::run(opts.port, rx));
+        let client = tokio::spawn(client::run(opts.port, rx, input_tx));
 
         let started_at = Utc::now();
         let mut branch = git::current_branch(&project);
@@ -161,6 +197,7 @@ pub fn run(opts: RunOptions) -> Result<i32> {
             started_at,
             git_branch: branch.clone(),
             version: Some(crate::VERSION.to_string()),
+            accepts_input,
         });
         let _ = tx.send(IngestMsg::State { state: AgentState::Idle, since: started_at });
 

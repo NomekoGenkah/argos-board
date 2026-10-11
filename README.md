@@ -41,7 +41,9 @@ argos-board run --name backend -- opencode
 argos-board run --project ~/proyectos/x -- agy
 ```
 
-Abre `http://localhost:8787` en el navegador. El wrapper es transparente: el agente se usa igual que sin él
+Abre en el navegador el enlace que imprime `serve` (`http://localhost:8787/#k=…`): con él la página puede
+**escribir en los agentes**; sin el token (`http://localhost:8787` a secas) funciona igual pero en solo lectura.
+El wrapper es transparente: el agente se usa igual que sin él
 (colores, teclas, Ctrl+C, redimensionado). Si el servidor no está corriendo, el agente funciona igual y el
 wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
 
@@ -62,6 +64,11 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
   contador (`(1) Argos Board`) y, si activas *Activar avisos*, el navegador muestra una notificación (al hacer clic,
   enfoca la tarjeta). *Sonido* agrega un pitido corto. Un aviso por cada vez que el agente se pone a esperar: no se
   repite por salida nueva ni al recargar la página.
+- **Escribir en un agente**: cada tarjeta tiene una caja de texto. Enter envía (el texto y luego Enter);
+  Mayús+Enter agrega una línea; con la caja vacía, ↑, ↓ y Esc van directo al agente (para moverse en sus
+  menús). Debajo, teclas rápidas: ↑ ↓ Enter Esc Tab y Ctrl+C. Probado con `claude`, `opencode` y `agy`
+  (responder sus preguntas, escribir prompts, texto de varias líneas). La cabecera dice si la página tiene
+  permiso: *Escritura activa* o *Solo lectura* (al hacer clic, explica cómo conseguirlo).
 - Modo claro por defecto; el botón de la cabecera cambia a oscuro.
 - **Oficina** (botón *Tablero / Oficina* de la cabecera): la misma información en pixel-art, en un solo plano.
   Cada agente es una mascota (Claude, un bicho naranja de bloque; Antigravity, un domo azul que flota con
@@ -76,7 +83,8 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
   Cada agente conserva su escritorio aunque esté en otro lugar (se ve con su nombre y un salvapantallas), y
   camina de un lugar a otro cuando cambia de estado. El ojo de Argos en la pared mira al primero de la fila;
   la ventana, el calendario y el reloj siguen la fecha y la hora reales. Al hacer clic en una mascota (o con
-  Tab y Enter) se abre su tarjeta en el Tablero. *Reordenar* acomoda los escritorios por estado. La escala
+  Tab y Enter) se abre su panel: su pantalla en vivo y la consola para escribirle (*Ver en el tablero* lleva a
+  su tarjeta). *Reordenar* acomoda los escritorios por estado. La escala
   elige los píxeles más grandes con los que la oficina entra en la pantalla. Con `prefers-reduced-motion`
   no hay animaciones. La vista elegida se recuerda en ese navegador.
 - **Versión**: la cabecera muestra la versión del servidor (`v0.1.0 (abe63f4)`: versión y commit del build). Si un
@@ -103,6 +111,9 @@ error = ['usage limit reached']
 waiting_input = ['\(y/n\)']
 ```
 
+En el mismo archivo, `allow_input = false` (al principio, fuera de las tablas) hace que ningún agente acepte
+entrada desde la página.
+
 Si el archivo tiene un error, `argos-board run` lo avisa al arrancar y usa los valores por defecto.
 
 ### Calibrar la detección de estados
@@ -120,6 +131,12 @@ subas al repo sin revisarlos.
 
 - El servidor escucha solo en `127.0.0.1`; se valida `Host` y `Origin` (protección contra DNS rebinding y páginas externas).
 - La ingesta exige un token que `serve` genera al iniciar en `~/.config/argos-board/token` (permisos `0600`).
+- **Escribir en los agentes** exige otro token, `~/.config/argos-board/control-token` (`0600`), que llega a la
+  página solo por el enlace que imprime `serve`. Se conserva entre reinicios; para renovarlo (y quitarle el
+  permiso a todos los navegadores) borra el archivo y reinicia `serve`. Cada agente puede negarse:
+  `argos-board run --no-input -- claude`, o para todos, `allow_input = false` en `config.toml`. La página
+  nunca manda bytes crudos (texto sin caracteres de control, o teclas de una lista cerrada) y lo que escribes
+  no se guarda en ningún log.
 - Nada se escribe a disco salvo el token (y los dumps si los pides). Las últimas líneas se redactan
   (`sk-...`, `Bearer ...`, `*_KEY=`, `*_TOKEN=`, `*_SECRET=`, `*_PASSWORD=`) antes de salir del wrapper.
 - Sin llamadas de red salientes.
