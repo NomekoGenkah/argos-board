@@ -35,11 +35,12 @@ export function createStore() {
   // Permiso para escribir: none (sin token) | pending | ok | bad (token rechazado).
   let auth = token ? "pending" : "none";
   let socket = null;
+  let launchInfo = null; // qué se puede lanzar (llega tras autorizar)
   let nextRid = 1;
   const pending = new Map(); // rid -> { resolve, timer }
 
   const emit = (change) => {
-    for (const fn of listeners) fn({ agents, conn, change, serverVersion, auth });
+    for (const fn of listeners) fn({ agents, conn, change, serverVersion, auth, launchInfo });
   };
 
   function settle(rid, result) {
@@ -71,6 +72,7 @@ export function createStore() {
         break;
       case "auth_result":
         auth = msg.ok ? "ok" : "bad";
+        if (!msg.ok) launchInfo = null;
         if (!msg.ok) {
           token = null;
           try {
@@ -81,8 +83,14 @@ export function createStore() {
         }
         emit({ kind: "auth" });
         break;
+      case "launch_info":
+        launchInfo = msg.info;
+        emit({ kind: "auth" });
+        break;
       case "input_result":
-        settle(msg.rid, { ok: msg.ok, error: msg.error });
+      case "action_result":
+      case "dirs":
+        settle(msg.rid, msg);
         break;
     }
   }
@@ -136,22 +144,34 @@ export function createStore() {
     }
   });
 
-  /** Manda entrada a un agente. Resuelve con { ok, error }. */
-  function sendInput(id, input) {
+  /** Petición al servidor que espera respuesta (por `rid`). Resuelve con el mensaje. */
+  function request(payload, timeoutMs = INPUT_TIMEOUT_MS) {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       return Promise.resolve({ ok: false, error: "Sin conexión con el servidor" });
     }
     const rid = nextRid++;
     return new Promise((resolve) => {
-      const timer = setTimeout(() => settle(rid, { ok: false, error: "El servidor no respondió" }), INPUT_TIMEOUT_MS);
+      const timer = setTimeout(() => settle(rid, { ok: false, error: "El servidor no respondió" }), timeoutMs);
       pending.set(rid, { resolve, timer });
-      socket.send(JSON.stringify({ type: "input", id, rid, input }));
+      socket.send(JSON.stringify({ ...payload, rid }));
     });
   }
+
+  /** Manda entrada a un agente. Resuelve con { ok, error }. */
+  const sendInput = (id, input) => request({ type: "input", id, input });
+  /** Subcarpetas de `path` (o de la primera carpeta permitida). */
+  const listDirs = (path) => request({ type: "list_dirs", path: path ?? null });
+  /** Lanza un agente. Resuelve con { ok, name, error }. */
+  const launch = (kind, dir, name) => request({ type: "launch", kind, dir, name: name || null }, 15000);
+  /** Detiene un agente lanzado desde la página. */
+  const stop = (id) => request({ type: "stop", id }, 10000);
 
   return {
     connect,
     sendInput,
+    listDirs,
+    launch,
+    stop,
     onChange(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);

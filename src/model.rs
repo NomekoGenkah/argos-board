@@ -77,6 +77,19 @@ pub struct AgentSnapshot {
     /// Si el wrapper acepta entrada desde la web (`false` con `--no-input`,
     /// `allow_input = false` o un wrapper anterior a esta función).
     pub accepts_input: bool,
+    /// Si se lanzó desde la página: cómo detenerlo y, si corre en tmux, su sesión.
+    pub launch: Option<LaunchRef>,
+}
+
+/// Agente lanzado desde la página (lo informa el wrapper; se lo pasa `serve`
+/// por variables de entorno al lanzarlo).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LaunchRef {
+    pub id: Uuid,
+    /// Sesión de tmux (en el socket de argos-board) donde corre, si corre en tmux.
+    pub tmux_session: Option<String>,
+    /// Comando para tomarlo desde una terminal.
+    pub attach: Option<String>,
 }
 
 /// Mensajes wrapper → servidor (`/ingest`).
@@ -97,6 +110,9 @@ pub enum IngestMsg {
         /// Acepta entrada desde la web. Los wrappers viejos no la mandan: no.
         #[serde(default)]
         accepts_input: bool,
+        /// Lanzado desde la página.
+        #[serde(default)]
+        launch: Option<LaunchRef>,
     },
     Screen {
         last_lines: Vec<String>,
@@ -197,6 +213,29 @@ pub enum FromBrowser {
     Auth { token: String },
     /// `rid` identifica la petición en la respuesta `input_result`.
     Input { id: Uuid, rid: u64, input: Input },
+    /// Subcarpetas de `path` (o de la primera raíz permitida), para elegir dónde lanzar.
+    ListDirs { rid: u64, path: Option<String> },
+    /// Lanza un agente de un tipo conocido en una carpeta permitida.
+    Launch {
+        rid: u64,
+        kind: AgentKind,
+        dir: String,
+        #[serde(default)]
+        name: Option<String>,
+    },
+    /// Detiene un agente lanzado desde la página.
+    Stop { rid: u64, id: Uuid },
+}
+
+/// Qué se puede lanzar desde esta página (se manda tras autorizarla).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LaunchInfo {
+    /// Tipos de agente instalados.
+    pub kinds: Vec<AgentKind>,
+    /// Si los agentes lanzados corren en tmux (y se pueden tomar desde una terminal).
+    pub tmux: bool,
+    /// Carpetas dentro de las que se puede lanzar.
+    pub roots: Vec<String>,
 }
 
 /// Mensajes servidor → navegador (`/ws`).
@@ -220,6 +259,30 @@ pub enum BrowserMsg {
     /// Respuesta a `auth`: con `ok`, esta conexión puede escribir en los agentes.
     AuthResult {
         ok: bool,
+    },
+    /// Tras `auth` correcto: qué se puede lanzar.
+    LaunchInfo {
+        info: LaunchInfo,
+    },
+    /// Respuesta a `list_dirs`.
+    Dirs {
+        rid: u64,
+        ok: bool,
+        path: String,
+        parent: Option<String>,
+        dirs: Vec<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+    },
+    /// Respuesta a `launch` y `stop`.
+    ActionResult {
+        rid: u64,
+        ok: bool,
+        /// Nombre del agente lanzado.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
     },
     /// Respuesta a `input`.
     InputResult {

@@ -117,7 +117,7 @@ export function createConsole({ sendInput }) {
     // Sin permiso de la página, el aviso está en la cabecera (no en cada tarjeta).
     const text =
       blocker === "agent"
-        ? "Este agente no acepta entrada desde la página: se lanzó con --no-input o con una versión anterior de argos-board (reinícialo)."
+        ? "No acepta entrada desde la página (--no-input o versión anterior)."
         : "";
     note.hidden = !text;
     note.textContent = text;

@@ -79,6 +79,7 @@ impl Board {
             git_branch,
             version,
             accepts_input,
+            launch,
         } = msg
         {
             let (event_new, entry) = match agents.remove(&id) {
@@ -90,6 +91,7 @@ impl Board {
                     e.snap.git_branch = git_branch;
                     e.snap.version = version;
                     e.snap.accepts_input = accepts_input;
+                    e.snap.launch = launch;
                     e.input = None;
                     if e.snap.state == AgentState::Disconnected {
                         e.snap.state = AgentState::Idle;
@@ -115,6 +117,7 @@ impl Board {
                             last_output_at: None,
                             version,
                             accepts_input,
+                            launch,
                         },
                         conn,
                         ended_at: None,
@@ -176,6 +179,13 @@ impl Board {
         if let Some(e) = agents.get_mut(&agent).filter(|e| e.conn == conn) {
             e.input = Some(tx);
         }
+    }
+
+    /// Cómo se lanzó un agente desde la página (si fue así) y si sigue vivo.
+    pub fn launch_of(&self, agent: Uuid) -> Option<(crate::model::LaunchRef, AgentState)> {
+        let agents = self.agents.lock().unwrap();
+        let e = agents.get(&agent)?;
+        Some((e.snap.launch.clone()?, e.snap.state))
     }
 
     /// Manda entrada (ya validada) al wrapper de un agente.
@@ -247,6 +257,7 @@ mod tests {
             git_branch: "main".into(),
             version: Some("0.0.0 (test)".into()),
             accepts_input: true,
+            launch: None,
         }
     }
 

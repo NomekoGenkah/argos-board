@@ -1,5 +1,6 @@
 //! `argos-board serve`: HTTP + WebSocket en 127.0.0.1.
 
+pub mod launch;
 pub mod state;
 
 use crate::VERSION;
@@ -13,6 +14,7 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
+use launch::Launcher;
 use rust_embed::Embed;
 use state::Board;
 use std::sync::Arc;
@@ -29,6 +31,7 @@ struct AppState {
     token: Arc<str>,
     /// Autoriza a la página a escribir en los agentes (va en el enlace de `serve`).
     control: Arc<str>,
+    launcher: Arc<Launcher>,
     port: u16,
 }
 
@@ -51,13 +54,19 @@ pub async fn serve(port: u16) -> Result<()> {
     let token = config::create_token().context("creando el token de ingesta")?;
     let control = config::control_token().context("creando el token de control")?;
 
+    let (launcher, warnings) = Launcher::new(port);
+    for w in warnings {
+        eprintln!("argos-board: {w}");
+    }
+    let launcher = Arc::new(launcher);
     let board = Arc::new(Board::new());
-    let sweeper = board.clone();
+    let (sweeper, reaper) = (board.clone(), launcher.clone());
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(Duration::from_secs(15));
         loop {
             tick.tick().await;
             sweeper.sweep(state::EXPIRY);
+            reaper.reap();
         }
     });
 
@@ -65,6 +74,7 @@ pub async fn serve(port: u16) -> Result<()> {
         board,
         token: token.into(),
         control: control.clone().into(),
+        launcher,
         port,
     });
     eprintln!("argos-board {VERSION} escuchando en http://localhost:{port}");
@@ -129,7 +139,7 @@ async fn browser_ws(
         return (StatusCode::FORBIDDEN, "falta Origin").into_response();
     }
     ws.max_message_size(64 * 1024)
-        .on_upgrade(move |socket| browser_session(socket, st.board, st.control))
+        .on_upgrade(move |socket| browser_session(socket, st.board, st.control, st.launcher))
 }
 
 /// Comparación en tiempo constante respecto al contenido.
@@ -159,34 +169,117 @@ impl RateLimit {
     }
 }
 
-/// Atiende un mensaje del navegador. Devuelve la respuesta, si hay.
-fn handle_browser_msg(
-    board: &Board,
+const NO_PERMISSION: &str =
+    "esta página no tiene permiso para escribir (abre el enlace que imprime `argos-board serve`)";
+
+/// Atiende un mensaje del navegador. Devuelve las respuestas.
+async fn handle_browser_msg(
+    board: &Arc<Board>,
+    launcher: &Arc<Launcher>,
     control: &str,
     authorized: &mut bool,
     rate: &mut RateLimit,
     text: &str,
-) -> Option<BrowserMsg> {
+) -> Vec<BrowserMsg> {
     let msg = match serde_json::from_str::<FromBrowser>(text) {
         Ok(m) => m,
         Err(e) => {
             tracing::warn!("mensaje del navegador inválido: {e}");
-            return None;
+            return Vec::new();
         }
+    };
+    let action = |rid, result: Result<Option<String>, String>| BrowserMsg::ActionResult {
+        rid,
+        ok: result.is_ok(),
+        name: result.as_ref().ok().cloned().flatten(),
+        error: result.err(),
     };
     match msg {
         FromBrowser::Auth { token } => {
             *authorized = same_secret(&token, control);
             if !*authorized {
                 tracing::warn!("token de control inválido desde la página");
+                return vec![BrowserMsg::AuthResult { ok: false }];
             }
-            Some(BrowserMsg::AuthResult { ok: *authorized })
+            let info = launcher.info();
+            vec![
+                BrowserMsg::AuthResult { ok: true },
+                BrowserMsg::LaunchInfo { info },
+            ]
+        }
+        FromBrowser::ListDirs { rid, path } => {
+            let result = if *authorized {
+                let l = launcher.clone();
+                tokio::task::spawn_blocking(move || {
+                    l.list_dirs(path.as_deref()).map_err(str::to_string)
+                })
+                .await
+                .unwrap_or_else(|_| Err("error interno".into()))
+            } else {
+                Err(NO_PERMISSION.into())
+            };
+            vec![match result {
+                Ok(l) => BrowserMsg::Dirs {
+                    rid,
+                    ok: true,
+                    path: l.path,
+                    parent: l.parent,
+                    dirs: l.dirs,
+                    error: None,
+                },
+                Err(e) => BrowserMsg::Dirs {
+                    rid,
+                    ok: false,
+                    path: String::new(),
+                    parent: None,
+                    dirs: Vec::new(),
+                    error: Some(e),
+                },
+            }]
+        }
+        FromBrowser::Launch {
+            rid,
+            kind,
+            dir,
+            name,
+        } => {
+            let result = if !*authorized {
+                Err(NO_PERMISSION.to_string())
+            } else if !rate.allow() {
+                Err("demasiadas peticiones seguidas; espera un momento".to_string())
+            } else {
+                let l = launcher.clone();
+                tokio::task::spawn_blocking(move || l.launch(kind, &dir, name.as_deref()))
+                    .await
+                    .unwrap_or_else(|_| Err("error interno".into()))
+                    .map(Some)
+            };
+            vec![action(rid, result)]
+        }
+        FromBrowser::Stop { rid, id } => {
+            let result = if !*authorized {
+                Err(NO_PERMISSION.to_string())
+            } else {
+                match board.launch_of(id) {
+                    None => Err("ese agente no se lanzó desde la página".to_string()),
+                    Some((_, crate::model::AgentState::Exited)) => {
+                        Err("el agente ya terminó".to_string())
+                    }
+                    Some((launch, _)) => {
+                        let l = launcher.clone();
+                        tracing::info!(agent = %id, "detener agente desde la página");
+                        tokio::task::spawn_blocking(move || l.stop(&launch))
+                            .await
+                            .unwrap_or_else(|_| Err("error interno".into()))
+                            .map(|_| None)
+                    }
+                }
+            };
+            vec![action(rid, result)]
         }
         FromBrowser::Input { id, rid, input } => {
             let result = if !*authorized {
-                Err(
-                    "esta página no tiene permiso para escribir (abre el enlace que imprime `argos-board serve`)",
-                )
+                Err(NO_PERMISSION)
             } else if !rate.allow() {
                 Err("demasiadas entradas seguidas; espera un momento")
             } else {
@@ -197,16 +290,21 @@ fn handle_browser_msg(
                     board.send_input(id, input)
                 })
             };
-            Some(BrowserMsg::InputResult {
+            vec![BrowserMsg::InputResult {
                 rid,
                 ok: result.is_ok(),
                 error: result.err().map(str::to_string),
-            })
+            }]
         }
     }
 }
 
-async fn browser_session(mut socket: WebSocket, board: Arc<Board>, control: Arc<str>) {
+async fn browser_session(
+    mut socket: WebSocket,
+    board: Arc<Board>,
+    control: Arc<str>,
+    launcher: Arc<Launcher>,
+) {
     let mut authorized = false;
     let mut rate = RateLimit {
         window: std::time::Instant::now(),
@@ -241,10 +339,11 @@ async fn browser_session(mut socket: WebSocket, board: Arc<Board>, control: Arc<
             incoming = socket.recv() => match incoming {
                 Some(Ok(Message::Close(_))) | None | Some(Err(_)) => return,
                 Some(Ok(Message::Text(text))) => {
-                    if let Some(reply) = handle_browser_msg(&board, &control, &mut authorized, &mut rate, &text)
-                        && send_json(&mut socket, &reply).await.is_err()
-                    {
-                        return;
+                    let replies = handle_browser_msg(&board, &launcher, &control, &mut authorized, &mut rate, &text).await;
+                    for reply in replies {
+                        if send_json(&mut socket, &reply).await.is_err() {
+                            return;
+                        }
                     }
                 }
                 Some(Ok(_)) => {}

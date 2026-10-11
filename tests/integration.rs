@@ -589,3 +589,179 @@ fn browser_input_reaches_the_agent() {
     let out = locked.wait_with_output().unwrap();
     assert!(String::from_utf8_lossy(&out.stdout).contains("respuesta: n"));
 }
+
+/// Servidor con un PATH y un entorno propios (para lanzar agentes falsos).
+fn start_server_with(cfg: &Path, port: u16, path: &str, envs: &[(&str, &str)]) -> Server {
+    let child = Command::new(BIN)
+        .args(["serve", "--port", &port.to_string()])
+        .env("ARGOS_BOARD_CONFIG_DIR", cfg)
+        .env("PATH", path)
+        .envs(envs.iter().copied())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while std::net::TcpStream::connect(("127.0.0.1", port)).is_err()
+        || !cfg.join("control-token").exists()
+    {
+        assert!(Instant::now() < deadline, "el servidor no arrancó");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    Server(child)
+}
+
+/// #24: lanzar un agente desde la página (oculto y en tmux), escribirle y detenerlo.
+fn launch_flow(use_tmux: bool) {
+    use futures_util::SinkExt;
+    use tokio_tungstenite::tungstenite::Message;
+
+    let cfg = tempfile::tempdir().unwrap();
+    let bin = tempfile::tempdir().unwrap();
+    let roots = tempfile::tempdir().unwrap();
+    let proyecto = roots.path().join("proyecto");
+    std::fs::create_dir(&proyecto).unwrap();
+    // Un `claude` falso: saluda y repite lo que le escriben.
+    let fake = bin.path().join("claude");
+    std::fs::write(
+        &fake,
+        "#!/bin/sh\necho \"claude falso en $(pwd)\"\nwhile read -r l; do echo \"dijiste: $l\"; done\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    std::fs::write(
+        cfg.path().join("config.toml"),
+        format!("launch_roots = ['{}']\n", roots.path().display()),
+    )
+    .unwrap();
+    // PATH mínimo: el `claude` falso y lo básico (sh, tmux); sin los agentes reales.
+    let path = format!("{}:/usr/bin:/bin", bin.path().display());
+    let port = free_port();
+    let envs: &[(&str, &str)] = if use_tmux {
+        &[]
+    } else {
+        &[("ARGOS_BOARD_NO_TMUX", "1")]
+    };
+    let _server = start_server_with(cfg.path(), port, &path, envs);
+    let control = std::fs::read_to_string(cfg.path().join("control-token")).unwrap();
+    let socket = format!("argos-board-{port}");
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let launched = rt.block_on(async {
+        let mut req = format!("ws://127.0.0.1:{port}/ws").into_client_request().unwrap();
+        req.headers_mut()
+            .insert("origin", format!("http://localhost:{port}").parse().unwrap());
+        let (mut ws, _) = tokio_tungstenite::connect_async(req).await.unwrap();
+        let mut ask = async |msg: Value, reply: &str| -> Value {
+            if !msg.is_null() {
+                ws.send(Message::text(msg.to_string())).await.unwrap();
+            }
+            loop {
+                let m = tokio::time::timeout(Duration::from_secs(5), ws.next())
+                    .await
+                    .expect("sin respuesta")
+                    .unwrap()
+                    .unwrap();
+                let v: Value = serde_json::from_str(m.to_text().unwrap()).unwrap();
+                if v["type"] == reply {
+                    return v;
+                }
+            }
+        };
+        let launch = |rid: u64, kind: &str, dir: &str| {
+            serde_json::json!({"type": "launch", "rid": rid, "kind": kind, "dir": dir})
+        };
+        let dir = proyecto.display().to_string();
+
+        // Sin permiso: ni listar ni lanzar.
+        let r = ask(launch(1, "claude", &dir), "action_result").await;
+        assert_eq!(r["ok"], false);
+        let r = ask(serde_json::json!({"type": "list_dirs", "rid": 2}), "dirs").await;
+        assert_eq!(r["ok"], false);
+
+        ask(serde_json::json!({"type": "auth", "token": control.trim()}), "auth_result").await;
+        let info = ask(Value::Null, "launch_info").await;
+        assert_eq!(info["info"]["kinds"], serde_json::json!(["claude"]), "{info}");
+        assert_eq!(info["info"]["tmux"], use_tmux);
+
+        let r = ask(serde_json::json!({"type": "list_dirs", "rid": 3}), "dirs").await;
+        assert_eq!(r["dirs"], serde_json::json!(["proyecto"]), "{r}");
+        // Fuera de las raíces, un tipo que no se lanza o no instalado: rechazado.
+        let r = ask(launch(4, "claude", "/"), "action_result").await;
+        assert!(r["error"].as_str().unwrap().contains("fuera"), "{r}");
+        assert_eq!(ask(launch(5, "generic", &dir), "action_result").await["ok"], false);
+        assert_eq!(ask(launch(6, "agy", &dir), "action_result").await["ok"], false);
+
+        let r = ask(launch(7, "claude", &dir), "action_result").await;
+        assert_eq!(r["ok"], true, "{r}");
+        assert_eq!(r["name"], "claude@proyecto");
+        // Aparece como cualquier agente, con su carpeta y aceptando entrada.
+        let a = wait_for(port, "agente lanzado", |a| {
+            a.iter().any(|x| {
+                x["name"] == "claude@proyecto"
+                    && x["last_lines"]
+                        .as_array()
+                        .is_some_and(|l| l.iter().any(|s| s.as_str().unwrap().contains("claude falso en")))
+            })
+        });
+        let agent = a.iter().find(|x| x["name"] == "claude@proyecto").unwrap().clone();
+        assert_eq!(agent["accepts_input"], true);
+        assert_eq!(agent["project"], std::fs::canonicalize(&proyecto).unwrap().display().to_string());
+        assert!(agent["launch"]["id"].is_string(), "{agent}");
+        let id = agent["id"].as_str().unwrap().to_string();
+
+        let r = ask(
+            serde_json::json!({"type": "input", "id": id, "rid": 8,
+                "input": {"type": "text", "text": "hola", "submit": true}}),
+            "input_result",
+        )
+        .await;
+        assert_eq!(r["ok"], true, "{r}");
+        wait_for(port, "eco del agente", |a| {
+            a.iter().any(|x| {
+                x["last_lines"]
+                    .as_array()
+                    .is_some_and(|l| l.iter().any(|s| s.as_str().unwrap().contains("dijiste: hola")))
+            })
+        });
+
+        let r = ask(serde_json::json!({"type": "stop", "rid": 9, "id": id}), "action_result").await;
+        assert_eq!(r["ok"], true, "{r}");
+        wait_for(port, "agente detenido", |a| {
+            a.iter()
+                .any(|x| x["name"] == "claude@proyecto" && x["state"] == "exited")
+        });
+        agent
+    });
+
+    if use_tmux {
+        assert_eq!(launched["launch"]["tmux_session"], "argos-claude-proyecto");
+        assert_eq!(
+            launched["launch"]["attach"],
+            format!("tmux -L {socket} attach -t argos-claude-proyecto")
+        );
+        let _ = Command::new("tmux")
+            .args(["-L", &socket, "kill-server"])
+            .stderr(Stdio::null())
+            .status();
+    } else {
+        assert!(launched["launch"]["tmux_session"].is_null());
+    }
+}
+
+#[test]
+fn launch_hidden_agent_from_the_page() {
+    launch_flow(false);
+}
+
+#[test]
+fn launch_agent_in_tmux_from_the_page() {
+    if Command::new("tmux").arg("-V").output().is_err() {
+        eprintln!("sin tmux: se salta");
+        return;
+    }
+    launch_flow(true);
+}

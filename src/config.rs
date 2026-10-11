@@ -76,6 +76,69 @@ pub fn allow_input(user_toml: Option<&str>) -> (bool, Option<String>) {
     }
 }
 
+/// Ajustes para lanzar agentes desde la página.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LaunchSettings {
+    /// Carpetas dentro de las que se puede lanzar (por defecto, el home).
+    pub roots: Vec<PathBuf>,
+    /// Argumentos fijos por tipo de agente (`[launch.claude] args = [...]`).
+    pub args: std::collections::HashMap<String, Vec<String>>,
+}
+
+pub fn home_dir() -> Option<PathBuf> {
+    directories::BaseDirs::new().map(|d| d.home_dir().to_path_buf())
+}
+
+fn expand_home(p: &str) -> Option<PathBuf> {
+    match p.strip_prefix('~') {
+        Some(rest) if rest.is_empty() || rest.starts_with('/') => {
+            Some(home_dir()?.join(rest.trim_start_matches('/')))
+        }
+        _ => Some(PathBuf::from(p)),
+    }
+}
+
+/// `launch_roots` y `[launch.<tipo>]` de `config.toml`. Los errores avisan y
+/// dejan el valor por defecto.
+pub fn launch_settings(user_toml: Option<&str>) -> (LaunchSettings, Vec<String>) {
+    let mut warnings = Vec::new();
+    let mut settings = LaunchSettings {
+        roots: home_dir().into_iter().collect(),
+        args: Default::default(),
+    };
+    let Some(table) = user_toml.and_then(|t| t.parse::<toml::Table>().ok()) else {
+        return (settings, warnings);
+    };
+    if let Some(v) = table.get("launch_roots") {
+        let roots: Option<Vec<PathBuf>> = v
+            .as_array()
+            .and_then(|a| a.iter().map(|x| x.as_str().and_then(expand_home)).collect());
+        match roots {
+            Some(r) if !r.is_empty() => settings.roots = r,
+            _ => warnings.push(
+                "launch_roots en config.toml debe ser una lista de carpetas; se usa el home".into(),
+            ),
+        }
+    }
+    if let Some(launch) = table.get("launch").and_then(|v| v.as_table()) {
+        for (kind, t) in launch {
+            let args: Option<Vec<String>> = t
+                .get("args")
+                .and_then(|a| a.as_array())
+                .and_then(|a| a.iter().map(|x| x.as_str().map(str::to_string)).collect());
+            match args {
+                Some(a) => {
+                    settings.args.insert(kind.clone(), a);
+                }
+                None => warnings.push(format!(
+                    "launch.{kind}.args en config.toml debe ser una lista de textos; se ignora"
+                )),
+            }
+        }
+    }
+    (settings, warnings)
+}
+
 /// Lee `config.toml` del directorio de configuración, si existe.
 pub fn user_config() -> Option<String> {
     std::fs::read_to_string(config_dir().ok()?.join("config.toml")).ok()
@@ -119,5 +182,21 @@ mod tests {
         assert_eq!(allow_input(Some("allow_input = false\n")), (false, None));
         let (v, warn) = allow_input(Some("allow_input = \"no\"\n"));
         assert!(v && warn.is_some());
+    }
+
+    #[test]
+    fn launch_settings_from_config() {
+        let (s, w) = launch_settings(None);
+        assert_eq!(s.roots, home_dir().into_iter().collect::<Vec<_>>());
+        assert!(w.is_empty());
+        let toml = "launch_roots = ['/srv/a', '~/b']\n[launch.opencode]\nargs = ['-m', 'x/y']\n";
+        let (s, w) = launch_settings(Some(toml));
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!(s.roots[0], PathBuf::from("/srv/a"));
+        assert_eq!(s.roots[1], home_dir().unwrap().join("b"));
+        assert_eq!(s.args["opencode"], vec!["-m", "x/y"]);
+        let (s, w) = launch_settings(Some("launch_roots = 3\n[launch.claude]\nargs = 'no'\n"));
+        assert_eq!(s.roots, home_dir().into_iter().collect::<Vec<_>>());
+        assert_eq!(w.len(), 2);
     }
 }

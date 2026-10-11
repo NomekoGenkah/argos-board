@@ -25,6 +25,8 @@ Dentro del alcance (v1):
 - Acceso solo desde `localhost`.
 - Escribir en los agentes desde la página (texto y teclas rápidas), con permiso explícito (sección 8). *(Añadido el 2026-10-11, issues #17 y #18; antes estaba fuera del alcance.)*
 
+- Lanzar agentes desde la página (tipo y carpeta), con el mismo permiso y límites (sección 8). *(Añadido el 2026-10-11, issue #24.)*
+
 Fuera del alcance (v1):
 - Una terminal completa en el navegador (colores y todas las teclas; issue #19).
 - Persistencia de historial o de salida de sesiones.
@@ -83,11 +85,13 @@ Snapshot de un agente (JSON, estable porque lo consumen el tablero y la vista Of
 }
 ```
 
+`launch` (o `null`): si se lanzó desde la página, `{ "id", "tmux_session", "attach" }` (`attach` es el comando para tomarlo desde una terminal si corre en tmux).
+
 `accepts_input`: el wrapper acepta entrada desde la página (`false` con `run --no-input`, `allow_input = false` en `config.toml` o un wrapper anterior a esta función).
 
 Endpoints:
 - `GET /api/agents`: snapshot completo.
-- `GET /ws` (navegador): eventos `snapshot`, `agent_added`, `agent_updated`, `agent_removed`. Para escribir, el navegador manda `{"type":"auth","token":…}` (respuesta `auth_result` con `ok`) y luego `{"type":"input","id":…,"rid":n,"input":…}` (respuesta `input_result` con `rid`, `ok` y `error`). `input` es `{"type":"text","text":…,"submit":bool}` o `{"type":"key","key":…}` con `key` de una lista cerrada: `enter`, `esc`, `tab`, `shift_tab`, `up`, `down`, `left`, `right`, `backspace`, `ctrl_c`, `ctrl_d`.
+- `GET /ws` (navegador): eventos `snapshot`, `agent_added`, `agent_updated`, `agent_removed`. Para escribir, el navegador manda `{"type":"auth","token":…}` (respuesta `auth_result` con `ok`) y luego `{"type":"input","id":…,"rid":n,"input":…}` (respuesta `input_result` con `rid`, `ok` y `error`). `input` es `{"type":"text","text":…,"submit":bool}` o `{"type":"key","key":…}` con `key` de una lista cerrada: `enter`, `esc`, `tab`, `shift_tab`, `up`, `down`, `left`, `right`, `backspace`, `ctrl_c`, `ctrl_d`. Tras `auth` correcto llega `launch_info` (tipos instalados, si hay tmux, raíces permitidas). Para lanzar: `list_dirs` (`rid`, `path`) → `dirs`; `launch` (`rid`, `kind`, `dir`, `name` opcional) y `stop` (`rid`, `id`) → `action_result`.
 - `GET /ingest` (wrapper, WebSocket): eventos `hello` (id, nombre, kind, project, pid, rama, versión del wrapper, `accepts_input`), `state`, `git`, `screen` (últimas líneas, throttled) y `exit` (código). Por la misma conexión, el servidor le manda al wrapper `{"type":"input","input":…}`.
 
 ## 5. Estados y detección (la parte frágil: tratarla con cuidado)
@@ -120,6 +124,7 @@ Reglas:
 - HTML, CSS y JS planos, sin framework ni build. Se permiten librerías JS sin dependencias ni build, incluidas en `web/vendor/` con su licencia y embebidas en el binario (nunca desde un CDN: sin llamadas de red salientes). Hoy: gridstack.js para el lienzo. Separar claramente la capa de **datos** (WebSocket + estado) de la capa de **render** así conviven el tablero (DOM) y la Oficina (canvas, sección 9) sin tocar el resto.
 - Responsive y accesible (contraste, foco, `aria-live` para cambios de estado). Verificado con axe (WCAG 2.1 AA) en ambos temas y a 360 px; el orden del DOM sigue la posición visual del lienzo y solo se anuncian, agrupados, los cambios que requieren atención.
 - **Escribir en un agente** (si la página tiene permiso y el agente lo acepta): cada tarjeta tiene una caja de texto (Enter envía el texto y luego Enter; Mayús+Enter agrega una línea; con la caja vacía, ↑, ↓ y Esc van directo al agente) y teclas rápidas ↑ ↓ Enter Esc Tab Ctrl+C. En la Oficina, un clic en una mascota abre un panel con su pantalla en vivo y la misma consola. La cabecera dice si la página tiene permiso ("Escritura activa" / "Solo lectura") y explica cómo conseguirlo.
+- **Nuevo agente** (con permiso): un diálogo para elegir el tipo (solo los instalados), la carpeta (recientes, de los agentes a la vista, y navegación por subcarpetas dentro de las raíces permitidas) y un nombre opcional. La tarjeta del agente lanzado lo indica, muestra el comando `tmux … attach` si corre en tmux y tiene un botón *Detener* (con confirmación); lo mismo en el panel de la Oficina.
 - La cabecera muestra la versión del servidor (versión + commit). `version` en el snapshot es la del wrapper (`null` si es anterior a ese campo); si no coincide, la tarjeta lo avisa. El evento `snapshot` de `/ws` incluye `server_version`.
 
 ## 7. Proyecto y rama git
@@ -137,6 +142,12 @@ Reglas:
   - El navegador nunca manda bytes crudos: texto sin caracteres de control (salvo salto de línea y tabulación), como mucho 4096 bytes por mensaje, o teclas de una lista cerrada que el wrapper traduce según los modos de la terminal (cursor de aplicación, pegado entre corchetes). Máximo 30 entradas por segundo por página.
   - El contenido de la entrada nunca va a los logs (solo agente, tipo y tamaño).
   - Si se escribe a la vez en la terminal y en la página, las teclas se mezclan (no se bloquea).
+- **Lanzar agentes desde la página** (mismo token de control):
+  - Solo tipos conocidos e instalados en el `PATH` de `serve` (`claude`, `opencode`, `agy`); nunca un comando del navegador. Los argumentos salen de `config.toml` (`[launch.<tipo>] args = [...]`), nunca del navegador.
+  - Solo en carpetas dentro de `launch_roots` (por defecto, el home); se resuelven `..` y enlaces antes de comparar. El listado de carpetas tiene el mismo límite y no muestra las ocultas.
+  - Si hay tmux, cada agente corre en una sesión de un socket propio de argos-board (`tmux -L argos-board`), con el entorno de `serve`; sobrevive a reinicios de `serve` y se toma con `tmux -L argos-board attach -t argos-…`. Sin tmux (o con `ARGOS_BOARD_NO_TMUX`), corre oculto como hijo de `serve` y solo existe en la página.
+  - *Detener* solo actúa sobre sesiones de tmux llamadas `argos-…` o sobre procesos que lanzó este mismo `serve`.
+  - Los agentes heredan el entorno de `serve` (PATH, credenciales de cada CLI): conviene arrancarlo desde la shell de siempre. La primera vez en una carpeta, el agente puede preguntar si confía en ella: se responde desde la consola de la página.
 - La salida de terminal puede contener secretos. No se escribe a disco, no sale de la máquina y se aplica una redacción básica por regex (claves tipo `sk-...`, `Bearer ...`, variables `*_KEY=`/`*_TOKEN=`) antes de enviar `last_lines`.
 - Sin llamadas de red salientes.
 

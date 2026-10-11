@@ -86,6 +86,15 @@ pub fn run(opts: RunOptions) -> Result<i32> {
     let mut cmd = CommandBuilder::new(&program);
     cmd.args(&opts.command[1..]);
     cmd.cwd(&cwd);
+    // Son para el wrapper, no para el agente.
+    for var in [
+        "ARGOS_BOARD_LAUNCH_ID",
+        "ARGOS_BOARD_TMUX_SESSION",
+        "ARGOS_BOARD_TMUX_SOCKET",
+        "ARGOS_BOARD_SIZE",
+    ] {
+        cmd.env_remove(var);
+    }
     let mut child = pair
         .slave
         .spawn_command(cmd)
@@ -123,8 +132,14 @@ pub fn run(opts: RunOptions) -> Result<i32> {
     }
     // stdin → PTY (bytes tal cual: Ctrl+C y demás llegan al hijo).
     let stdin_is_tty = std::io::IsTerminal::is_terminal(&std::io::stdin());
+    // Lanzado oculto desde la página: no hay teclado local (stdin es /dev/null);
+    // leerlo le mandaría EOF al agente y lo cerraría. Solo escribe la página.
+    let headless = !stdin_is_tty && std::env::var_os("ARGOS_BOARD_LAUNCH_ID").is_some();
     let local_writer = pty_writer.clone();
     std::thread::spawn(move || {
+        if headless {
+            return;
+        }
         let pty_writer = local_writer;
         let mut stdin = std::io::stdin();
         let mut buf = [0u8; 4096];
@@ -198,6 +213,7 @@ pub fn run(opts: RunOptions) -> Result<i32> {
             git_branch: branch.clone(),
             version: Some(crate::VERSION.to_string()),
             accepts_input,
+            launch: launch_ref(),
         });
         let _ = tx.send(IngestMsg::State { state: AgentState::Idle, since: started_at });
 
@@ -277,6 +293,21 @@ pub fn run(opts: RunOptions) -> Result<i32> {
     rt.shutdown_timeout(Duration::from_millis(100));
     drop(raw);
     Ok(code)
+}
+
+/// Si `serve` lanzó este wrapper desde la página, se lo dijo por el entorno.
+fn launch_ref() -> Option<crate::model::LaunchRef> {
+    let id = std::env::var("ARGOS_BOARD_LAUNCH_ID").ok()?.parse().ok()?;
+    let tmux_session = std::env::var("ARGOS_BOARD_TMUX_SESSION").ok();
+    let attach = tmux_session.as_ref().and_then(|s| {
+        let socket = std::env::var("ARGOS_BOARD_TMUX_SOCKET").ok()?;
+        Some(format!("tmux -L {socket} attach -t {s}"))
+    });
+    Some(crate::model::LaunchRef {
+        id,
+        tmux_session,
+        attach,
+    })
 }
 
 /// Código de salida al estilo de la shell: el del hijo, o 128 + N si murió por

@@ -69,7 +69,13 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
   menús). Debajo, teclas rápidas: ↑ ↓ Enter Esc Tab y Ctrl+C. Probado con `claude`, `opencode` y `agy`
   (responder sus preguntas, escribir prompts, texto de varias líneas). La cabecera dice si la página tiene
   permiso: *Escritura activa* o *Solo lectura* (al hacer clic, explica cómo conseguirlo).
-- Modo claro por defecto; el botón de la cabecera cambia a oscuro.
+- **Nuevo agente** (cabecera, con permiso de escritura): eliges el tipo (solo los que están instalados), la
+  carpeta (recientes o navegando) y, si quieres, un nombre; *Lanzar aquí* y aparece su tarjeta. Si tienes tmux,
+  corre en una sesión propia y la tarjeta muestra cómo tomarlo desde una terminal
+  (`tmux -L argos-board attach -t argos-claude-api`); si no, solo existe en la página. *Detener* (con
+  confirmación) lo cierra. La primera vez en una carpeta, Claude pregunta si confías en ella: responde desde la
+  consola de la tarjeta.
+- Modo claro por defecto; el selector *Claro / Oscuro* de la cabecera cambia el tema (se recuerda en ese navegador).
 - **Oficina** (botón *Tablero / Oficina* de la cabecera): la misma información en pixel-art, en un solo plano.
   Cada agente es una mascota (Claude, un bicho naranja de bloque; Antigravity, un domo azul que flota con
   antena; OpenCode, un robot blanco con cara de terminal) y **el lugar donde está dice su estado**:
@@ -112,7 +118,17 @@ waiting_input = ['\(y/n\)']
 ```
 
 En el mismo archivo, `allow_input = false` (al principio, fuera de las tablas) hace que ningún agente acepte
-entrada desde la página.
+entrada desde la página. Para lanzar agentes desde la página:
+
+```toml
+launch_roots = ["~/repositorios", "/mnt/c/proyectos"]   # dónde se puede lanzar (por defecto, tu home)
+
+[launch.opencode]                                       # argumentos fijos por tipo (nunca desde la web)
+args = ["-m", "deepseek/deepseek-flash"]
+```
+
+Los agentes lanzados heredan el entorno de `argos-board serve` (PATH, credenciales): arráncalo desde tu shell
+de siempre.
 
 Si el archivo tiene un error, `argos-board run` lo avisa al arrancar y usa los valores por defecto.
 
@@ -137,6 +153,9 @@ subas al repo sin revisarlos.
   `argos-board run --no-input -- claude`, o para todos, `allow_input = false` en `config.toml`. La página
   nunca manda bytes crudos (texto sin caracteres de control, o teclas de una lista cerrada) y lo que escribes
   no se guarda en ningún log.
+- **Lanzar agentes** usa el mismo token. Solo se lanzan los tipos conocidos (`claude`, `opencode`, `agy`) con
+  los argumentos de `config.toml`, nunca un comando que venga del navegador, y solo en carpetas dentro de
+  `launch_roots`. *Detener* solo toca sesiones de tmux `argos-…` o procesos que lanzó ese mismo `serve`.
 - Nada se escribe a disco salvo el token (y los dumps si los pides). Las últimas líneas se redactan
   (`sk-...`, `Bearer ...`, `*_KEY=`, `*_TOKEN=`, `*_SECRET=`, `*_PASSWORD=`) antes de salir del wrapper.
 - Sin llamadas de red salientes.
