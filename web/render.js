@@ -248,6 +248,14 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     tickTimes();
   }
 
+  /** Enfoca la tarjeta de un agente (p. ej. al hacer clic en una notificación). */
+  function focusAgent(id) {
+    const card = els.get(id)?.querySelector(".card");
+    if (!card) return;
+    card.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    card.focus({ preventScroll: true });
+  }
+
   setInterval(tickTimes, 1000);
-  return { render, relayout };
+  return { render, relayout, focusAgent };
 }

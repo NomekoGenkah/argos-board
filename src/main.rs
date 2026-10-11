@@ -1,6 +1,7 @@
 mod config;
 mod git;
 mod model;
+mod profiles;
 mod redact;
 mod server;
 mod wrapper;

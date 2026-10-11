@@ -295,3 +295,73 @@ fn ingest_waiting_input_state() {
     // Sin `exit`, cerrar la ingesta deja al agente desconectado.
     wait_for(port, "disconnected", |a| a[0]["state"] == "disconnected");
 }
+
+/// Con un patrón de usuario, el wrapper detecta la pregunta del CLI falso
+/// (`waiting_input`) aunque el perfil genérico no traiga patrones.
+#[test]
+fn wrapper_detects_waiting_input_with_user_profile() {
+    let cfg = tempfile::tempdir().unwrap();
+    std::fs::write(
+        cfg.path().join("config.toml"),
+        "[profiles.generic]\nwaiting_input = ['\\(y/n\\)']\n",
+    )
+    .unwrap();
+    let port = free_port();
+    let _server = start_server(cfg.path(), port);
+
+    let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fake_agent.sh");
+    let mut wrapper = Command::new(BIN)
+        .args([
+            "run",
+            "--name",
+            "fake@pregunta",
+            "--port",
+            &port.to_string(),
+            "--",
+        ])
+        .arg(&script)
+        .env("ARGOS_BOARD_CONFIG_DIR", cfg.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    wait_for(port, "waiting_input", |a| {
+        a.iter().any(|x| x["state"] == "waiting_input")
+    });
+    wrapper.stdin.as_mut().unwrap().write_all(b"y\n").unwrap();
+    let out = wrapper.wait_with_output().unwrap();
+    assert_eq!(out.status.code(), Some(3));
+    assert!(
+        out.stderr.is_empty(),
+        "sin avisos: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    wait_for(port, "exited", |a| a[0]["state"] == "exited");
+}
+
+/// Un config.toml roto avisa por stderr y el agente funciona igual.
+#[test]
+fn invalid_user_config_warns_and_runs() {
+    let cfg = tempfile::tempdir().unwrap();
+    std::fs::write(cfg.path().join("config.toml"), "esto no es [toml").unwrap();
+    let out = Command::new(BIN)
+        .args([
+            "run",
+            "--port",
+            &free_port().to_string(),
+            "--",
+            "sh",
+            "-c",
+            "echo hola; exit 5",
+        ])
+        .env("ARGOS_BOARD_CONFIG_DIR", cfg.path())
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(5));
+    assert!(String::from_utf8_lossy(&out.stdout).contains("hola"));
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("config.toml inválido"), "{err}");
+}

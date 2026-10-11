@@ -7,6 +7,7 @@ mod term;
 
 use crate::git;
 use crate::model::{AgentKind, AgentState, IngestMsg};
+use crate::profiles::Profile;
 use anyhow::{Context, Result, bail};
 use chrono::Utc;
 use portable_pty::{CommandBuilder, PtySize, native_pty_system};
@@ -50,6 +51,11 @@ pub fn run(opts: RunOptions) -> Result<i32> {
         None => cwd.clone(),
     };
     let kind = AgentKind::from_program(&program);
+    // Antes del modo raw: un aviso aquí se ve limpio y el agente arranca igual.
+    let (profile, warnings) = Profile::load(kind);
+    for w in warnings {
+        eprintln!("argos-board: {w}");
+    }
     let name = opts.name.clone().unwrap_or_else(|| {
         let bin = std::path::Path::new(&program)
             .file_name()
@@ -160,7 +166,8 @@ pub fn run(opts: RunOptions) -> Result<i32> {
                     let now = Instant::now();
                     let (changed, lines, out_at) = {
                         let mut s = screen.lock().unwrap();
-                        let changed = s.activity.tick(now);
+                        let pattern = profile.classify(&s.contents());
+                        let changed = s.activity.tick(now, pattern);
                         if let (Some(st), Some(d)) = (changed, dumper.as_mut()) {
                             d.dump(st.as_str(), s.size(), &s.contents());
                         }
