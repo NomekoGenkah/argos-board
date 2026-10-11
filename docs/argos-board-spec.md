@@ -77,14 +77,15 @@ Snapshot de un agente (JSON, estable porque lo consumirá también la futura ski
   "project": "/ruta/al/proyecto",
   "git_branch": "main",
   "last_lines": ["...", "..."],
-  "last_output_at": "2026-10-10T20:00:05Z"
+  "last_output_at": "2026-10-10T20:00:05Z",
+  "version": "0.1.0 (abe63f4)"
 }
 ```
 
 Endpoints:
 - `GET /api/agents`: snapshot completo.
 - `GET /ws` (navegador): eventos `snapshot`, `agent_added`, `agent_updated`, `agent_removed`.
-- `GET /ingest` (wrapper, WebSocket): eventos `hello` (nombre, kind, project, pid), `screen` (últimas líneas, throttled) y `exit` (código).
+- `GET /ingest` (wrapper, WebSocket): eventos `hello` (id, nombre, kind, project, pid, rama, versión del wrapper), `state`, `git`, `screen` (últimas líneas, throttled) y `exit` (código).
 
 ## 5. Estados y detección (la parte frágil: tratarla con cuidado)
 
@@ -114,7 +115,8 @@ Reglas:
 - Alerta al entrar en `waiting_input` o `waiting_approval`: notificación del navegador (pedir permiso con un botón explícito del usuario), sonido opcional, y contador en el título de la pestaña. Sin alertas duplicadas por el mismo evento (clave: agente + estado + `state_since`; las ya avisadas se recuerdan por pestaña en `sessionStorage`, y al abrir la página no se avisa de lo que ya estaba esperando: lo muestra el contador).
 - Tarjetas `exited`/`disconnected` quedan atenuadas y desaparecen tras 10 minutos.
 - HTML, CSS y JS planos, sin framework ni build. Se permiten librerías JS sin dependencias ni build, incluidas en `web/vendor/` con su licencia y embebidas en el binario (nunca desde un CDN: sin llamadas de red salientes). Hoy: gridstack.js para el lienzo. Separar claramente la capa de **datos** (WebSocket + estado) de la capa de **render** para poder cambiar después a un renderizador de canvas pixel-art sin tocar el resto.
-- Responsive y accesible (contraste, foco, `aria-live` para cambios de estado).
+- Responsive y accesible (contraste, foco, `aria-live` para cambios de estado). Verificado con axe (WCAG 2.1 AA) en ambos temas y a 360 px; el orden del DOM sigue la posición visual del lienzo y solo se anuncian, agrupados, los cambios que requieren atención.
+- La cabecera muestra la versión del servidor (versión + commit). `version` en el snapshot es la del wrapper (`null` si es anterior a ese campo); si no coincide, la tarjeta lo avisa. El evento `snapshot` de `/ws` incluye `server_version`.
 
 ## 7. Proyecto y rama git
 

@@ -9,10 +9,13 @@ mod wrapper;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+/// Versión + commit del build, p. ej. `0.1.0 (abe63f4)`.
+pub const VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), " (", env!("ARGOS_BUILD"), ")");
+
 #[derive(Parser)]
 #[command(
     name = "argos-board",
-    version,
+    version = VERSION,
     about = "Tablero web local para ver agentes de código CLI trabajando"
 )]
 struct Cli {
@@ -71,7 +74,9 @@ fn main() {
             dump_screens,
             command,
         } => {
-            // Sin tracing en modo wrapper: no se debe ensuciar la terminal del agente.
+            // El wrapper nunca escribe logs en la terminal del agente; solo a un
+            // archivo si se pide con ARGOS_BOARD_LOG=<ruta>.
+            init_wrapper_log();
             let opts = wrapper::RunOptions {
                 name,
                 project,
@@ -87,5 +92,33 @@ fn main() {
                 }
             }
         }
+    }
+}
+
+/// Log del wrapper a un archivo (`ARGOS_BOARD_LOG=<ruta>`), para depurar sin
+/// tocar la terminal. Nivel con `RUST_LOG` (por defecto `argos_board=debug`).
+fn init_wrapper_log() {
+    let Some(path) = std::env::var_os("ARGOS_BOARD_LOG") else {
+        return;
+    };
+    match std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        Ok(file) => {
+            tracing_subscriber::fmt()
+                .with_env_filter(
+                    tracing_subscriber::EnvFilter::try_from_default_env()
+                        .unwrap_or_else(|_| "argos_board=debug".into()),
+                )
+                .with_writer(std::sync::Mutex::new(file))
+                .with_ansi(false)
+                .init();
+        }
+        Err(e) => eprintln!(
+            "argos-board: no se pudo abrir ARGOS_BOARD_LOG ({}): {e}",
+            path.to_string_lossy()
+        ),
     }
 }

@@ -87,6 +87,7 @@ dependencies = [
  "crossterm",
  "directories",
  "futures-util",
+ "libc",
  "mime_guess",
  "portable-pty",
  "regex",

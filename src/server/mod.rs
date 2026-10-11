@@ -2,6 +2,7 @@
 
 pub mod state;
 
+use crate::VERSION;
 use crate::config;
 use crate::model::{BrowserMsg, IngestMsg};
 use anyhow::{Context, Result};
@@ -59,7 +60,7 @@ pub async fn serve(port: u16) -> Result<()> {
         token: token.into(),
         port,
     });
-    eprintln!("argos-board escuchando en http://localhost:{port}");
+    eprintln!("argos-board {VERSION} escuchando en http://localhost:{port}");
     axum::serve(listener, app).await?;
     Ok(())
 }
@@ -121,9 +122,15 @@ async fn browser_ws(
 
 async fn browser_session(mut socket: WebSocket, board: Arc<Board>) {
     let (agents, mut rx) = board.subscribe();
-    if send_json(&mut socket, &BrowserMsg::Snapshot { agents })
-        .await
-        .is_err()
+    if send_json(
+        &mut socket,
+        &BrowserMsg::Snapshot {
+            agents,
+            server_version: VERSION,
+        },
+    )
+    .await
+    .is_err()
     {
         return;
     }
@@ -133,7 +140,7 @@ async fn browser_session(mut socket: WebSocket, board: Arc<Board>) {
                 let msg = match ev {
                     Ok(m) => m,
                     // Si el navegador se quedó atrás, se le reenvía el estado completo.
-                    Err(RecvError::Lagged(_)) => BrowserMsg::Snapshot { agents: board.snapshot() },
+                    Err(RecvError::Lagged(_)) => BrowserMsg::Snapshot { agents: board.snapshot(), server_version: VERSION },
                     Err(RecvError::Closed) => return,
                 };
                 if send_json(&mut socket, &msg).await.is_err() {
