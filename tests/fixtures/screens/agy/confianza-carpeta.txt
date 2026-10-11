@@ -1,0 +1,17 @@
+# agente: agy
+# categoria: confianza
+# descripcion: Diálogo de confianza de Antigravity en un directorio nuevo. Capturado antes de la corrección de actividad (el wrapper lo veía como 'working').
+# origen: dump (working), 2026-10-11, terminal 120x40
+---
+Accessing workspace:
+
+/tmp/argos-calib/proyecto
+
+Do you trust the contents of this project?
+
+Antigravity CLI requires permission to read, edit, and execute files here.
+
+> Yes, I trust this folder
+  No, exit
+
+  ↑/↓ Navigate · enter Confirm

@@ -1,0 +1,34 @@
+# agente: agy
+# categoria: pregunta
+# descripcion: Herramienta de preguntas de Antigravity: opciones esperando respuesta.
+# origen: dump (idle), 2026-10-11, terminal 120x40
+---
+
+      ▄▀▀▄
+     ▀▀▀▀▀▀
+    ▀▀▀▀▀▀▀▀
+   ▄▀▀    ▀▀▄
+  ▄▀▀ ▀▀▄
+
+  Antigravity CLI 1.3.3
+  usuario@example.com (Google AI Pro)
+  Gemini 3.8 Flash (High)
+  /tmp/argos-calib/proyecto
+
+────────────────────────────────────────────────────────────
+> Antes de hacer nada, usa tu herramienta para hacerme una pregunta de opción múltiple: ¿prefiero que saludo.py use
+  comillas simples o dobles? Espera mi respuesta y luego aplica el cambio.
+
+? ¿Prefieres que saludo.py use comillas simples o dobles?
+
+Question
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+Question 1/1: ¿Prefieres que saludo.py use comillas simples o dobles?
+
+> 1. Comillas dobles (")
+  2. Comillas simples (')
+  3. Write-in...
+
+  ↑/↓ Navigate · enter Select · esc Skip
+esc to cancel                                                                                    Gemini 3.8 Flash · high

@@ -1,0 +1,26 @@
+# agente: agy
+# categoria: fin_de_turno
+# descripcion: Antigravity recién abierto con un aviso descartable, esperando el primer mensaje.
+# origen: dump (idle), 2026-10-11, terminal 120x40
+---
+
+      ▄▀▀▄
+     ▀▀▀▀▀▀
+    ▀▀▀▀▀▀▀▀
+   ▄▀▀    ▀▀▄
+  ▄▀▀ ▀▀▄
+
+  Antigravity CLI 1.3.3
+  usuario@example.com (Google AI Pro)
+  Gemini 3.8 Flash (High)
+  /tmp/argos-calib/proyecto
+
+
+ ┃ Changes to third-party model access
+ ┃ Opus 5.5 and Sonnet 5.5 are available on paid Pro and Ultra plans. Third-party model access will no longer be
+ ┃ available on your current plan starting on November 2, 2026.
+ ┃ esc to dismiss
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+>
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+? for shortcuts                                                                                  Gemini 3.8 Flash · high
