@@ -21,9 +21,12 @@ Especificación completa: [`docs/argos-board-spec.md`](docs/argos-board-spec.md)
 Requiere Rust estable (probado con 1.98) en Linux / WSL2.
 
 ```sh
-cargo build --release
-# binario en target/release/argos-board (cópialo a ~/.local/bin si quieres)
+cargo install --path .
 ```
+
+Instala el binario en `~/.cargo/bin/argos-board` (normalmente ya está en el `PATH`), así que `argos-board`
+funciona desde cualquier carpeta. La página web va embebida en el binario. Después de cambiar el código,
+vuelve a ejecutar `cargo install --path .` para actualizar el comando instalado.
 
 ## Uso
 
