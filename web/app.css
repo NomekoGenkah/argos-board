@@ -171,6 +171,7 @@ main { padding: 16px; }
 .card[data-kind="claude"] { --kind: var(--k-claude); }
 .card[data-kind="agy"] { --kind: var(--k-agy); }
 .card[data-kind="opencode"] { --kind: var(--k-opencode); }
+.card[data-state="waiting_input"],
 .card[data-state="waiting_approval"] { outline: 2px solid var(--st-waiting); outline-offset: -1px; }
 .card[data-state="exited"], .card[data-state="disconnected"] { opacity: .6; }
 
@@ -212,12 +213,14 @@ main { padding: 16px; }
   white-space: nowrap;
 }
 .card[data-state="working"] .badge { --st: var(--st-working); }
+.card[data-state="waiting_input"] .badge,
 .card[data-state="waiting_approval"] .badge { --st: var(--st-waiting); background: var(--st-waiting); color: #fff; }
 .card[data-state="error"] .badge { --st: var(--st-error); }
 .card[data-state="exited"] .badge, .card[data-state="disconnected"] .badge { --st: var(--st-ended); }
 .badge-icon::before { content: "●"; }
 .card[data-state="working"] .badge-icon::before { content: "▶"; }
-.card[data-state="waiting_approval"] .badge-icon::before { content: "?"; }
+.card[data-state="waiting_input"] .badge-icon::before { content: "?"; }
+.card[data-state="waiting_approval"] .badge-icon::before { content: "✋"; }
 .card[data-state="idle"] .badge-icon::before { content: "‖"; }
 .card[data-state="error"] .badge-icon::before { content: "!"; }
 .card[data-state="exited"] .badge-icon::before { content: "■"; }

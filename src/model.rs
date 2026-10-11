@@ -36,7 +36,10 @@ impl AgentKind {
 #[serde(rename_all = "snake_case")]
 pub enum AgentState {
     Working,
+    /// Pide permiso para usar una herramienta.
     WaitingApproval,
+    /// Hizo una pregunta (p. ej. un menú de opciones) y espera la respuesta.
+    WaitingInput,
     Idle,
     Error,
     Exited,
@@ -48,6 +51,7 @@ impl AgentState {
         match self {
             Self::Working => "working",
             Self::WaitingApproval => "waiting_approval",
+            Self::WaitingInput => "waiting_input",
             Self::Idle => "idle",
             Self::Error => "error",
             Self::Exited => "exited",
@@ -130,5 +134,8 @@ mod tests {
         assert_eq!(json, serde_json::json!({"type": "exit", "code": 3}));
         let state = serde_json::to_value(AgentState::WaitingApproval).unwrap();
         assert_eq!(state, "waiting_approval");
+        let state: AgentState = serde_json::from_value(serde_json::json!("waiting_input")).unwrap();
+        assert_eq!(state, AgentState::WaitingInput);
+        assert_eq!(state.as_str(), "waiting_input");
     }
 }

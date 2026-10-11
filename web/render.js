@@ -4,6 +4,7 @@
 
 const LABELS = {
   working: "Trabajando",
+  waiting_input: "Esperando tu respuesta",
   waiting_approval: "Esperando aprobación",
   idle: "Inactivo",
   error: "Error",
@@ -18,7 +19,7 @@ const KINDS = {
   generic: "Comando",
 };
 
-const ORDER = ["waiting_approval", "error", "working", "idle", "disconnected", "exited"];
+const ORDER = ["waiting_input", "waiting_approval", "error", "working", "idle", "disconnected", "exited"];
 const ENDED = new Set(["exited", "disconnected"]);
 
 const CONN_TEXT = {
