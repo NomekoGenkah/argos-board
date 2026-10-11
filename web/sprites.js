@@ -1,135 +1,195 @@
 // Pixel-art de la Oficina. Cada sprite es texto: una letra = un color de la
-// paleta ("." = transparente). Las letras de "rol" (pelo, piel, camisa…) se
-// resuelven por agente, así un mismo dibujo sirve para todos.
+// paleta ("." = transparente). Las letras de "rol" (M = color principal de la
+// mascota, m = su sombra…) se resuelven por agente.
 
 const art = (s) => {
   const rows = s.trim().split("\n").map((r) => r.trim());
   return { w: rows[0].length, h: rows.length, rows };
 };
 
-// --- Personaje de espaldas, sentado y tecleando ------------------------------
-export const BACK = art(`
-.....oooooo.....
-....oHHHHHHo....
-...oHHHHHHHHo...
-...oHHHHHHHHo...
-...oHHHHHHHHo...
-...ohHHHHHHho...
-...ohhHHHHhho...
-....ohhhhhho....
-..oooKKKKKKooo..
-.oSSSSSSSSSSSSo.
-oSSSSSSSSSSSSSSo
-oSSSSAASSSSSSSSo
-osSSSAASSSSSSSso
-osssssssssssssso
+export const OUTLINE = "#2b1f1d";
+
+// --- Mascotas ----------------------------------------------------------------
+// Una familia de bichitos de bloque: misma idea, forma propia para cada agente.
+// Los ojos, los brazos y las patas se dibujan aparte para poder animarlos.
+
+// Claude: el bicho naranja de bloque, con cuatro patitas.
+const CLAUDE_BODY = art(`
+.oooooooooooooo.
+oMMMMMMMMMMMMMMo
+oMhhMMMMMMMMMMMo
+oMhMMMMMMMMMMMMo
+oMMMMMMMMMMMMMMo
+oMMMMMMMMMMMMMMo
+oMMMMMMMMMMMMMMo
+oMMMMMMMMMMMMMMo
+ommmmmmmmmmmmmmo
+.oooooooooooooo.
 `);
 
-// Codo que asoma al teclear (se dibuja a un lado u otro según el frame).
-export const ELBOW = art(`
+// Antigravity: un domo que flota, sin patas, con antena.
+const AGY_BODY = art(`
+...L............
+...o..oooooo....
+...ooMMMMMMMMo..
+..oMhhMMMMMMMMo.
+.oMhMMMMMMMMMMMo
+.oMMMMMMMMMMMMMo
+oMMMMMMMMMMMMMMo
+oMMMMMMMMMMMMMMo
+oMMMMMMMMMMMMMMo
+ommmmmmmmmmmmmmo
+omomomomomomomo.
+.o.o.o.o.o.o.o..
+`);
+
+// OpenCode: un robot cuadrado con la cara como pantalla de terminal.
+const OPENCODE_BODY = art(`
+oooooooooooooooo
+oMMMMMMMMMMMMMMo
+oMooooooooooooMo
+oMoDDDDDDDDDDoMo
+oMoDDDDDDDDDDoMo
+oMoDDDDDDDDDDoMo
+oMoDDDDDDDDDDoMo
+oMooooooooooooMo
+oMMMMMMMMMMMMMMo
+ommmmmmmmmmmmmmo
+oooooooooooooooo
+`);
+
+// Cualquier otro comando: un cubito marrón.
+const GENERIC_BODY = art(`
+..oooooooooooo..
+.oMMMMMMMMMMMMo.
+oMhMMMMMMMMMMMMo
+oMMMMMMMMMMMMMMo
+oMMMMMMMMMMMMMMo
+oMMMMMMMMMMMMMMo
+oMMMMMMMMMMMMMMo
+.ommmmmmmmmmmmo.
+..oooooooooooo..
+`);
+
+/**
+ * Cada mascota: cuerpo, dónde van los ojos (esquina superior de cada uno),
+ * a qué altura salen los brazos, dónde van las patas y sus colores.
+ */
+export const MASCOTS = {
+  claude: {
+    body: CLAUDE_BODY,
+    eyes: [
+      [4, 3],
+      [11, 3],
+    ],
+    eyeH: 3,
+    eyeColor: OUTLINE,
+    armY: 5,
+    legs: [2, 5, 10, 13],
+    colors: { M: "#d97757", m: "#b35a3d", h: "#eda383" },
+  },
+  agy: {
+    body: AGY_BODY,
+    eyes: [
+      [5, 5],
+      [10, 5],
+    ],
+    eyeH: 2,
+    eyeColor: OUTLINE,
+    armY: 6,
+    legs: [],
+    floats: true,
+    colors: { M: "#3d7fe0", m: "#2a5cab", h: "#8db8f5", L: "#9fe3ff" },
+  },
+  opencode: {
+    body: OPENCODE_BODY,
+    eyes: [
+      [5, 4],
+      [10, 4],
+    ],
+    eyeH: 2,
+    eyeColor: "#6dffa8",
+    screen: true,
+    armY: 5,
+    legs: [3, 12],
+    colors: { M: "#f4f1f0", m: "#c9c0bd", D: "#23242c" },
+  },
+  generic: {
+    body: GENERIC_BODY,
+    eyes: [
+      [5, 3],
+      [10, 3],
+    ],
+    eyeH: 2,
+    eyeColor: OUTLINE,
+    armY: 4,
+    legs: [4, 11],
+    colors: { M: "#9a7668", m: "#755a4f", h: "#c4a395" },
+  },
+};
+
+// Brazos: a los lados, levantado (sostiene un cartel) o hacia abajo (teclea).
+export const ARM = art(`
+ooo
+oMM
+ooo
+`);
+export const ARM_UP = art(`
 .oo
-oSs
-oss
-.oo
+oMo
+oMo
+oMo
+oo.
+`);
+export const ARM_DOWN = art(`
+ooo
+oMo
+oMo
+oo.
+`);
+export const LEG = art(`
+oMo
+oMo
+ooo
 `);
 
-// Recostado con las manos en la nuca: terminó y descansa.
-export const LEAN = art(`
-.......oooooo.......
-......oHHHHHHo......
-..ooooHHHHHHHHoooo..
-.oSSoKKHHHHHHKKoSSo.
-oSSSSoKHHHHHHKoSSSSo
-oSSSo.oHHHHHHo.oSSSo
-.oSSo.ohhHHhho.oSSo.
-..oSSo.ohhhho.oSSo..
-...oSSooKKKKooSSo...
-...oSSSSSSSSSSSSo...
-..oSSSSSSSSSSSSSSo..
-..oSSSSAASSSSSSSSo..
-..osSSSAASSSSSSSso..
-..osssssssssssssso..
+// --- Cosas que sostienen -----------------------------------------------------
+export const SIGN_Q = art(`
+ooooooooo
+oWWWRRWWo
+oWWRWWRWo
+oWWWWRWWo
+oWWWRWWWo
+oWWWWWWWo
+oWWWRWWWo
+ooooooooo
 `);
-
-// Agarrándose la cabeza: algo salió mal.
-export const PANIC = art(`
-.....ooo....ooo.....
-....oKKKoooKKKo.....
-....oSKHHHHHHKSo....
-...oSSoHHHHHHoSSo...
-...oSoHHHHHHHHoSo...
-..oSSoHHHHHHHHoSSo..
-..oSo.ohHHHHho.oSo..
-.oSSo.ohhhhhho.oSSo.
-.oSo...ohhhho...oSo.
-.oSSoooKKKKKKoooSSo.
-..oSSSSSSSSSSSSSSo..
-..oSSSSAASSSSSSSSo..
-..osSSSAASSSSSSSso..
-..osssssssssssssso..
-`);
-
-// --- Personaje de frente (giró la silla porque te necesita) -----------------
-export const FRONT = art(`
-.....oooooo.....
-....oHHHHHHo....
-...oHHHHHHHHo...
-...oHHHHHHHHo...
-...oHHKKKKHHo...
-...oHKKKKKKKo...
-...oKEKKKKEKo...
-...oKKKKKKKKo...
-...okKKMMKKko...
-....okKKKKko....
-..oooSSSSSSooo..
-.oSSSSSSSSSSSSo.
-oSSSSSSSSSSSSSSo
-oKsSSSSSSSSSSsKo
-.oPPPPPPPPPPPPo.
-.oPPPPPooPPPPPo.
-..oPPPo..oPPPo..
-..oDDDo..oDDDo..
-`);
-
-// Brazo levantado saludando (dos frames: la mano se inclina).
-export const WAVE_A = art(`
-.oo.
-oKKo
-oKKo
-.oSo
-.oSo
-.oSo
-oSSo
-oSo.
-`);
-export const WAVE_B = art(`
-.....
-.oo..
-oKKo.
-.oKSo
-..oSo
-..oSo
-.oSSo
-.oSo.
-`);
-// Tapa la mano derecha del regazo cuando el brazo está levantado.
-export const HIDE_HAND = art(`
-so
-`);
-
-// Sostiene un papel para que lo firmes (pide permiso).
 export const PAPER = art(`
-.oooooooooo.
-.oWWWWWWWWo.
-.oWLLLLLLWo.
-.oWWWWWWWWo.
-.oWLLLLWWWo.
-.oWWWWWWWWo.
-oKWRRRRWWWKo
-.oooooooooo.
+ooooooo
+oWWWWWo
+oWLLLWo
+oWWWWWo
+oWLLWWo
+oWWWWWo
+oWRRRWo
+ooooooo
+`);
+export const BRIEFCASE = art(`
+..oo..
+.o..o.
+oooooo
+oBBBBo
+oBYBBo
+oooooo
+`);
+export const MUG = art(`
+oooo.
+oMMoo
+oMMoo
+oooo.
 `);
 
-// --- Silla -------------------------------------------------------------------
+// --- Muebles -----------------------------------------------------------------
 export const CHAIR = art(`
 .oooooooooooo.
 oCCCCCCCCCCCCo
@@ -140,28 +200,78 @@ oCCCCCCCCCCCCo
 occcccccccccco
 .oooooooooooo.
 `);
-// Chaqueta colgada en el respaldo (el agente se fue).
-export const JACKET = art(`
-...oooooo...
-.ooSSKKSSoo.
-oSSSSssSSSSo
-oSsSSAASSsSo
-oSso.oo.osSo
-oSSo....oSSo
-.oo......oo.
-`);
-// Respaldo bajo, para que se vea la camisa (el color del agente) por detrás.
-export const CHAIR_LOW = art(`
+export const STOOL = art(`
 .oooooooooooo.
-oCwwCCCCCCCCCo
-oCCCCCCCCCCCCo
-occcccccccccco
+oWWWWWWWWWWWWo
+oWWWWWWWWWWWWo
 .oooooooooooo.
+.....o..o.....
+....oo..oo....
 `);
-export const CHAIR_BASE = art(`
-......oo......
-...oooooooo...
-..oc..oo..co..
+export const COFFEE_MACHINE = art(`
+oooooooooo
+oKKKKKKKKo
+oKRKKKKGKo
+oKKKKKKKKo
+ooooooooKo
+.oSSSSo.Ko
+.oSooSo.Ko
+.oSSSSo.Ko
+ooooooooKo
+oKKKKKKKKo
+oooooooooo
+`);
+export const FRIDGE = art(`
+oooooooooooo
+oWWWWWWWWWWo
+oWWWWWWWWoWo
+oWWWWWWWWoWo
+oWWWWWWWWWWo
+oooooooooooo
+oWWWWWWWWWWo
+oWWWWWWWWoWo
+oWWWWWWWWoWo
+oWWWWWWWWoWo
+oWWWWWWWWWWo
+oWWWWWWWWWWo
+oWWWWWWWWWWo
+oooooooooooo
+`);
+export const DOOR = art(`
+oooooooooooooooo
+oFFFFFFFFFFFFFFo
+oFooooooooooooFo
+oFoDDDDDDDDDDoFo
+oFoDddddddddDoFo
+oFoDdDDDDDDdDoFo
+oFoDdDDDDDDdDoFo
+oFoDddddddddDoFo
+oFoDDDDDDDDDDoFo
+oFoDDDDDDDDDYoFo
+oFoDDDDDDDDDYoFo
+oFoDDDDDDDDDDoFo
+oFoDddddddddDoFo
+oFoDdDDDDDDdDoFo
+oFoDdDDDDDDdDoFo
+oFoDddddddddDoFo
+oFoDDDDDDDDDDoFo
+oFoDDDDDDDDDDoFo
+oFoDDDDDDDDDDoFo
+oooooooooooooooo
+`);
+export const COAT_RACK = art(`
+.o.o.o.
+ooooooo
+...o...
+...o...
+...o...
+...o...
+...o...
+...o...
+...o...
+...o...
+..ooo..
+.ooooo.
 `);
 
 // --- Globos de diálogo -------------------------------------------------------
@@ -179,14 +289,14 @@ oBBBBBBBBBBo
 .oo.........
 `);
 export const GLYPHS = {
-  question: art(`
-.GGGG.
-GG..GG
-....GG
+  hand: art(`
+..G.G.
+.G.G.G
+.G.G.G
+GGGGGG
+GGGGGG
+.GGGGG
 ..GGG.
-..GG..
-......
-..GG..
 `),
   bang: art(`
 ..GG..
@@ -196,15 +306,6 @@ GG..GG
 ..GG..
 ......
 ..GG..
-`),
-  hand: art(`
-..G.G.
-.G.G.G
-.G.G.G
-GGGGGG
-GGGGGG
-.GGGGG
-..GGG.
 `),
   dots: art(`
 ......
@@ -216,12 +317,6 @@ GG.G.G
 ......
 `),
 };
-export const ZZZ = art(`
-GGG
-..G
-.G.
-GGG
-`);
 
 // --- Objetos del escritorio --------------------------------------------------
 export const PROPS = {
@@ -258,14 +353,6 @@ oBBBBo.
 .oGGGGo
 .oooooo
 `),
-  lamp: art(`
-..ooo..
-.oLLLo.
-oLLLLLo
-...o...
-...o...
-..ooo..
-`),
 };
 
 export const STEAM = [
@@ -281,7 +368,6 @@ export const STEAM = [
 `),
 ];
 
-// --- Planta grande para las esquinas ----------------------------------------
 export const BIG_PLANT = art(`
 ....g.....g...
 ...gGg...gGg..
@@ -294,42 +380,78 @@ gGg.gGGgGGg.gG
 .....gGGGg....
 ..oooooooooo..
 ..oTTTTTTTTo..
-..oTtttttttTo.
+..oTttttttTo..
 ...oTTTTTTo...
 ...oTTTTTTo...
 ....oooooo....
 `);
 
-// --- Paletas -----------------------------------------------------------------
-export const OUTLINE = "#2b1f1d";
-
-export const SKINS = [
-  ["#f6d2b6", "#e2ae8c"],
-  ["#e6b28a", "#c98f66"],
-  ["#bf8259", "#9e6643"],
-  ["#82533a", "#67402c"],
-];
-export const HAIRS = [
-  ["#3b2a20", "#271a13"],
-  ["#6b4126", "#4e2e1a"],
-  ["#d8a14d", "#b07e32"],
-  ["#1e1d24", "#121117"],
-  ["#a8472b", "#83351f"],
-  ["#9a96a3", "#77737f"],
-];
-export const PANTS = [
-  ["#3d4a66", "#2c364c"],
-  ["#4b4038", "#362e28"],
-  ["#2f5145", "#213a31"],
-];
-
-/** Ropa y accesorio por tipo de agente (el color de la tarjeta). */
-export const KIND_LOOK = {
-  claude: { shirt: "#e07a39", shade: "#b4561f", logo: "#fde3cf" },
-  agy: { shirt: "#2f6fd0", shade: "#1f4f9e", logo: "#bcd5fb", floats: true },
-  opencode: { shirt: "#f4f1f0", shade: "#cdc5c2", logo: "#3a3a44", headphones: true },
-  generic: { shirt: "#8a6a5f", shade: "#6b5047", logo: "#d9c3b9" },
+// --- Fuente de 3x5 para carteles ---------------------------------------------
+export const FONT = {
+  A: [".#.", "#.#", "###", "#.#", "#.#"],
+  B: ["##.", "#.#", "##.", "#.#", "##."],
+  C: [".##", "#..", "#..", "#..", ".##"],
+  D: ["##.", "#.#", "#.#", "#.#", "##."],
+  E: ["###", "#..", "##.", "#..", "###"],
+  F: ["###", "#..", "##.", "#..", "#.."],
+  G: [".##", "#..", "#.#", "#.#", ".##"],
+  H: ["#.#", "#.#", "###", "#.#", "#.#"],
+  I: ["###", ".#.", ".#.", ".#.", "###"],
+  J: ["..#", "..#", "..#", "#.#", ".#."],
+  K: ["#.#", "#.#", "##.", "#.#", "#.#"],
+  L: ["#..", "#..", "#..", "#..", "###"],
+  M: ["#...#", "##.##", "#.#.#", "#...#", "#...#"],
+  N: ["#..#", "##.#", "#.##", "#..#", "#..#"],
+  O: [".#.", "#.#", "#.#", "#.#", ".#."],
+  P: ["##.", "#.#", "##.", "#..", "#.."],
+  Q: [".#.", "#.#", "#.#", "##.", ".##"],
+  R: ["##.", "#.#", "##.", "#.#", "#.#"],
+  S: [".##", "#..", ".#.", "..#", "##."],
+  T: ["###", ".#.", ".#.", ".#.", ".#."],
+  U: ["#.#", "#.#", "#.#", "#.#", "###"],
+  V: ["#.#", "#.#", "#.#", "#.#", ".#."],
+  W: ["#...#", "#...#", "#.#.#", "##.##", "#...#"],
+  X: ["#.#", "#.#", ".#.", "#.#", "#.#"],
+  Y: ["#.#", "#.#", ".#.", ".#.", ".#."],
+  Z: ["###", "..#", ".#.", "#..", "###"],
+  0: ["###", "#.#", "#.#", "#.#", "###"],
+  1: [".#.", "##.", ".#.", ".#.", "###"],
+  2: ["###", "..#", "###", "#..", "###"],
+  3: ["###", "..#", ".##", "..#", "###"],
+  4: ["#.#", "#.#", "###", "..#", "..#"],
+  5: ["###", "#..", "###", "..#", "###"],
+  6: ["###", "#..", "###", "#.#", "###"],
+  7: ["###", "..#", ".#.", ".#.", ".#."],
+  8: ["###", "#.#", "###", "#.#", "###"],
+  9: ["###", "#.#", "###", "..#", "###"],
+  " ": ["...", "...", "...", "...", "..."],
 };
+
+export const MONTHS = ["ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"];
+
+const glyph = (ch) => FONT[ch] ?? FONT[" "];
+
+/** Ancho en píxeles de un texto en la fuente de 3x5 (con `scale`). */
+export function textWidth(text, scale = 1) {
+  let w = 0;
+  for (const ch of text.toUpperCase()) w += glyph(ch)[0].length + 1;
+  return Math.max(0, w - 1) * scale;
+}
+
+/** Escribe texto en mayúsculas con la fuente de 3x5. */
+export function drawText(ctx, text, x, y, color, scale = 1) {
+  ctx.fillStyle = color;
+  let cx = Math.round(x);
+  for (const ch of text.toUpperCase()) {
+    const g = glyph(ch);
+    g.forEach((row, ry) => {
+      for (let rx = 0; rx < row.length; rx++) {
+        if (row[rx] === "#") ctx.fillRect(cx + rx * scale, Math.round(y) + ry * scale, scale, scale);
+      }
+    });
+    cx += (g[0].length + 1) * scale;
+  }
+}
 
 /** Número estable a partir de un texto: el mismo agente se ve igual siempre. */
 export function hash(s) {
@@ -341,37 +463,14 @@ export function hash(s) {
   return h >>> 0;
 }
 
-/** Paleta de un personaje: tipo (ropa) + nombre (pelo, piel, pantalón). */
-export function characterPalette(kind, name) {
-  const look = KIND_LOOK[kind] ?? KIND_LOOK.generic;
-  const h = hash(name);
-  const [K, k] = SKINS[h % SKINS.length];
-  const [H, hh] = HAIRS[(h >>> 3) % HAIRS.length];
-  const [P, p] = PANTS[(h >>> 7) % PANTS.length];
-  return {
-    o: OUTLINE,
-    H,
-    h: hh,
-    K,
-    k,
-    E: OUTLINE,
-    M: "#b5534a",
-    S: look.shirt,
-    s: look.shade,
-    A: look.logo,
-    P,
-    p,
-    D: "#2a2427",
-    W: "#fbfaf7",
-    L: "#b9b2ad",
-    R: "#d93619",
-  };
-}
-
 /** Versión gris de una paleta (agente desconectado). */
 export function grayPalette(pal) {
   const out = {};
   for (const [k, hex] of Object.entries(pal)) {
+    if (!hex.startsWith("#")) {
+      out[k] = hex;
+      continue;
+    }
     const n = parseInt(hex.slice(1), 16);
     const y = Math.round(((n >> 16) & 255) * 0.3 + ((n >> 8) & 255) * 0.59 + (n & 255) * 0.11);
     const v = Math.round(y * 0.55 + 150 * 0.45);

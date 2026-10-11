@@ -63,22 +63,22 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
   enfoca la tarjeta). *Sonido* agrega un pitido corto. Un aviso por cada vez que el agente se pone a esperar: no se
   repite por salida nueva ni al recargar la página.
 - Modo claro por defecto; el botón de la cabecera cambia a oscuro.
-- **Oficina** (botón *Tablero / Oficina* de la cabecera): la misma información en pixel-art. Cada agente es un
-  personaje en su escritorio, vestido con el color de su tipo, y su postura dice el estado de lejos:
-  - **trabajando**: de espaldas, tecleando, con el monitor lleno de código; el monitor es una miniatura de su
-    pantalla real;
-  - **esperando tu respuesta**: gira la silla, te saluda con un globo **?** rojo y se ilumina el piso;
-  - **esperando aprobación**: te muestra un papel para firmar (globo ✋);
-  - **inactivo**: recostado con las manos en la nuca;
-  - **error**: agarrándose la cabeza, con el monitor en rojo;
-  - **terminado**: la silla vacía con la chaqueta colgada;
-  - **desconectado**: un fantasma gris frente a un monitor con estática.
+- **Oficina** (botón *Tablero / Oficina* de la cabecera): la misma información en pixel-art, en un solo plano.
+  Cada agente es una mascota (Claude, un bicho naranja de bloque; Antigravity, un domo azul que flota con
+  antena; OpenCode, un robot blanco con cara de terminal) y **el lugar donde está dice su estado**:
+  - **Te esperan**: los que te hicieron una pregunta (cartel **?**, saltan) o piden permiso (papel para firmar,
+    globo ✋) hacen fila frente a tu escritorio, por orden de llegada; el cartel de la zona muestra cuántos son.
+  - **Oficina**: en su escritorio, trabajando (teclean; el monitor es una miniatura de su pantalla real), con
+    error (ojos en X, monitor rojo con humo) o desconectado (gris, monitor con estática).
+  - **Cocina**: los inactivos, sentados con su taza de café.
+  - **Salida**: los que terminaron, con el maletín junto a la puerta.
 
-  El ojo de Argos en la pared mira al agente que te necesita. Las ventanas y el reloj siguen la hora real.
-  Al hacer clic en un escritorio (o con Tab y Enter) se abre su tarjeta en el Tablero. Los escritorios no se
-  mueven con las actualizaciones; los nuevos ocupan el primer hueco libre y *Reordenar* los acomoda por estado.
-  Con `prefers-reduced-motion` no hay animaciones. La vista elegida se recuerda en ese navegador.
-
+  Cada agente conserva su escritorio aunque esté en otro lugar (se ve con su nombre y un salvapantallas), y
+  camina de un lugar a otro cuando cambia de estado. El ojo de Argos en la pared mira al primero de la fila;
+  la ventana, el calendario y el reloj siguen la fecha y la hora reales. Al hacer clic en una mascota (o con
+  Tab y Enter) se abre su tarjeta en el Tablero. *Reordenar* acomoda los escritorios por estado. La escala
+  elige los píxeles más grandes con los que la oficina entra en la pantalla. Con `prefers-reduced-motion`
+  no hay animaciones. La vista elegida se recuerda en ese navegador.
 - **Versión**: la cabecera muestra la versión del servidor (`v0.1.0 (abe63f4)`: versión y commit del build). Si un
   agente usa un wrapper de otra versión (por ejemplo, porque reinstalaste y no lo reiniciaste), su tarjeta lo avisa.
 - **Accesibilidad**: sin fallos de axe (WCAG 2.1 AA) en modo claro, oscuro y a 360 px; el orden del teclado sigue la

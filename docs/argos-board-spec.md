@@ -134,10 +134,16 @@ Reglas:
 *(Antes "preparación para v2"; implementada el 2026-10-11, issue #16.)* Una segunda vista de los mismos datos, elegida con un botón *Tablero / Oficina* de la cabecera y recordada en el navegador. Objetivo: ver de un vistazo quién trabaja, quién espera una decisión y quién terminó, sin complejidad de juego.
 
 - Renderizador propio (`web/office.js`, canvas 2D con escala entera y `image-rendering: pixelated`) suscrito a la capa de datos como el tablero y las alertas. Sprites propios definidos como texto (`web/sprites.js`), recoloreados por `kind`; sin assets externos ni dependencias.
-- Una oficina vista desde arriba: un escritorio por agente con su personaje. La ropa tiene el color del tipo de agente; pelo, piel y el objeto del escritorio salen de un hash del nombre (el mismo agente se ve siempre igual).
-- Cada estado se distingue por la postura, no solo por el color: de espaldas tecleando (`working`), girado saludando con globo **?** y foco rojo en el piso (`waiting_input`), girado mostrando un papel con globo ✋ (`waiting_approval`), recostado (`idle`), agarrándose la cabeza con monitor rojo (`error`), silla vacía (`exited`), gris con estática (`disconnected`). El monitor muestra una miniatura de `last_lines`.
-- Lo interactivo es HTML sobre el canvas (que es `aria-hidden`): un botón por escritorio con una placa con nombre, estado y tiempo; abre la tarjeta del agente en el Tablero. El orden de Tab sigue la posición visual.
-- Asientos estables por nombre de agente (en el navegador): las actualizaciones no mueven a nadie, los nuevos ocupan el primer hueco y *Reordenar* los acomoda por estado.
+- Cada agente es una **mascota** de una misma familia de bichitos de bloque, con forma y color propios por `kind`: Claude (bloque naranja con cuatro patas), Antigravity (domo azul que flota, con antena), OpenCode (robot blanco con la cara como pantalla de terminal; trabajando muestra `>_`), otros (cubito marrón).
+- **Lugares en un mismo plano**, cada uno con su piso, tabiques y cartel; el lugar dice el estado de un vistazo:
+  - *Te esperan* (`waiting_input`, `waiting_approval`): fila frente al escritorio del usuario, por orden de llegada (`state_since`); con un cartel **?** que saltan o un papel para firmar y globo ✋. El cartel de la zona muestra cuántos esperan.
+  - *Oficina* (`working`, `error`, `disconnected`): en su escritorio. Tecleando con el monitor como miniatura de `last_lines`; con error, ojos en X, monitor rojo con humo y globo **!**; desconectado, gris con estática y globo "…".
+  - *Cocina* (`idle`): sentados a una mesa con su taza.
+  - *Salida* (`exited`): junto a la puerta con un maletín, despidiéndose.
+- Cada agente conserva su escritorio (asiento estable por nombre, guardado en el navegador) aunque esté en otro lugar; el escritorio vacío muestra su nombre y un salvapantallas. Al cambiar de estado la mascota camina de un lugar a otro; un agente nuevo entra por la puerta.
+- La pared tiene una ventana con el cielo según la hora, un calendario con mes y día, el ojo de Argos (mira al primero de la fila) y un reloj con segundero.
+- Lo interactivo es HTML sobre el canvas (que es `aria-hidden`): un botón por agente, que sigue a la mascota, con una placa con nombre, estado y tiempo; abre la tarjeta del agente en el Tablero. El orden de Tab va por lugar (te esperan, oficina, cocina, salida).
+- Se usa la escala entera más grande con la que el plano entra en la pantalla; en pantallas estrechas los lugares se apilan.
 - Con `prefers-reduced-motion` no hay animaciones. Verificado con axe (WCAG 2.1 AA) en ambos temas y a 360 px.
 
 ## 10. Stack sugerido (verificar las últimas versiones estables)
