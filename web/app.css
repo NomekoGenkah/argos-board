@@ -380,6 +380,7 @@ main { padding: 16px; }
   .top { padding: 12px 16px; }
   main { padding: 16px; }
   .card-head { flex-direction: column; }
+  .title { flex: none; } /* en columna, su flex-basis sería un alto: dejaba un hueco */
 }
 
 .btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
@@ -493,6 +494,8 @@ main { padding: 16px; }
   resize: none;
 }
 .console-input::placeholder { color: var(--muted); }
+/* Vacía, en una línea: si el placeholder no cabe, se recorta en vez de partirse en dos (cortado). */
+.console-input:placeholder-shown { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .console-input:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
 .console-send {
   padding: 7px 14px;
@@ -812,6 +815,10 @@ main { padding: 16px; }
   }
   .card .console .console-input {
     font-size: 16px; /* Evita que Safari en iOS haga zoom forzado */
+  }
+  /* El zoom de iOS depende de la fuente del campo, no del placeholder: este cabe en una línea. */
+  .console .console-input::placeholder {
+    font-size: 13px;
   }
 
   /* Bottom Sheet: Panel de terminal a pantalla completa / deslizable */
