@@ -82,6 +82,9 @@ export function createStore() {
   let auth = credential() ? "pending" : "none";
   let socket = null;
   let launchInfo = null; // qué se puede lanzar (llega tras autorizar)
+  let voiceReady = false; // el servidor puede transcribir voz (llega tras autorizar)
+  let voicePrepared = false; // ya se pidió precalentar el transcriptor en esta conexión
+  const voiceListeners = new Set();
   let nextRid = 1;
   const pending = new Map(); // rid -> { resolve, timer }
 
@@ -141,6 +144,19 @@ export function createStore() {
         launchInfo = msg.info;
         emit({ kind: "auth" });
         break;
+      case "voice_info":
+        voiceReady = msg.available;
+        emit({ kind: "voice" });
+        if (voiceReady && !voicePrepared && socket?.readyState === WebSocket.OPEN) {
+          voicePrepared = true; // el transcriptor tarda ~10 s en frío: que ya esté listo al dictar
+          socket.send(JSON.stringify({ type: "voice_prepare" }));
+        }
+        break;
+      case "voice_state":
+      case "voice_text":
+      case "voice_error":
+        for (const fn of voiceListeners) fn(msg);
+        break;
       case "input_result":
       case "action_result":
       case "dirs":
@@ -171,6 +187,7 @@ export function createStore() {
         delay = 500;
         conn = "open";
         needsPair = false;
+        voicePrepared = false;
         sendAuth();
         emit({ kind: "conn" });
       };
@@ -183,6 +200,7 @@ export function createStore() {
       };
       ws.onclose = () => {
         socket = null;
+        voiceReady = false;
         for (const rid of [...pending.keys()]) settle(rid, { ok: false, error: "Se cortó la conexión con el servidor" });
         conn = "closed";
         emit({ kind: "conn" });
@@ -254,8 +272,26 @@ export function createStore() {
   /** Detiene un agente lanzado desde la página. */
   const stop = (id) => request({ type: "stop", id }, 10000);
 
+  const sendJson = (msg) => socket?.readyState === WebSocket.OPEN && socket.send(JSON.stringify(msg));
+
+  /** Dictado por voz transcrito en el servidor (sirve en cualquier navegador con micrófono). */
+  const voice = {
+    available: () => voiceReady && auth === "ok",
+    start: () => sendJson({ type: "voice_start" }),
+    stop: () => sendJson({ type: "voice_stop" }),
+    cancel: () => sendJson({ type: "voice_cancel" }),
+    /** Una trama de audio: PCM de 16 kHz, 16 bits, mono. */
+    sendAudio: (buffer) => socket?.readyState === WebSocket.OPEN && socket.send(buffer),
+    /** Estado, texto y errores del dictado. Devuelve la función para dejar de escuchar. */
+    onEvent(fn) {
+      voiceListeners.add(fn);
+      return () => voiceListeners.delete(fn);
+    },
+  };
+
   return {
     connect,
+    voice,
     pair,
     sendInput,
     listDirs,

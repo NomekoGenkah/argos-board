@@ -156,3 +156,90 @@ export function createDictation({ lang, onText, onState, onError, win = globalTh
     },
   };
 }
+
+/**
+ * Dictado transcrito en el servidor (un `agy` que oye el micrófono de ESTA página): sirve en
+ * cualquier navegador, también donde no hay SpeechRecognition (Firefox). Misma interfaz que
+ * `createDictation`. `voice` es el canal del servidor (`store.voice`) y `openMic` abre el
+ * micrófono y entrega tramas de PCM.
+ */
+export function createServerDictation({ voice, openMic, micErrorText, onText, onState, onPhase = () => {}, onError }) {
+  /** Si el servidor no avisa del fin, se da por terminado pasado este tiempo. */
+  const FINISH_TIMEOUT_MS = 30000;
+  let wanted = false;
+  let base = "";
+  let mic = null;
+  let unsubscribe = null;
+  let waiting = [];
+  let timer = null;
+
+  function closeMic() {
+    mic?.stop();
+    mic = null;
+  }
+
+  function settle() {
+    clearTimeout(timer);
+    closeMic();
+    unsubscribe?.();
+    unsubscribe = null;
+    if (!wanted) return;
+    wanted = false;
+    onState(false);
+    for (const done of waiting.splice(0)) done();
+  }
+
+  function handle(msg) {
+    if (!wanted) return;
+    switch (msg.type) {
+      case "voice_state":
+        if (msg.state === "preparing") onPhase("preparing");
+        else if (msg.state === "recording") onPhase("listening");
+        else if (msg.state === "finishing") onPhase("finishing");
+        else if (msg.state === "idle") settle();
+        break;
+      case "voice_text":
+        onText(mergeDictation(base, msg.text));
+        break;
+      case "voice_error":
+        onError(msg.message);
+        settle();
+        break;
+    }
+  }
+
+  return {
+    get listening() {
+      return wanted;
+    },
+    /** Empieza a dictar a continuación de `current` (el texto que ya hay en la caja). */
+    async start(current = "") {
+      if (wanted) return;
+      wanted = true;
+      base = current;
+      onState(true);
+      onPhase("preparing");
+      unsubscribe = voice.onEvent(handle);
+      voice.start();
+      try {
+        const opened = await openMic({ onFrame: (frame) => voice.sendAudio(frame) });
+        if (wanted) mic = opened;
+        else opened.stop(); // se paró mientras se pedía el permiso
+      } catch (e) {
+        onError(micErrorText(e));
+        voice.cancel();
+        settle();
+      }
+    },
+    /** Termina: el servidor entrega el texto final. Resuelve cuando el dictado cerró. */
+    stop() {
+      if (!wanted) return Promise.resolve();
+      closeMic(); // lo dicho hasta ahora ya salió; el servidor termina de procesarlo
+      voice.stop();
+      return new Promise((resolve) => {
+        waiting.push(resolve);
+        timer = setTimeout(settle, FINISH_TIMEOUT_MS);
+      });
+    },
+  };
+}

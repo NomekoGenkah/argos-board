@@ -1,0 +1,30 @@
+
+      ▄▀▀▄
+     ▀▀▀▀▀▀
+    ▀▀▀▀▀▀▀▀
+   ▄▀▀    ▀▀▄
+  ▄▀▀      ▀▀▄
+
+  Antigravity CLI 1.3.3
+  user@example.com (Google AI Pro)
+  Gemini 3.8 Flash (High)
+  ~/.config/argos-board/voice
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+> This is a longer dictation to verify how the prompt wraps across several lines. I want the board
+  to read the whole transcript correctly, including punctuation, numbers like 42, and a file name
+  such as main.rs. Please then run the tests and report the result back to me in a short summary.
+────────────────────────────────────────────────────────────────────────────────────────────────────
+                                                                             Gemini 3.8 Flash · high
+
+
+
+
+
+
+
+
+
+
+
+

@@ -2,6 +2,7 @@
 
 pub mod launch;
 pub mod state;
+pub mod voice;
 
 use crate::VERSION;
 use crate::config;
@@ -23,6 +24,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast::error::RecvError;
+use voice::VoiceHub;
 
 #[derive(Embed)]
 #[folder = "web/"]
@@ -38,7 +40,11 @@ struct AppState {
     /// Valores de `Host` aceptados (con puerto, en minúsculas).
     hosts: Arc<Vec<String>>,
     pairing: Arc<Pairing>,
+    voice: Arc<VoiceHub>,
 }
+
+/// Sin dictados, el `agy` que transcribe se cierra pasado este tiempo.
+const VOICE_IDLE: Duration = Duration::from_secs(20 * 60);
 
 /// Máximo de entradas por segundo de una misma página.
 const INPUT_RATE: u32 = 30;
@@ -169,6 +175,17 @@ pub async fn serve(
     });
 
     let pairing = Arc::new(Pairing::new(store.clone()));
+    let voice = VoiceHub::new();
+    {
+        let voice = voice.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(Duration::from_secs(60));
+            loop {
+                tick.tick().await;
+                voice.reap_idle(VOICE_IDLE);
+            }
+        });
+    }
     let app = router(AppState {
         board,
         token: token.into(),
@@ -176,6 +193,7 @@ pub async fn serve(
         launcher,
         hosts: Arc::new(hosts),
         pairing,
+        voice,
     });
     eprintln!("argos-board {VERSION} escuchando en http://localhost:{port}");
     // El enlace con el token y el código van al usuario por la terminal, nunca a un log.
@@ -369,7 +387,7 @@ async fn browser_ws(
         devices: st.pairing.store().clone(),
     };
     ws.max_message_size(64 * 1024)
-        .on_upgrade(move |socket| browser_session(socket, st.board, access, st.launcher))
+        .on_upgrade(move |socket| browser_session(socket, st.board, access, st.launcher, st.voice))
 }
 
 /// Ventana de un segundo para limitar el ritmo de entradas.
@@ -399,6 +417,7 @@ async fn handle_browser_msg(
     access: &Access,
     session: &mut Session,
     rate: &mut RateLimit,
+    voice: &VoiceCtx,
     text: &str,
 ) -> Vec<BrowserMsg> {
     let authorized = &mut session.authorized;
@@ -431,6 +450,9 @@ async fn handle_browser_msg(
             vec![
                 BrowserMsg::AuthResult { ok: true },
                 BrowserMsg::LaunchInfo { info },
+                BrowserMsg::VoiceInfo {
+                    available: voice.hub.available(),
+                },
             ]
         }
         FromBrowser::ListDirs { rid, path } => {
@@ -522,6 +544,34 @@ async fn handle_browser_msg(
                 error: result.err().map(str::to_string),
             }]
         }
+        FromBrowser::VoicePrepare => {
+            if *authorized {
+                voice.hub.prepare();
+            }
+            Vec::new()
+        }
+        FromBrowser::VoiceStart => {
+            let result = if !*authorized {
+                Err(NO_PERMISSION.to_string())
+            } else {
+                voice.hub.start(voice.owner, voice.events.clone())
+            };
+            match result {
+                Ok(()) => {
+                    session.dictating = true;
+                    Vec::new()
+                }
+                Err(message) => vec![BrowserMsg::VoiceError { message }],
+            }
+        }
+        FromBrowser::VoiceStop => {
+            voice.hub.finish(voice.owner);
+            Vec::new()
+        }
+        FromBrowser::VoiceCancel => {
+            voice.hub.cancel(voice.owner);
+            Vec::new()
+        }
     }
 }
 
@@ -543,6 +593,24 @@ struct Session {
     can_read: bool,
     /// Dispositivo emparejado que se autenticó (si fue con uno).
     device: Option<String>,
+    /// Pidió un dictado de voz (los mensajes binarios son su audio).
+    dictating: bool,
+}
+
+/// Lo que una sesión necesita para dictar por voz.
+struct VoiceCtx {
+    hub: Arc<VoiceHub>,
+    /// Identifica a esta sesión ante el concentrador de voz.
+    owner: u64,
+    /// Por aquí vuelven el estado y el texto del dictado.
+    events: tokio::sync::mpsc::UnboundedSender<BrowserMsg>,
+}
+
+/// Al cerrarse la sesión, un dictado suyo en curso se descarta.
+impl Drop for VoiceCtx {
+    fn drop(&mut self) {
+        self.hub.cancel(self.owner);
+    }
 }
 
 /// Cada cuánto una sesión comprueba que su dispositivo no se haya revocado.
@@ -553,7 +621,14 @@ async fn browser_session(
     board: Arc<Board>,
     access: Access,
     launcher: Arc<Launcher>,
+    voice_hub: Arc<VoiceHub>,
 ) {
+    let (voice_tx, mut voice_rx) = tokio::sync::mpsc::unbounded_channel::<BrowserMsg>();
+    let voice = VoiceCtx {
+        owner: voice_hub.new_owner(),
+        hub: voice_hub,
+        events: voice_tx,
+    };
     let mut session = Session {
         can_read: access.local,
         ..Session::default()
@@ -589,6 +664,11 @@ async fn browser_session(
                     return;
                 }
             }
+            Some(msg) = voice_rx.recv() => {
+                if send_json(&mut socket, &msg).await.is_err() {
+                    return;
+                }
+            }
             _ = check.tick() => {
                 // Revocado o caducado: se corta; al reconectar tendrá que emparejarse de nuevo.
                 if let Some(id) = &session.device
@@ -600,7 +680,7 @@ async fn browser_session(
             incoming = socket.recv() => match incoming {
                 Some(Ok(Message::Close(_))) | None | Some(Err(_)) => return,
                 Some(Ok(Message::Text(text))) => {
-                    let replies = handle_browser_msg(&board, &launcher, &access, &mut session, &mut rate, &text).await;
+                    let replies = handle_browser_msg(&board, &launcher, &access, &mut session, &mut rate, &voice, &text).await;
                     for reply in replies {
                         if send_json(&mut socket, &reply).await.is_err() {
                             return;
@@ -613,6 +693,12 @@ async fn browser_session(
                         if send_json(&mut socket, &snapshot).await.is_err() {
                             return;
                         }
+                    }
+                }
+                Some(Ok(Message::Binary(data))) => {
+                    // Audio del dictado (PCM de 16 kHz, 16 bits, mono).
+                    if session.authorized && session.dictating && data.len() <= voice::MAX_AUDIO_MESSAGE {
+                        voice.hub.push_audio(voice.owner, &data);
                     }
                 }
                 Some(Ok(_)) => {}

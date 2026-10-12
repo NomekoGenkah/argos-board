@@ -70,12 +70,21 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
   (responder sus preguntas, escribir prompts, texto de varias líneas). La cabecera dice si la página tiene
   permiso: *Escritura activa* o *Solo lectura* (al hacer clic, explica cómo conseguirlo).
 - **Dictado por voz**: junto a *Enviar*, cada consola tiene un botón de micrófono. Púlsalo, habla (lo que dices
-  aparece en la caja, con lo provisional incluido) y púlsalo de nuevo para terminar; revisas y envías como cualquier
-  texto. Como el texto entra por la consola, sirve igual para `claude`, `opencode` y `agy`. Enviar con el dictado
-  activo lo cierra y manda lo dicho. El botón *Voz: es-CL* de la cabecera cambia el idioma. Usa el reconocimiento del
-  navegador (Chrome o Edge; el audio lo procesa el servicio del propio navegador, no argos-board) y el navegador solo
-  deja usar el micrófono con la página en `localhost` o por HTTPS: por `http://<ip>` desde otro dispositivo el botón
-  no aparece (en el celular, usa el micrófono del teclado).
+  aparece en la caja mientras hablas) y púlsalo de nuevo para terminar; revisas y envías como cualquier texto.
+  Como el texto entra por la consola, sirve igual para `claude`, `opencode` y `agy`, y enviar con el dictado
+  activo lo cierra y manda lo dicho. Hay dos motores y la página usa el primero que tenga:
+  1. **El de `argos-board`, con `agy`** (si `agy` está instalado y con la sesión iniciada): el servidor lleva un
+     `agy` oculto que oye el micrófono de la página y transcribe con el mismo servicio de voz de su `/voice`.
+     Funciona en **cualquier navegador con micrófono, Firefox incluido**. La primera vez tarda unos 10 s en
+     calentar (se precalienta al abrir la página); se cierra solo tras 20 min sin dictar. Un dictado a la vez
+     (también `agy` permite un solo flujo de voz por cuenta). El idioma lo decide `agy`. Para desactivarlo:
+     `ARGOS_BOARD_NO_VOICE=1`.
+  2. **El del navegador** (Chrome o Edge; el audio lo procesa su propio servicio): si no hay `agy`. El botón
+     *Voz: es-CL* de la cabecera cambia su idioma.
+
+  En ambos el navegador solo da acceso al micrófono con la página en `localhost` o por HTTPS: por `http://<ip>`
+  desde otro dispositivo el botón no aparece (en el celular, usa el micrófono del teclado). El audio no se guarda;
+  con el motor del servidor sale hacia el servicio de voz de Google por `agy`, igual que su `/voice`.
 - **Nuevo agente** (cabecera, con permiso de escritura): eliges el tipo (solo los que están instalados), la
   carpeta (recientes o navegando) y, si quieres, un nombre; *Lanzar aquí* y aparece su tarjeta. Si tienes tmux,
   corre en una sesión propia y la tarjeta muestra cómo tomarlo desde una terminal
@@ -199,8 +208,8 @@ Notas:
 
 ## Tests de la página
 
-La lógica del dictado por voz tiene pruebas de Node (sin navegador): `node --test tests/web/*.test.mjs`.
-El CI de GitHub solo corre las de Rust.
+La lógica del dictado por voz (el motor, el procesador de audio del micrófono) tiene pruebas de Node, sin
+navegador: `node --test tests/web/*.test.mjs`. El CI de GitHub solo corre las de Rust.
 
 ## Seguridad
 

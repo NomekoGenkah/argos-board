@@ -78,7 +78,7 @@ export function createAlerts({ prefs, baseTitle, onActivate }) {
   function handle({ agents, change }) {
     const waiting = [...agents.values()].filter((a) => NEEDS_YOU.has(a.state));
     document.title = waiting.length ? `(${waiting.length}) ${baseTitle}` : baseTitle;
-    if (change.kind === "conn" || change.kind === "local" || change.kind === "auth") return;
+    if (change.kind === "conn" || change.kind === "local" || change.kind === "auth" || change.kind === "voice") return;
 
     // Al abrir la página no se avisa de lo que ya estaba esperando: el
     // contador del título ya lo muestra. Tras reconectar sí (pudo pasar algo).
