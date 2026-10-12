@@ -52,6 +52,8 @@
   --ansi-bright-magenta: #a854c8;
   --ansi-bright-cyan: #1498a4;
   --ansi-bright-white: #191312;
+  --ansi-bg-black: #d6d6d6;
+  --ansi-bg-bright-black: #e2e2e2;
 
   --shadow: 0 1px 2px rgb(89 60 55 / .06), 0 4px 14px rgb(89 60 55 / .06);
   color-scheme: light;
@@ -100,6 +102,8 @@
   --ansi-bright-magenta: #dfb4fc;
   --ansi-bright-cyan: #b2f0ff;
   --ansi-bright-white: #ffffff;
+  --ansi-bg-black: #2b2b2b;
+  --ansi-bg-bright-black: #3a3a3a;
 
   --shadow: none;
   color-scheme: dark;
@@ -343,6 +347,8 @@ main { padding: 16px; }
   scrollbar-color: var(--border) transparent;
 }
 
+/* Un span en línea solo pinta la altura del texto: inline-block pinta la línea entera. */
+.lines .bg { display: inline-block; vertical-align: top; }
 .lines .bar-row { display: flex; width: 100%; line-height: 1.45; overflow: hidden; }
 .lines .bar-row > span { min-width: 0; overflow: hidden; }
 

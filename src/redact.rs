@@ -9,6 +9,8 @@ static PATTERNS: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
         (Regex::new(r"\bsk-[A-Za-z0-9_\-]{8,}").unwrap(), "sk-[REDACTED]"),
         // Cabeceras Authorization: Bearer <token>
         (Regex::new(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=\-]+").unwrap(), "Bearer [REDACTED]"),
+        // Enlace de `argos-board serve` con el token de control: `#k=<hex>`
+        (Regex::new(r"([#&?]k=)[0-9a-fA-F]{32,}").unwrap(), "${1}[REDACTED]"),
         // Variables FOO_KEY=..., FOO_TOKEN=..., FOO_SECRET=..., FOO_PASSWORD=...
         (
             Regex::new(r#"(?i)\b([A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD))(\s*[=:]\s*)("[^"]*"|'[^']*'|\S+)"#)
@@ -59,6 +61,15 @@ mod tests {
             "GITHUB_TOKEN = [REDACTED]"
         );
         assert_eq!(redact("db_password: hunter2"), "db_password: [REDACTED]");
+    }
+
+    #[test]
+    fn redacts_control_token_link() {
+        let token = "e139c80309eb4b7a955621779eeeb2b091f37a0ca5aa4e4ca1827dba4ba49439";
+        assert_eq!(
+            redact(&format!("abre: http://localhost:8787/#k={token}")),
+            "abre: http://localhost:8787/#k=[REDACTED]"
+        );
     }
 
     #[test]

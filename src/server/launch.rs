@@ -177,7 +177,13 @@ impl Launcher {
         let mut dirs: Vec<String> = std::fs::read_dir(&dir)
             .map_err(|_| "no se pudo leer esa carpeta")?
             .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_ok_and(|t| t.is_dir()))
+            // Los enlaces a carpetas también cuentan, si su destino sigue dentro de una raíz.
+            .filter(|e| {
+                let path = e.path();
+                std::fs::canonicalize(&path).is_ok_and(|real| {
+                    real.is_dir() && self.roots.iter().any(|r| real.starts_with(r))
+                })
+            })
             .map(|e| e.file_name().to_string_lossy().into_owned())
             .filter(|n| !n.starts_with('.'))
             .collect();
@@ -397,6 +403,19 @@ mod tests {
                 .is_err()
         );
         assert!(l.allowed_dir("/no/existe").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_dirs_are_listed_only_if_they_stay_inside_roots() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("real")).unwrap();
+        std::os::unix::fs::symlink(root.path().join("real"), root.path().join("atajo")).unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.path().join("fuga")).unwrap();
+        std::os::unix::fs::symlink(root.path().join("nada"), root.path().join("rota")).unwrap();
+        let l = launcher_with_root(root.path());
+        assert_eq!(l.list_dirs(None).unwrap().dirs, vec!["atajo", "real"]);
     }
 
     #[test]

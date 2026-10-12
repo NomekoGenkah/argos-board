@@ -98,7 +98,10 @@ impl Board {
                         e.snap.state_since = now;
                     }
                     e.conn = conn;
-                    e.ended_at = None;
+                    // Un agente ya terminado sigue su cuenta atrás para quitarse del tablero.
+                    if e.snap.state != AgentState::Exited {
+                        e.ended_at = None;
+                    }
                     (false, e)
                 }
                 None => (
@@ -334,6 +337,21 @@ mod tests {
         b.connection_closed(c2, id);
         assert_eq!(b.snapshot()[0].state, AgentState::Exited);
 
+        b.sweep(Duration::ZERO);
+        assert!(b.snapshot().is_empty());
+    }
+
+    #[test]
+    fn exited_agent_is_still_swept_after_a_late_hello() {
+        let b = Board::new();
+        let id = Uuid::new_v4();
+        let c1 = b.new_conn();
+        b.apply(c1, None, hello(id));
+        b.apply(c1, Some(id), IngestMsg::Exit { code: 0 });
+        // Un hello tardío (reintento del wrapper) no debe dejar la tarjeta para siempre.
+        let c2 = b.new_conn();
+        b.apply(c2, None, hello(id));
+        assert_eq!(b.snapshot()[0].state, AgentState::Exited);
         b.sweep(Duration::ZERO);
         assert!(b.snapshot().is_empty());
     }
