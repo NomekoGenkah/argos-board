@@ -998,7 +998,11 @@ fn remote_access_requires_a_paired_device() {
             if msg["type"] == "snapshot" {
                 break;
             }
-            assert_eq!(msg["type"], "launch_info");
+            // Tras autenticar llegan la info de lanzamiento y la de voz, y luego el estado.
+            assert!(
+                ["launch_info", "voice_info"].contains(&msg["type"].as_str().unwrap()),
+                "{msg}"
+            );
         }
 
         // La ingesta de wrappers no se ofrece a la red.
@@ -1138,4 +1142,177 @@ fn local_only_keeps_the_server_off_the_network() {
         http_get(port, "/api/agents", &format!("127.0.0.1:{port}")).0,
         200
     );
+}
+
+// ---- Dictado por voz: servidor + `agy` falso ----
+
+/// Carpeta con un `agy` (el falso de tests/fake_agy.py) al principio del PATH.
+fn path_with_fake_agy(dir: &Path) -> String {
+    let fake = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fake_agy.py");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&fake, dir.join("agy")).unwrap();
+    format!(
+        "{}:{}",
+        dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    )
+}
+
+async fn ws_local(port: u16) -> Ws {
+    ws_connect("127.0.0.1", port).await
+}
+
+/// Lee mensajes hasta que `pred` acepte uno (devuelve todos los vistos, el último incluido).
+async fn ws_until(ws: &mut Ws, what: &str, pred: impl Fn(&Value) -> bool) -> Vec<Value> {
+    let mut seen = Vec::new();
+    loop {
+        let msg = ws_next(ws)
+            .await
+            .unwrap_or_else(|| panic!("se cerró esperando {what}: {seen:#?}"));
+        let done = pred(&msg);
+        seen.push(msg);
+        if done {
+            return seen;
+        }
+    }
+}
+
+async fn ws_send_json(ws: &mut Ws, v: Value) {
+    use futures_util::SinkExt;
+    ws.send(tokio_tungstenite::tungstenite::Message::text(v.to_string()))
+        .await
+        .unwrap();
+}
+
+async fn ws_send_audio(ws: &mut Ws, frames: usize, byte: u8) {
+    use futures_util::SinkExt;
+    for _ in 0..frames {
+        ws.send(tokio_tungstenite::tungstenite::Message::binary(vec![
+            byte;
+            640
+        ]))
+        .await
+        .unwrap();
+        tokio::time::sleep(Duration::from_millis(20)).await; // 640 B = 20 ms de audio
+    }
+}
+
+fn is_type(v: &Value, t: &str) -> bool {
+    v["type"] == t
+}
+
+/// Autentica una conexión local y devuelve lo que llegó hasta `voice_info`.
+async fn ws_login(ws: &mut Ws, cfg: &Path) -> Vec<Value> {
+    assert_eq!(ws_next(ws).await.unwrap()["type"], "snapshot");
+    let control = std::fs::read_to_string(cfg.join("control-token")).unwrap();
+    ws_send_auth(ws, control.trim()).await;
+    ws_until(ws, "voice_info", |m| is_type(m, "voice_info")).await
+}
+
+#[test]
+fn voice_dictation_streams_audio_to_agy_and_returns_the_text() {
+    let cfg = tempfile::tempdir().unwrap();
+    let bin = tempfile::tempdir().unwrap();
+    let port = free_port();
+    let _server = start_server_with(cfg.path(), port, &path_with_fake_agy(bin.path()), &[]);
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let mut ws = ws_local(port).await;
+        let info = ws_login(&mut ws, cfg.path()).await;
+        assert_eq!(info.last().unwrap()["available"], true);
+
+        // Sin credencial, nadie dicta.
+        let mut stranger = ws_local(port).await;
+        assert_eq!(ws_next(&mut stranger).await.unwrap()["type"], "snapshot");
+        ws_send_json(&mut stranger, serde_json::json!({"type": "voice_start"})).await;
+        let err = ws_next(&mut stranger).await.unwrap();
+        assert!(is_type(&err, "voice_error"), "{err}");
+
+        // Dictado completo: arranque (confianza incluida), audio, final.
+        ws_send_json(&mut ws, serde_json::json!({"type": "voice_start"})).await;
+        // Mientras agy arranca, el audio ya se acumula: no se pierde.
+        ws_send_audio(&mut ws, 25, 5).await;
+        let seen = ws_until(&mut ws, "recording", |m| {
+            is_type(m, "voice_state") && m["state"] == "recording"
+        })
+        .await;
+        assert_eq!(seen.first().unwrap()["state"], "preparing");
+        ws_send_audio(&mut ws, 25, 5).await; // 25 + 25 tramas de 640 B
+        // Otra sesión no puede dictar a la vez.
+        let mut other = ws_local(port).await;
+        let _ = ws_login(&mut other, cfg.path()).await;
+        ws_send_json(&mut other, serde_json::json!({"type": "voice_start"})).await;
+        let busy = ws_next(&mut other).await.unwrap();
+        assert!(
+            is_type(&busy, "voice_error") && busy["message"].as_str().unwrap().contains("en curso"),
+            "{busy}"
+        );
+
+        ws_send_json(&mut ws, serde_json::json!({"type": "voice_stop"})).await;
+        let seen = ws_until(&mut ws, "texto final", |m| {
+            is_type(m, "voice_text") && m["is_final"] == true
+        })
+        .await;
+        // 50 tramas de 640 B con el byte 5: ninguno se perdió ni se coló el silencio.
+        assert_eq!(seen.last().unwrap()["text"], "heard 32000", "{seen:#?}");
+        assert!(
+            seen.iter()
+                .any(|m| is_type(m, "voice_state") && m["state"] == "finishing")
+        );
+        let idle = ws_until(&mut ws, "idle", |m| {
+            is_type(m, "voice_state") && m["state"] == "idle"
+        })
+        .await;
+        assert!(idle.iter().all(|m| !is_type(m, "voice_error")), "{idle:#?}");
+
+        // Se puede dictar otra vez (la caja de agy quedó vacía) y cancelar descarta.
+        ws_send_json(&mut ws, serde_json::json!({"type": "voice_start"})).await;
+        ws_until(&mut ws, "recording", |m| {
+            is_type(m, "voice_state") && m["state"] == "recording"
+        })
+        .await;
+        ws_send_audio(&mut ws, 10, 7).await;
+        ws_send_json(&mut ws, serde_json::json!({"type": "voice_cancel"})).await;
+        let seen = ws_until(&mut ws, "idle", |m| {
+            is_type(m, "voice_state") && m["state"] == "idle"
+        })
+        .await;
+        assert!(
+            seen.iter()
+                .all(|m| !(is_type(m, "voice_text") && m["is_final"] == true)),
+            "{seen:#?}"
+        );
+
+        // Y un tercer dictado empieza de cero (nada del anterior).
+        ws_send_json(&mut ws, serde_json::json!({"type": "voice_start"})).await;
+        ws_until(&mut ws, "recording", |m| {
+            is_type(m, "voice_state") && m["state"] == "recording"
+        })
+        .await;
+        ws_send_audio(&mut ws, 10, 9).await;
+        ws_send_json(&mut ws, serde_json::json!({"type": "voice_stop"})).await;
+        let seen = ws_until(&mut ws, "texto final", |m| {
+            is_type(m, "voice_text") && m["is_final"] == true
+        })
+        .await;
+        assert_eq!(seen.last().unwrap()["text"], "heard 6400", "{seen:#?}");
+    });
+}
+
+#[test]
+fn voice_is_unavailable_without_agy() {
+    let cfg = tempfile::tempdir().unwrap();
+    let empty = tempfile::tempdir().unwrap();
+    let port = free_port();
+    let _server = start_server_with(cfg.path(), port, &empty.path().display().to_string(), &[]);
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let mut ws = ws_local(port).await;
+        let info = ws_login(&mut ws, cfg.path()).await;
+        assert_eq!(info.last().unwrap()["available"], false);
+        ws_send_json(&mut ws, serde_json::json!({"type": "voice_start"})).await;
+        let err = ws_next(&mut ws).await.unwrap();
+        assert!(is_type(&err, "voice_error"), "{err}");
+    });
 }

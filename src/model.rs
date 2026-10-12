@@ -226,6 +226,15 @@ pub enum FromBrowser {
     },
     /// Detiene un agente lanzado desde la página.
     Stop { rid: u64, id: Uuid },
+    /// Precalienta el transcriptor de voz (tarda unos 10 s en frío); no hace falta pedirlo.
+    VoicePrepare,
+    /// Empieza a dictar: a continuación la página manda el audio en mensajes binarios
+    /// (PCM de 16 kHz, 16 bits, mono, little-endian).
+    VoiceStart,
+    /// Termina de dictar: se espera el texto final.
+    VoiceStop,
+    /// Descarta el dictado en curso.
+    VoiceCancel,
 }
 
 /// Qué se puede lanzar desde esta página (se manda tras autorizarla).
@@ -237,6 +246,19 @@ pub struct LaunchInfo {
     pub tmux: bool,
     /// Carpetas dentro de las que se puede lanzar.
     pub roots: Vec<String>,
+}
+
+/// Fase del dictado por voz en el servidor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VoiceState {
+    /// Arrancando el transcriptor (solo la primera vez, o tras un rato sin uso).
+    Preparing,
+    /// Escuchando: el audio que llegue se transcribe.
+    Recording,
+    /// Se pidió terminar: el servidor espera el texto final.
+    Finishing,
+    Idle,
 }
 
 /// Mensajes servidor → navegador (`/ws`).
@@ -277,6 +299,21 @@ pub enum BrowserMsg {
         dirs: Vec<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
+    },
+    /// Tras autenticarse: si el servidor puede transcribir voz (hay un `agy` instalado).
+    VoiceInfo {
+        available: bool,
+    },
+    VoiceState {
+        state: VoiceState,
+    },
+    /// Texto del dictado: provisional mientras se habla y, con `is_final`, el definitivo.
+    VoiceText {
+        text: String,
+        is_final: bool,
+    },
+    VoiceError {
+        message: String,
     },
     /// Respuesta a `launch` y `stop`.
     ActionResult {

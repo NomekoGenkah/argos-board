@@ -98,7 +98,7 @@ export function versionWarning(agentVersion, serverVersion) {
   return `Wrapper de otra versión (${agentVersion}): reinícialo para actualizarlo.`;
 }
 
-export function createDomRenderer({ cards, empty, conn, live, template, prefs, GridStack, version, sendInput, stop, onOpenAgent }) {
+export function createDomRenderer({ cards, empty, conn, live, template, prefs, GridStack, version, sendInput, voice, stop, onOpenAgent }) {
   const els = new Map(); // id -> .grid-stack-item
   const consoles = new Map(); // id -> consola de la tarjeta
   let auth = "none";
@@ -235,7 +235,7 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     item.querySelector(".lines")?.addEventListener("dblclick", () => {
       onOpenAgent?.(a.id);
     });
-    const con = createConsole({ sendInput });
+    const con = createConsole({ sendInput, voice });
     item.querySelector(".console-slot").append(con.el);
     consoles.set(a.id, con);
     cards.append(item);

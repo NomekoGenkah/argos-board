@@ -153,6 +153,11 @@ Reglas:
   - Si hay tmux, cada agente corre en una sesión de un socket propio de argos-board (`tmux -L argos-board`), con el entorno de `serve`; sobrevive a reinicios de `serve` y se toma con `tmux -L argos-board attach -t argos-…`. Sin tmux (o con `ARGOS_BOARD_NO_TMUX`), corre oculto como hijo de `serve` y solo existe en la página.
   - *Detener* solo actúa sobre sesiones de tmux llamadas `argos-…` o sobre procesos que lanzó este mismo `serve`.
   - Los agentes heredan el entorno de `serve` (PATH, credenciales de cada CLI): conviene arrancarlo desde la shell de siempre. La primera vez en una carpeta, el agente puede preguntar si confía en ella: se responde desde la consola de la página.
+- **Dictado por voz en el servidor** (mismo token de control o dispositivo emparejado; cualquier otra conexión recibe un error):
+  - Si hay un `agy` en el `PATH`, `serve` mantiene uno oculto en un PTY (carpeta propia `~/.config/argos-board/voice`, cuya confianza se acepta sola la primera vez: está vacía) con `ANTIGRAVITY_MIC` apuntando a un puerto de loopback que imita a `agy mic-serve` (PCM de 16 kHz, 16 bits, mono, a ritmo real; silencio si no hay audio). Ese `agy` nunca recibe un prompt: solo `F5` (dictar), `Esc` y `Ctrl+U`.
+  - La página manda `voice_start` y tramas binarias de audio (≤ 16 KB cada una) por `/ws`, y recibe `voice_state`, `voice_text` (provisional y final) y `voice_error`. Un dictado a la vez; si la sesión se cierra, se descarta. El texto se lee de la caja de `agy` (la pantalla de su TUI) y no se guarda; el audio tampoco.
+  - El transcriptor se cierra tras 20 minutos sin uso. `ARGOS_BOARD_NO_VOICE=1` lo desactiva. El audio sale hacia el servicio de voz de Google a través de `agy` (igual que su `/voice`); `argos-board` no hace llamadas de red por su cuenta.
+  - Depende de la pantalla de `agy`: si una versión nueva cambia su caja de entrada, fallan las pruebas con las pantallas grabadas en `tests/fixtures/voice/`.
 - La salida de terminal puede contener secretos. No se escribe a disco, no sale de la máquina y se aplica una redacción básica por regex (claves tipo `sk-...`, `Bearer ...`, variables `*_KEY=`/`*_TOKEN=`) antes de enviar `last_lines`.
 - Sin llamadas de red salientes.
 

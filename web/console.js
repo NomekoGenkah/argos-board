@@ -2,7 +2,8 @@
 // voz y teclas rápidas. La usan las tarjetas del tablero y el panel de la Oficina.
 
 import { prefs } from "./prefs.js";
-import { createDictation, languageChoices, voiceAvailable } from "./voice.js";
+import { micErrorText, openMic } from "./mic.js";
+import { createDictation, createServerDictation, languageChoices, voiceAvailable } from "./voice.js";
 
 const MIC_ICON =
   '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>';
@@ -42,7 +43,16 @@ export function currentVoiceLang() {
   return chosen && choices.includes(chosen) ? chosen : (choices[0] ?? "es-CL");
 }
 
-export function createConsole({ sendInput, voiceLang = currentVoiceLang }) {
+const PHASE_TEXT = {
+  preparing: "Preparando el micrófono… (la primera vez tarda unos segundos)",
+  listening: "Escuchando… habla y pulsa el micrófono para terminar",
+  finishing: "Terminando de transcribir…",
+};
+
+/** ¿Se puede dictar aquí? Con el servidor (cualquier navegador) o con el del navegador. */
+export const voiceUsable = (voice) => Boolean(voice?.available()) || voiceAvailable();
+
+export function createConsole({ sendInput, voice = null, voiceLang = currentVoiceLang }) {
   const id = `console-${++uid}`;
   const el = document.createElement("div");
   el.className = "console";
@@ -105,8 +115,8 @@ export function createConsole({ sendInput, voiceLang = currentVoiceLang }) {
   }
 
   // Dictado por voz: lo dicho se escribe en la caja; se revisa y se envía como cualquier texto.
-  const dictation = createDictation({
-    lang: voiceLang,
+  // Con transcriptor en el servidor (agy) sirve en cualquier navegador; si no, el del navegador.
+  const handlers = {
     onText: (text) => {
       input.value = text;
       grow();
@@ -116,34 +126,38 @@ export function createConsole({ sendInput, voiceLang = currentVoiceLang }) {
       mic.title = on ? "Dejar de dictar" : "Dictar por voz";
       if (on) {
         dictationFailed = false;
-        show("Escuchando… habla y pulsa el micrófono para terminar", "info");
+        show(PHASE_TEXT.listening, "info");
       } else {
-        if (stopActiveDictation === dictation.stop) stopActiveDictation = null;
+        if (stopActiveDictation === current?.stop) stopActiveDictation = null;
         if (!dictationFailed) show(input.value ? "Dictado listo: revisa y envía" : "", input.value ? "ok" : "info");
         input.focus();
       }
     },
+    onPhase: (phase) => show(PHASE_TEXT[phase] ?? "", "info"),
     onError: (message) => {
       dictationFailed = true;
       show(message, "error");
     },
+  };
+  const engines = {
+    browser: createDictation({ lang: voiceLang, ...handlers }),
+    server: voice ? createServerDictation({ voice, openMic, micErrorText, ...handlers }) : null,
+  };
+  let current = null; // el motor que está dictando ahora
+  mic.addEventListener("click", () => {
+    if (current?.listening) {
+      current.stop();
+      return;
+    }
+    stopActiveDictation?.();
+    current = voice?.available() ? engines.server : engines.browser;
+    stopActiveDictation = current.stop;
+    current.start(input.value);
   });
-  if (voiceAvailable()) {
-    mic.hidden = false;
-    mic.addEventListener("click", () => {
-      if (dictation.listening) {
-        dictation.stop();
-        return;
-      }
-      stopActiveDictation?.();
-      stopActiveDictation = dictation.stop;
-      dictation.start(input.value);
-    });
-  }
 
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
-    await dictation.stop(); // lo ya dicho queda en la caja antes de leerla
+    await current?.stop(); // lo ya dicho queda en la caja antes de leerla
     const text = input.value;
     if (await send({ type: "text", text, submit: true }, text ? "Enviado" : "Enter")) {
       input.value = "";
@@ -172,7 +186,8 @@ export function createConsole({ sendInput, voiceLang = currentVoiceLang }) {
     input.setAttribute("aria-label", `Escribir a ${next.name}`);
     const blocker = inputBlocker(next, auth);
     form.hidden = blocker !== null;
-    if (blocker !== null) dictation.stop();
+    if (blocker !== null) current?.stop();
+    mic.hidden = !voiceUsable(voice);
     // Sin permiso de la página, el aviso está en la cabecera (no en cada tarjeta).
     const text =
       blocker === "agent"

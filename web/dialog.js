@@ -6,8 +6,8 @@ import { createConsole, inputBlocker } from "./console.js";
 import { LABELS, KINDS, fillLaunch } from "./render.js";
 import { wireStopButton } from "./launcher.js";
 
-export function createAgentDialog({ dialog, sendInput, stop, onBoard }) {
-  const con = createConsole({ sendInput });
+export function createAgentDialog({ dialog, sendInput, voice, stop, onBoard }) {
+  const con = createConsole({ sendInput, voice });
   dialog.querySelector(".console-slot").append(con.el);
   const pre = dialog.querySelector(".lines");
   const readonly = dialog.querySelector(".dialog-readonly");

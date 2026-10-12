@@ -33,6 +33,7 @@ const store = createStore();
 const agentDialog = createAgentDialog({
   dialog: document.getElementById("agent-dialog"),
   sendInput: store.sendInput,
+  voice: store.voice,
   stop: store.stop,
   onBoard: (id) => openInBoard(id),
 });
@@ -47,6 +48,7 @@ const { render, relayout, focusAgent } = createDomRenderer({
   GridStack: window.GridStack, // web/vendor/gridstack (script clásico)
   version: document.getElementById("version"),
   sendInput: store.sendInput,
+  voice: store.voice,
   stop: store.stop,
   onOpenAgent: (id) => agentDialog.open(id),
 });
@@ -125,21 +127,18 @@ soundBtn.addEventListener("click", () => {
 document.addEventListener("pointerdown", () => prefs.sound() && alerts.unlockAudio(), { once: true });
 showSound();
 
-// Idioma del dictado por voz: solo si el navegador puede dictar aquí (contexto seguro + reconocedor).
+// Idioma del dictado por voz del NAVEGADOR (el transcriptor del servidor no lo usa): solo se
+// muestra si se dictaría con el navegador (contexto seguro + reconocedor y sin transcriptor).
 const voiceLangBtn = document.getElementById("voice-lang");
-if (voiceAvailable()) {
-  const showVoiceLang = () => {
-    voiceLangBtn.textContent = `Voz: ${currentVoiceLang()}`;
-  };
-  voiceLangBtn.hidden = false;
-  voiceLangBtn.addEventListener("click", () => {
-    const choices = languageChoices(navigator.language);
-    const next = choices[(choices.indexOf(currentVoiceLang()) + 1) % choices.length];
-    prefs.setVoiceLang(next);
-    showVoiceLang();
-  });
+const showVoiceLang = () => {
+  voiceLangBtn.hidden = store.voice.available() || !voiceAvailable();
+  voiceLangBtn.textContent = `Voz: ${currentVoiceLang()}`;
+};
+voiceLangBtn.addEventListener("click", () => {
+  const choices = languageChoices(navigator.language);
+  prefs.setVoiceLang(choices[(choices.indexOf(currentVoiceLang()) + 1) % choices.length]);
   showVoiceLang();
-}
+});
 
 // Permiso para escribir: aviso en la cabecera (no en cada tarjeta).
 const writeBtn = document.getElementById("write");
@@ -193,6 +192,7 @@ store.onChange(launchDialog.render);
 store.onChange(afterLaunch);
 store.onChange(agentDialog.render);
 store.onChange(showWrite);
+store.onChange(showVoiceLang);
 const pairDialog = createPairDialog({ dialog: document.getElementById("pair-dialog"), store });
 store.onChange(pairDialog.render);
 store.onChange(alerts.handle);
