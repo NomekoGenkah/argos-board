@@ -134,7 +134,12 @@ Reglas:
 
 ## 8. Seguridad y privacidad
 
-- Bind solo a loopback. En el WebSocket del navegador validar la cabecera `Origin`/`Host` (evita rebinding DNS y páginas externas leyendo el tablero).
+- Bind a loopback; opcionalmente, además, a IPs privadas concretas con `--bind` (nunca `0.0.0.0` ni públicas). El `Host` permitido es el de loopback y el de esas IPs (más `--allow-host`); una conexión de un par que no sea la propia máquina ni una red privada se rechaza.
+- **Acceso desde la red (emparejamiento).** Un par que no es loopback no recibe nada del WebSocket (solo `auth_required`) ni de `/api/agents` hasta autenticarse con el token de un dispositivo emparejado. El token de control del enlace de `serve` solo vale desde loopback. La ingesta de wrappers (`/ingest`) es solo loopback.
+  - `argos-board pair` escribe un código de 8 símbolos legibles (`pairing.json`, `0600`), de un solo uso, 5 minutos de vida; `POST /api/pair` lo canjea por un token de dispositivo (256 bits, `devices.json`, `0600`). Se anula tras 5 fallos y hay un límite global de 10 intentos por minuto. Un solo nivel de acceso (total) por dispositivo.
+  - `serve` relee los archivos en cada uso; las sesiones abiertas comprueban cada 5 s que su dispositivo siga vigente. Sin uso durante 30 días el dispositivo caduca. `argos-board devices` y `revoke` administran la lista.
+  - Sin HTTPS por ahora (se asume un túnel cifrado como WireGuard): la API `Notification` y el service worker no están disponibles sobre HTTP.
+- En el WebSocket del navegador validar la cabecera `Origin`/`Host` (evita rebinding DNS y páginas externas leyendo el tablero).
 - El endpoint de ingesta exige un token generado al iniciar `serve` y guardado en un archivo con permisos `0600` en el directorio de configuración; el wrapper lo lee de ahí.
 - **Entrada desde la página.** Quien pueda escribir en un agente en modo automático puede ejecutar comandos en la máquina, así que:
   - La página necesita un **token de control** distinto del de ingesta (`control-token`, `0600`), que `serve` imprime en la terminal como enlace `http://localhost:<puerto>/#k=<token>`. Va en el fragmento (no viaja en las peticiones HTTP); la página lo guarda en el navegador y lo presenta por `/ws`. Sin él, la página funciona en solo lectura. Se conserva entre reinicios; borrar el archivo lo renueva (y desautoriza a todos los navegadores).

@@ -5,18 +5,21 @@ pub mod state;
 
 use crate::VERSION;
 use crate::config;
+use crate::devices::{self, Pairing, Store, same_secret};
 use crate::model::{BrowserMsg, FromBrowser, IngestMsg, WrapperCmd};
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Request, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Request, State};
 use axum::http::{HeaderMap, StatusCode, Uri, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
+use chrono::Utc;
 use launch::Launcher;
 use rust_embed::Embed;
 use state::Board;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast::error::RecvError;
@@ -32,13 +35,60 @@ struct AppState {
     /// Autoriza a la página a escribir en los agentes (va en el enlace de `serve`).
     control: Arc<str>,
     launcher: Arc<Launcher>,
-    port: u16,
+    /// Valores de `Host` aceptados (con puerto, en minúsculas).
+    hosts: Arc<Vec<String>>,
+    pairing: Arc<Pairing>,
 }
 
 /// Máximo de entradas por segundo de una misma página.
 const INPUT_RATE: u32 = 30;
 
-pub async fn serve(port: u16) -> Result<()> {
+/// IP privada: la de una red doméstica, un túnel WireGuard/Tailscale o un enlace local.
+pub fn is_private_ip(ip: IpAddr) -> bool {
+    match ip.to_canonical() {
+        IpAddr::V4(v4) => {
+            let o = v4.octets();
+            v4.is_private() || v4.is_link_local() || (o[0] == 100 && (o[1] & 0b1100_0000) == 64)
+        }
+        IpAddr::V6(v6) => v6.is_unique_local() || v6.is_unicast_link_local(),
+    }
+}
+
+fn is_local_ip(ip: IpAddr) -> bool {
+    ip.to_canonical().is_loopback()
+}
+
+/// `ip:puerto` como lo escribe un navegador en `Host` (IPv6 entre corchetes).
+fn host_port(ip: IpAddr, port: u16) -> String {
+    match ip {
+        IpAddr::V4(_) => format!("{ip}:{port}"),
+        IpAddr::V6(_) => format!("[{ip}]:{port}"),
+    }
+}
+
+/// Comprueba las IPs de `--bind`: solo direcciones concretas de una red privada.
+fn validate_binds(binds: &[IpAddr]) -> Result<Vec<IpAddr>> {
+    let mut out: Vec<IpAddr> = Vec::new();
+    for &ip in binds {
+        if ip.is_unspecified() {
+            bail!(
+                "--bind {ip} escucharía en todas las interfaces; usa la IP concreta de la red (p. ej. la de WireGuard)"
+            );
+        }
+        if !is_local_ip(ip) && !is_private_ip(ip) {
+            bail!(
+                "--bind {ip} no es una IP privada: argos-board no se expone fuera de la red local"
+            );
+        }
+        if !is_local_ip(ip) && !out.contains(&ip) {
+            out.push(ip);
+        }
+    }
+    Ok(out)
+}
+
+pub async fn serve(port: u16, binds: Vec<IpAddr>, allow_hosts: Vec<String>) -> Result<()> {
+    let extra = validate_binds(&binds)?;
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
         .await
         .map_err(|e| {
@@ -51,8 +101,25 @@ pub async fn serve(port: u16) -> Result<()> {
             }
         })?;
     let port = listener.local_addr()?.port();
+    let mut listeners = vec![listener];
+    for ip in &extra {
+        listeners.push(
+            tokio::net::TcpListener::bind((*ip, port))
+                .await
+                .with_context(|| format!("no se pudo escuchar en {}", host_port(*ip, port)))?,
+        );
+    }
     let token = config::create_token().context("creando el token de ingesta")?;
     let control = config::control_token().context("creando el token de control")?;
+
+    let mut hosts = vec![format!("localhost:{port}"), format!("127.0.0.1:{port}")];
+    hosts.extend(extra.iter().map(|ip| host_port(*ip, port)));
+    hosts.extend(
+        allow_hosts
+            .iter()
+            .map(|h| format!("{}:{port}", h.trim().to_lowercase())),
+    );
+    let store = Store::open().context("abriendo los dispositivos emparejados")?;
 
     let (launcher, warnings) = Launcher::new(port);
     for w in warnings {
@@ -75,20 +142,40 @@ pub async fn serve(port: u16) -> Result<()> {
         token: token.into(),
         control: control.clone().into(),
         launcher,
-        port,
+        hosts: Arc::new(hosts),
+        pairing: Arc::new(Pairing::new(store)),
     });
     eprintln!("argos-board {VERSION} escuchando en http://localhost:{port}");
     // El enlace con el token va al usuario por la terminal, nunca a un log.
     eprintln!(
         "Para escribir en los agentes desde la página, abre: http://localhost:{port}/#k={control}"
     );
-    axum::serve(listener, app).await?;
+    for ip in &extra {
+        eprintln!(
+            "Otros dispositivos: http://{}/ (se emparejan con un código de `argos-board pair`)",
+            host_port(*ip, port)
+        );
+    }
+    let mut servers = tokio::task::JoinSet::new();
+    for l in listeners {
+        let make = app
+            .clone()
+            .into_make_service_with_connect_info::<SocketAddr>();
+        servers.spawn(async move { axum::serve(l, make).await });
+    }
+    if let Some(res) = servers.join_next().await {
+        res??;
+    }
     Ok(())
 }
 
 fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/agents", get(api_agents))
+        .route(
+            "/api/pair",
+            post(api_pair).layer(DefaultBodyLimit::max(4 * 1024)),
+        )
         .route("/ws", get(browser_ws))
         .route("/ingest", get(ingest_ws))
         .fallback(static_file)
@@ -100,37 +187,108 @@ fn header_str(headers: &HeaderMap, name: header::HeaderName) -> Option<&str> {
     headers.get(name).and_then(|v| v.to_str().ok())
 }
 
-fn host_allowed(host: &str, port: u16) -> bool {
-    host == format!("localhost:{port}") || host == format!("127.0.0.1:{port}")
+fn host_allowed(host: &str, hosts: &[String]) -> bool {
+    let host = host.to_lowercase();
+    hosts.contains(&host)
 }
 
-fn origin_allowed(origin: &str, port: u16) -> bool {
+fn origin_allowed(origin: &str, hosts: &[String]) -> bool {
     origin
         .strip_prefix("http://")
-        .is_some_and(|h| host_allowed(h, port))
+        .is_some_and(|h| host_allowed(h, hosts))
 }
 
-/// Rechaza cualquier petición cuyo `Host` no sea localhost:<port> (DNS rebinding)
-/// y cualquier `Origin` ajeno (páginas externas).
+fn peer_ip(req: &Request) -> Option<IpAddr> {
+    req.extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|c| c.0.ip())
+}
+
+/// Rechaza (a) pares que no sean de la propia máquina ni de una red privada,
+/// (b) cualquier petición cuyo `Host` no sea uno de los esperados (DNS rebinding)
+/// y (c) cualquier `Origin` ajeno (páginas externas).
 async fn check_host(State(st): State<AppState>, req: Request, next: Next) -> Response {
+    // Sin dirección de par no se puede juzgar: se rechaza.
+    if !peer_ip(&req).is_some_and(|ip| is_local_ip(ip) || is_private_ip(ip)) {
+        return (StatusCode::FORBIDDEN, "origen de red no permitido").into_response();
+    }
     let headers = req.headers();
-    if !header_str(headers, header::HOST).is_some_and(|h| host_allowed(h, st.port)) {
+    if !header_str(headers, header::HOST).is_some_and(|h| host_allowed(h, &st.hosts)) {
         return (StatusCode::FORBIDDEN, "host no permitido").into_response();
     }
     if let Some(origin) = header_str(headers, header::ORIGIN)
-        && !origin_allowed(origin, st.port)
+        && !origin_allowed(origin, &st.hosts)
     {
         return (StatusCode::FORBIDDEN, "origin no permitido").into_response();
     }
     next.run(req).await
 }
 
-async fn api_agents(State(st): State<AppState>) -> impl IntoResponse {
-    Json(st.board.snapshot())
+/// El token de dispositivo de `Authorization: Bearer …`, si es válido.
+fn bearer_device(headers: &HeaderMap, store: &Store) -> Option<devices::Device> {
+    let given = header_str(headers, header::AUTHORIZATION)?.strip_prefix("Bearer ")?;
+    store.authenticate(given, Utc::now())
+}
+
+async fn api_agents(
+    State(st): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> Response {
+    // Desde la propia máquina se lee sin credencial; desde la red, con un dispositivo emparejado.
+    if !is_local_ip(peer.ip()) && bearer_device(&headers, st.pairing.store()).is_none() {
+        return (StatusCode::UNAUTHORIZED, "dispositivo no emparejado").into_response();
+    }
+    Json(st.board.snapshot()).into_response()
+}
+
+#[derive(serde::Deserialize)]
+struct PairBody {
+    code: String,
+    #[serde(default)]
+    name: Option<String>,
+}
+
+/// Canjea un código de `argos-board pair` por el token del dispositivo.
+async fn api_pair(
+    State(st): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    Json(body): Json<PairBody>,
+) -> Response {
+    let label = body.name.as_deref().unwrap_or("dispositivo");
+    let result = st
+        .pairing
+        .try_pair(&body.code, label, Utc::now(), std::time::Instant::now());
+    let no_store = [(header::CACHE_CONTROL, "no-store")];
+    match result {
+        Ok(d) => {
+            tracing::info!(device = %d.id, name = %d.name, peer = %peer.ip(), "dispositivo emparejado");
+            (
+                no_store,
+                Json(serde_json::json!({ "token": d.token, "id": d.id, "name": d.name })),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::warn!(peer = %peer.ip(), error = ?e, "emparejamiento fallido");
+            let status = match e {
+                devices::PairError::TooMany => StatusCode::TOO_MANY_REQUESTS,
+                devices::PairError::Storage => StatusCode::INTERNAL_SERVER_ERROR,
+                _ => StatusCode::FORBIDDEN,
+            };
+            (
+                status,
+                no_store,
+                Json(serde_json::json!({ "error": e.message() })),
+            )
+                .into_response()
+        }
+    }
 }
 
 async fn browser_ws(
     State(st): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
@@ -138,18 +296,13 @@ async fn browser_ws(
     if header_str(&headers, header::ORIGIN).is_none() {
         return (StatusCode::FORBIDDEN, "falta Origin").into_response();
     }
+    let access = Access {
+        local: is_local_ip(peer.ip()),
+        control: st.control,
+        devices: st.pairing.store().clone(),
+    };
     ws.max_message_size(64 * 1024)
-        .on_upgrade(move |socket| browser_session(socket, st.board, st.control, st.launcher))
-}
-
-/// Comparación en tiempo constante respecto al contenido.
-fn same_secret(given: &str, secret: &str) -> bool {
-    given.len() == secret.len()
-        && given
-            .bytes()
-            .zip(secret.bytes())
-            .fold(0u8, |acc, (a, b)| acc | (a ^ b))
-            == 0
+        .on_upgrade(move |socket| browser_session(socket, st.board, access, st.launcher))
 }
 
 /// Ventana de un segundo para limitar el ritmo de entradas.
@@ -176,11 +329,12 @@ const NO_PERMISSION: &str =
 async fn handle_browser_msg(
     board: &Arc<Board>,
     launcher: &Arc<Launcher>,
-    control: &str,
-    authorized: &mut bool,
+    access: &Access,
+    session: &mut Session,
     rate: &mut RateLimit,
     text: &str,
 ) -> Vec<BrowserMsg> {
+    let authorized = &mut session.authorized;
     let msg = match serde_json::from_str::<FromBrowser>(text) {
         Ok(m) => m,
         Err(e) => {
@@ -196,9 +350,14 @@ async fn handle_browser_msg(
     };
     match msg {
         FromBrowser::Auth { token } => {
-            *authorized = same_secret(&token, control);
+            // El token de control es el del enlace de `serve`: solo vale desde la propia
+            // máquina. Desde la red hace falta un dispositivo emparejado (revocable).
+            let device = access.devices.authenticate(&token, Utc::now());
+            *authorized =
+                device.is_some() || (access.local && same_secret(&token, &access.control));
+            session.device = device.map(|d| d.id);
             if !*authorized {
-                tracing::warn!("token de control inválido desde la página");
+                tracing::warn!(local = access.local, "credencial inválida desde la página");
                 return vec![BrowserMsg::AuthResult { ok: false }];
             }
             let info = launcher.info();
@@ -299,30 +458,57 @@ async fn handle_browser_msg(
     }
 }
 
+/// Quién se conecta al `/ws`.
+struct Access {
+    /// La conexión viene de la propia máquina.
+    local: bool,
+    /// Token del enlace de `serve` (solo vale si `local`).
+    control: Arc<str>,
+    devices: Store,
+}
+
+/// Estado de una conexión del navegador.
+#[derive(Default)]
+struct Session {
+    /// Puede escribir y lanzar agentes.
+    authorized: bool,
+    /// Puede ver los agentes: la propia máquina siempre; la red, tras autenticarse.
+    can_read: bool,
+    /// Dispositivo emparejado que se autenticó (si fue con uno).
+    device: Option<String>,
+}
+
+/// Cada cuánto una sesión comprueba que su dispositivo no se haya revocado.
+const DEVICE_CHECK: Duration = Duration::from_secs(5);
+
 async fn browser_session(
     mut socket: WebSocket,
     board: Arc<Board>,
-    control: Arc<str>,
+    access: Access,
     launcher: Arc<Launcher>,
 ) {
-    let mut authorized = false;
+    let mut session = Session {
+        can_read: access.local,
+        ..Session::default()
+    };
     let mut rate = RateLimit {
         window: std::time::Instant::now(),
         count: 0,
     };
     let (agents, mut rx) = board.subscribe();
-    if send_json(
-        &mut socket,
-        &BrowserMsg::Snapshot {
+    let first = if session.can_read {
+        BrowserMsg::Snapshot {
             agents,
             server_version: VERSION,
-        },
-    )
-    .await
-    .is_err()
-    {
+        }
+    } else {
+        // Desde la red no se muestra nada hasta autenticarse.
+        BrowserMsg::AuthRequired
+    };
+    if send_json(&mut socket, &first).await.is_err() {
         return;
     }
+    let mut check = tokio::time::interval(DEVICE_CHECK);
     loop {
         tokio::select! {
             ev = rx.recv() => {
@@ -332,16 +518,32 @@ async fn browser_session(
                     Err(RecvError::Lagged(_)) => BrowserMsg::Snapshot { agents: board.snapshot(), server_version: VERSION },
                     Err(RecvError::Closed) => return,
                 };
-                if send_json(&mut socket, &msg).await.is_err() {
+                if session.can_read && send_json(&mut socket, &msg).await.is_err() {
+                    return;
+                }
+            }
+            _ = check.tick() => {
+                // Revocado o caducado: se corta; al reconectar tendrá que emparejarse de nuevo.
+                if let Some(id) = &session.device
+                    && !access.devices.touch(id, Utc::now())
+                {
                     return;
                 }
             }
             incoming = socket.recv() => match incoming {
                 Some(Ok(Message::Close(_))) | None | Some(Err(_)) => return,
                 Some(Ok(Message::Text(text))) => {
-                    let replies = handle_browser_msg(&board, &launcher, &control, &mut authorized, &mut rate, &text).await;
+                    let replies = handle_browser_msg(&board, &launcher, &access, &mut session, &mut rate, &text).await;
                     for reply in replies {
                         if send_json(&mut socket, &reply).await.is_err() {
+                            return;
+                        }
+                    }
+                    // Recién autenticado desde la red: ahora sí ve los agentes.
+                    if session.authorized && !session.can_read {
+                        session.can_read = true;
+                        let snapshot = BrowserMsg::Snapshot { agents: board.snapshot(), server_version: VERSION };
+                        if send_json(&mut socket, &snapshot).await.is_err() {
                             return;
                         }
                     }
@@ -368,9 +570,14 @@ fn token_ok(headers: &HeaderMap, token: &str) -> bool {
 
 async fn ingest_ws(
     State(st): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
+    // Los wrappers corren en esta máquina: la ingesta no se ofrece a la red.
+    if !is_local_ip(peer.ip()) {
+        return (StatusCode::FORBIDDEN, "la ingesta es solo local").into_response();
+    }
     // El wrapper no es un navegador: un Origin aquí es sospechoso.
     if headers.contains_key(header::ORIGIN) || !token_ok(&headers, &st.token) {
         return (StatusCode::UNAUTHORIZED, "token inválido").into_response();
@@ -452,13 +659,74 @@ mod tests {
 
     #[test]
     fn host_and_origin_rules() {
-        assert!(host_allowed("localhost:8787", 8787));
-        assert!(host_allowed("127.0.0.1:8787", 8787));
-        assert!(!host_allowed("evil.example:8787", 8787));
-        assert!(!host_allowed("localhost:9999", 8787));
-        assert!(origin_allowed("http://localhost:8787", 8787));
-        assert!(!origin_allowed("https://evil.example", 8787));
-        assert!(!origin_allowed("http://localhost.evil.example:8787", 8787));
+        let hosts: Vec<String> = [
+            "localhost:8787",
+            "127.0.0.1:8787",
+            "10.8.0.1:8787",
+            "[fd00::1]:8787",
+        ]
+        .map(String::from)
+        .into();
+        assert!(host_allowed("localhost:8787", &hosts));
+        assert!(host_allowed("127.0.0.1:8787", &hosts));
+        assert!(host_allowed("10.8.0.1:8787", &hosts));
+        assert!(host_allowed("LOCALHOST:8787", &hosts));
+        assert!(host_allowed("[fd00::1]:8787", &hosts));
+        assert!(!host_allowed("evil.example:8787", &hosts));
+        assert!(!host_allowed("10.8.0.2:8787", &hosts));
+        assert!(!host_allowed("localhost:9999", &hosts));
+        assert!(origin_allowed("http://localhost:8787", &hosts));
+        assert!(origin_allowed("http://10.8.0.1:8787", &hosts));
+        assert!(!origin_allowed("https://evil.example", &hosts));
+        assert!(!origin_allowed(
+            "http://localhost.evil.example:8787",
+            &hosts
+        ));
+    }
+
+    #[test]
+    fn private_and_local_addresses() {
+        let ip = |s: &str| s.parse::<IpAddr>().unwrap();
+        for private in [
+            "10.8.0.1",
+            "192.168.1.134",
+            "172.16.5.4",
+            "169.254.1.1",
+            "100.64.0.9",
+            "fd00::1",
+            "fe80::1",
+            "::ffff:192.168.1.5",
+        ] {
+            assert!(is_private_ip(ip(private)), "{private}");
+        }
+        for public in [
+            "8.8.8.8",
+            "172.32.0.1",
+            "100.128.0.1",
+            "2001:4860:4860::8888",
+            "::ffff:8.8.8.8",
+        ] {
+            assert!(!is_private_ip(ip(public)), "{public}");
+        }
+        assert!(
+            is_local_ip(ip("127.0.0.1"))
+                && is_local_ip(ip("::1"))
+                && is_local_ip(ip("::ffff:127.0.0.1"))
+        );
+        assert!(!is_local_ip(ip("192.168.1.134")));
+    }
+
+    #[test]
+    fn bind_addresses_are_validated() {
+        let ip = |s: &str| s.parse::<IpAddr>().unwrap();
+        assert!(validate_binds(&[ip("0.0.0.0")]).is_err());
+        assert!(validate_binds(&[ip("::")]).is_err());
+        assert!(validate_binds(&[ip("8.8.8.8")]).is_err());
+        // Loopback ya se escucha siempre; los duplicados se descartan.
+        assert_eq!(
+            validate_binds(&[ip("127.0.0.1"), ip("10.8.0.1"), ip("10.8.0.1")]).unwrap(),
+            vec![ip("10.8.0.1")]
+        );
     }
 
     #[test]

@@ -765,3 +765,288 @@ fn launch_agent_in_tmux_from_the_page() {
     }
     launch_flow(true);
 }
+
+// ---- Acceso desde la red: emparejamiento por código y dispositivos ----
+
+/// IP privada de esta máquina (la de la interfaz de salida), si la hay. No envía nada:
+/// conectar un socket UDP solo hace que el sistema elija la interfaz.
+fn lan_ip() -> Option<std::net::IpAddr> {
+    let sock = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+    sock.connect("192.0.2.1:9").ok()?;
+    match sock.local_addr().ok()?.ip() {
+        ip @ std::net::IpAddr::V4(v4) if v4.is_private() => Some(ip),
+        _ => None,
+    }
+}
+
+fn start_server_args(cfg: &Path, port: u16, extra: &[&str], ready_ip: &str) -> Server {
+    let child = Command::new(BIN)
+        .args(["serve", "--port", &port.to_string()])
+        .args(extra)
+        .env("ARGOS_BOARD_CONFIG_DIR", cfg)
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while std::net::TcpStream::connect((ready_ip, port)).is_err()
+        || std::net::TcpStream::connect(("127.0.0.1", port)).is_err()
+    {
+        assert!(Instant::now() < deadline, "el servidor no arrancó");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    Server(child)
+}
+
+/// Petición HTTP/1.1 mínima a `ip:port` con cabeceras y cuerpo opcionales.
+fn http_req(
+    ip: &str,
+    port: u16,
+    method: &str,
+    path: &str,
+    host: &str,
+    headers: &[(&str, &str)],
+    body: &str,
+) -> (u16, String) {
+    use std::io::Read;
+    let mut s = std::net::TcpStream::connect((ip, port)).unwrap();
+    let mut req = format!("{method} {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n");
+    for (k, v) in headers {
+        req.push_str(&format!("{k}: {v}\r\n"));
+    }
+    if !body.is_empty() {
+        req.push_str(&format!(
+            "Content-Type: application/json\r\nContent-Length: {}\r\n",
+            body.len()
+        ));
+    }
+    write!(s, "{req}\r\n{body}").unwrap();
+    let mut buf = String::new();
+    s.read_to_string(&mut buf).unwrap();
+    let status = buf.split_whitespace().nth(1).unwrap().parse().unwrap();
+    let body = buf
+        .split_once("\r\n\r\n")
+        .map(|(_, b)| b.to_string())
+        .unwrap_or_default();
+    (status, body)
+}
+
+fn cli(cfg: &Path, args: &[&str]) -> std::process::Output {
+    Command::new(BIN)
+        .args(args)
+        .env("ARGOS_BOARD_CONFIG_DIR", cfg)
+        .output()
+        .unwrap()
+}
+
+/// Genera un código con `argos-board pair` y lo devuelve tal como se muestra.
+fn new_pair_code(cfg: &Path) -> String {
+    let out = cli(cfg, &["pair"]);
+    assert!(out.status.success());
+    let text = String::from_utf8(out.stdout).unwrap();
+    let code = text
+        .lines()
+        .find_map(|l| l.strip_prefix("Código de emparejamiento:"))
+        .unwrap()
+        .trim()
+        .to_string();
+    assert_eq!(code.len(), 9, "{code}"); // XXXX-XXXX
+    code
+}
+
+fn pair_request(ip: &str, port: u16, code: &str) -> (u16, Value) {
+    let (status, body) = http_req(
+        ip,
+        port,
+        "POST",
+        "/api/pair",
+        &format!("{ip}:{port}"),
+        &[("Origin", &format!("http://{ip}:{port}"))],
+        &serde_json::json!({ "code": code, "name": "Pixel · Chrome" }).to_string(),
+    );
+    (status, serde_json::from_str(&body).unwrap_or(Value::Null))
+}
+
+type Ws =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+async fn ws_connect(ip: &str, port: u16) -> Ws {
+    let mut req = format!("ws://{ip}:{port}/ws")
+        .into_client_request()
+        .unwrap();
+    req.headers_mut()
+        .insert("origin", format!("http://{ip}:{port}").parse().unwrap());
+    tokio_tungstenite::connect_async(req).await.unwrap().0
+}
+
+async fn ws_next(ws: &mut Ws) -> Option<Value> {
+    let msg = tokio::time::timeout(Duration::from_secs(12), ws.next())
+        .await
+        .expect("timeout esperando al servidor")?
+        .ok()?;
+    serde_json::from_str(msg.to_text().ok()?).ok()
+}
+
+async fn ws_send_auth(ws: &mut Ws, token: &str) {
+    use futures_util::SinkExt;
+    let msg = serde_json::json!({ "type": "auth", "token": token }).to_string();
+    ws.send(tokio_tungstenite::tungstenite::Message::text(msg))
+        .await
+        .unwrap();
+}
+
+#[test]
+fn remote_access_requires_a_paired_device() {
+    let Some(lan) = lan_ip() else {
+        eprintln!("sin IP privada en esta máquina: se omite");
+        return;
+    };
+    let lan = lan.to_string();
+    let cfg = tempfile::tempdir().unwrap();
+    let port = free_port();
+    let _server = start_server_args(cfg.path(), port, &["--bind", &lan], &lan);
+    let host = format!("{lan}:{port}");
+
+    // La página se sirve (hace falta para mostrar el emparejamiento); los datos, no.
+    assert_eq!(http_req(&lan, port, "GET", "/", &host, &[], "").0, 200);
+    assert_eq!(
+        http_req(&lan, port, "GET", "/api/agents", &host, &[], "").0,
+        401
+    );
+    assert_eq!(
+        http_get(port, "/api/agents", &format!("127.0.0.1:{port}")).0,
+        200
+    );
+    // Host ajeno por la IP de la red → 403 (DNS rebinding).
+    assert_eq!(
+        http_req(&lan, port, "GET", "/", "evil.example", &[], "").0,
+        403
+    );
+
+    // Sin código activo no se puede emparejar.
+    let (status, body) = pair_request(&lan, port, "AAAA-AAAA");
+    assert_eq!(status, 403, "{body}");
+    assert!(body["error"].as_str().unwrap().contains("argos-board pair"));
+
+    // Cinco fallos anulan el código, aunque el sexto intento fuera el correcto.
+    let code = new_pair_code(cfg.path());
+    for _ in 0..4 {
+        assert_eq!(pair_request(&lan, port, "AAAA-AAAA").0, 403);
+    }
+    let (status, body) = pair_request(&lan, port, "AAAA-AAAA");
+    assert_eq!(status, 403);
+    assert!(body["error"].as_str().unwrap().contains("anuló"), "{body}");
+    assert_eq!(pair_request(&lan, port, &code).0, 403);
+
+    // Un código nuevo se canjea (minúsculas y sin guion también valen) una sola vez.
+    let code = new_pair_code(cfg.path());
+    let typed = code.replace('-', "").to_lowercase();
+    let (status, body) = pair_request(&lan, port, &typed);
+    assert_eq!(status, 200, "{body}");
+    let token = body["token"].as_str().unwrap().to_string();
+    let id = body["id"].as_str().unwrap().to_string();
+    assert_eq!(pair_request(&lan, port, &code).0, 403);
+
+    // Con el token del dispositivo se lee.
+    let bearer = format!("Bearer {token}");
+    let auth = [("Authorization", bearer.as_str())];
+    assert_eq!(
+        http_req(&lan, port, "GET", "/api/agents", &host, &auth, "").0,
+        200
+    );
+    let bad = [("Authorization", "Bearer nope")];
+    assert_eq!(
+        http_req(&lan, port, "GET", "/api/agents", &host, &bad, "").0,
+        401
+    );
+
+    // El comando `devices` lo lista.
+    let list = String::from_utf8(cli(cfg.path(), &["devices"]).stdout).unwrap();
+    assert!(
+        list.contains(&id) && list.contains("Pixel · Chrome"),
+        "{list}"
+    );
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        // Desde la red, el WebSocket no muestra nada sin autenticarse.
+        let mut ws = ws_connect(&lan, port).await;
+        assert_eq!(ws_next(&mut ws).await.unwrap()["type"], "auth_required");
+        // El token de control (el del enlace de `serve`) no vale desde la red.
+        let control = std::fs::read_to_string(cfg.path().join("control-token")).unwrap();
+        ws_send_auth(&mut ws, control.trim()).await;
+        let reply = ws_next(&mut ws).await.unwrap();
+        assert_eq!(
+            (reply["type"].as_str(), reply["ok"].as_bool()),
+            (Some("auth_result"), Some(false))
+        );
+
+        // Con el del dispositivo: autoriza y recién entonces llega el estado.
+        let mut ws = ws_connect(&lan, port).await;
+        assert_eq!(ws_next(&mut ws).await.unwrap()["type"], "auth_required");
+        ws_send_auth(&mut ws, &token).await;
+        let reply = ws_next(&mut ws).await.unwrap();
+        assert_eq!(
+            (reply["type"].as_str(), reply["ok"].as_bool()),
+            (Some("auth_result"), Some(true))
+        );
+        loop {
+            let msg = ws_next(&mut ws).await.unwrap();
+            if msg["type"] == "snapshot" {
+                break;
+            }
+            assert_eq!(msg["type"], "launch_info");
+        }
+
+        // La ingesta de wrappers no se ofrece a la red.
+        let mut req = format!("ws://{lan}:{port}/ingest")
+            .into_client_request()
+            .unwrap();
+        let token_file = std::fs::read_to_string(cfg.path().join("token")).unwrap();
+        req.headers_mut().insert(
+            "authorization",
+            format!("Bearer {}", token_file.trim()).parse().unwrap(),
+        );
+        assert!(tokio_tungstenite::connect_async(req).await.is_err());
+
+        // Revocar corta la sesión abierta y cierra la lectura.
+        let out = cli(cfg.path(), &["revoke", &id[..4]]);
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let deadline = Instant::now() + Duration::from_secs(12);
+        loop {
+            match tokio::time::timeout(Duration::from_secs(1), ws.next()).await {
+                Ok(None) | Ok(Some(Err(_))) => break,
+                Ok(Some(Ok(m))) if m.is_close() => break,
+                _ => assert!(
+                    Instant::now() < deadline,
+                    "la sesión revocada sigue abierta"
+                ),
+            }
+        }
+    });
+    assert_eq!(
+        http_req(&lan, port, "GET", "/api/agents", &host, &auth, "").0,
+        401
+    );
+    assert!(!cli(cfg.path(), &["revoke", "zzz"]).status.success());
+}
+
+#[test]
+fn bind_rejects_unsafe_addresses() {
+    let cfg = tempfile::tempdir().unwrap();
+    for ip in ["0.0.0.0", "::", "8.8.8.8"] {
+        let out = Command::new(BIN)
+            .args(["serve", "--port", &free_port().to_string(), "--bind", ip])
+            .env("ARGOS_BOARD_CONFIG_DIR", cfg.path())
+            .output()
+            .unwrap();
+        assert!(!out.status.success(), "--bind {ip} debía fallar");
+        assert!(
+            String::from_utf8_lossy(&out.stderr).contains("--bind"),
+            "{ip}"
+        );
+    }
+}

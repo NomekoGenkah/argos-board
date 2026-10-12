@@ -209,7 +209,8 @@ pub enum WrapperCmd {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FromBrowser {
-    /// Presenta el token de control (el del enlace que imprime `serve`).
+    /// Presenta el token de un dispositivo emparejado o, desde la propia máquina,
+    /// el token de control (el del enlace que imprime `serve`).
     Auth { token: String },
     /// `rid` identifica la petición en la respuesta `input_result`.
     Input { id: Uuid, rid: u64, input: Input },
@@ -256,6 +257,9 @@ pub enum BrowserMsg {
     AgentRemoved {
         id: Uuid,
     },
+    /// Esta conexión viene de la red: no recibe nada hasta autenticarse con el token
+    /// de un dispositivo emparejado.
+    AuthRequired,
     /// Respuesta a `auth`: con `ok`, esta conexión puede escribir en los agentes.
     AuthResult {
         ok: bool,

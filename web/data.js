@@ -2,6 +2,7 @@
 // Los renderizadores (tablero, oficina) y las alertas se suscriben con onChange.
 
 const TOKEN_KEY = "argos-control-token";
+const DEVICE_KEY = "argos-device-token";
 const INPUT_TIMEOUT_MS = 5000;
 
 /**
@@ -26,14 +27,59 @@ function takeToken() {
   }
 }
 
+function readStored(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function forget(key) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    /* nada */
+  }
+}
+
+/** Nombre corto para la lista de `argos-board devices`, p. ej. «Android · Chrome». */
+export function deviceLabel(ua = navigator.userAgent) {
+  const os = /Android/.test(ua)
+    ? "Android"
+    : /iPhone|iPad|iPod/.test(ua)
+      ? "iOS"
+      : /Windows/.test(ua)
+        ? "Windows"
+        : /Mac OS X|Macintosh/.test(ua)
+          ? "macOS"
+          : /Linux|X11/.test(ua)
+            ? "Linux"
+            : "dispositivo";
+  const browser = /Edg\//.test(ua)
+    ? "Edge"
+    : /Firefox|FxiOS/.test(ua)
+      ? "Firefox"
+      : /Chrome|CriOS/.test(ua)
+        ? "Chrome"
+        : /Safari/.test(ua)
+          ? "Safari"
+          : "";
+  return browser ? `${os} · ${browser}` : os;
+}
+
 export function createStore() {
   const agents = new Map(); // id -> snapshot (modelo de la sección 4 de la spec)
   const listeners = new Set();
   let conn = "connecting"; // connecting | open | closed
   let serverVersion = null;
-  let token = takeToken();
-  // Permiso para escribir: none (sin token) | pending | ok | bad (token rechazado).
-  let auth = token ? "pending" : "none";
+  let token = takeToken(); // token de control: el del enlace de `serve` (solo desde la propia máquina)
+  let deviceToken = readStored(DEVICE_KEY); // token de este dispositivo, tras emparejarlo
+  const credential = () => deviceToken || token;
+  let sentWith = null; // con qué credencial se mandó el último `auth`: device | control
+  let needsPair = false; // el servidor pidió autenticarse (la conexión viene de la red)
+  // Permiso: none (sin token) | pending | ok | bad (token rechazado) | pair (hay que emparejar).
+  let auth = credential() ? "pending" : "none";
   let socket = null;
   let launchInfo = null; // qué se puede lanzar (llega tras autorizar)
   let nextRid = 1;
@@ -70,15 +116,23 @@ export function createStore() {
         agents.delete(msg.id);
         emit({ kind: "agent_removed", id: msg.id });
         break;
+      case "auth_required":
+        needsPair = true;
+        if (!credential()) {
+          auth = "pair";
+          emit({ kind: "auth" });
+        }
+        break;
       case "auth_result":
-        auth = msg.ok ? "ok" : "bad";
-        if (!msg.ok) launchInfo = null;
+        auth = msg.ok ? "ok" : needsPair ? "pair" : "bad";
         if (!msg.ok) {
-          token = null;
-          try {
-            localStorage.removeItem(TOKEN_KEY);
-          } catch {
-            /* nada */
+          launchInfo = null;
+          if (sentWith === "device") {
+            deviceToken = null;
+            forget(DEVICE_KEY);
+          } else {
+            token = null;
+            forget(TOKEN_KEY);
           }
         }
         emit({ kind: "auth" });
@@ -95,6 +149,15 @@ export function createStore() {
     }
   }
 
+  /** Presenta la credencial guardada (si hay) por el WebSocket abierto. */
+  function sendAuth() {
+    const cred = credential();
+    if (!cred || socket?.readyState !== WebSocket.OPEN) return;
+    sentWith = deviceToken ? "device" : "control";
+    auth = "pending";
+    socket.send(JSON.stringify({ type: "auth", token: cred }));
+  }
+
   function connect() {
     const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
     let delay = 500;
@@ -107,10 +170,8 @@ export function createStore() {
       ws.onopen = () => {
         delay = 500;
         conn = "open";
-        if (token) {
-          auth = "pending";
-          ws.send(JSON.stringify({ type: "auth", token }));
-        }
+        needsPair = false;
+        sendAuth();
         emit({ kind: "conn" });
       };
       ws.onmessage = (ev) => {
@@ -138,11 +199,38 @@ export function createStore() {
     if (!fresh || fresh === token) return;
     token = fresh;
     if (socket?.readyState === WebSocket.OPEN) {
-      auth = "pending";
-      socket.send(JSON.stringify({ type: "auth", token }));
+      sendAuth();
       emit({ kind: "auth" });
     }
   });
+
+  /**
+   * Empareja este dispositivo con el código de `argos-board pair`. Si sale bien,
+   * guarda el token del dispositivo y se autentica. Resuelve con { ok, error }.
+   */
+  async function pair(code) {
+    let res;
+    try {
+      res = await fetch("api/pair", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code, name: deviceLabel() }),
+      });
+    } catch {
+      return { ok: false, error: "No se pudo contactar al servidor" };
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.token) return { ok: false, error: data.error ?? `Error ${res.status}` };
+    deviceToken = data.token;
+    try {
+      localStorage.setItem(DEVICE_KEY, data.token);
+    } catch {
+      /* sin almacenamiento: vale hasta recargar */
+    }
+    sendAuth();
+    emit({ kind: "auth" });
+    return { ok: true };
+  }
 
   /** Petición al servidor que espera respuesta (por `rid`). Resuelve con el mensaje. */
   function request(payload, timeoutMs = INPUT_TIMEOUT_MS) {
@@ -168,6 +256,7 @@ export function createStore() {
 
   return {
     connect,
+    pair,
     sendInput,
     listDirs,
     launch,
