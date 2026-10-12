@@ -35,6 +35,15 @@ export const prefs = {
     save("argos-sound", Boolean(on));
   },
 
+  // Idioma del dictado por voz (código BCP 47); null = el del navegador.
+  voiceLang() {
+    const v = load("argos-voice-lang", null);
+    return typeof v === "string" ? v : null;
+  },
+  setVoiceLang(lang) {
+    save("argos-voice-lang", lang);
+  },
+
   view() {
     return load("argos-view", "board") === "office" ? "office" : "board";
   },

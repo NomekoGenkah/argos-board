@@ -69,6 +69,13 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
   menús). Debajo, teclas rápidas: ↑ ↓ Enter Esc Tab y Ctrl+C. Probado con `claude`, `opencode` y `agy`
   (responder sus preguntas, escribir prompts, texto de varias líneas). La cabecera dice si la página tiene
   permiso: *Escritura activa* o *Solo lectura* (al hacer clic, explica cómo conseguirlo).
+- **Dictado por voz**: junto a *Enviar*, cada consola tiene un botón de micrófono. Púlsalo, habla (lo que dices
+  aparece en la caja, con lo provisional incluido) y púlsalo de nuevo para terminar; revisas y envías como cualquier
+  texto. Como el texto entra por la consola, sirve igual para `claude`, `opencode` y `agy`. Enviar con el dictado
+  activo lo cierra y manda lo dicho. El botón *Voz: es-CL* de la cabecera cambia el idioma. Usa el reconocimiento del
+  navegador (Chrome o Edge; el audio lo procesa el servicio del propio navegador, no argos-board) y el navegador solo
+  deja usar el micrófono con la página en `localhost` o por HTTPS: por `http://<ip>` desde otro dispositivo el botón
+  no aparece (en el celular, usa el micrófono del teclado).
 - **Nuevo agente** (cabecera, con permiso de escritura): eliges el tipo (solo los que están instalados), la
   carpeta (recientes o navegando) y, si quieres, un nombre; *Lanzar aquí* y aparece su tarjeta. Si tienes tmux,
   corre en una sesión propia y la tarjeta muestra cómo tomarlo desde una terminal
@@ -189,6 +196,11 @@ Notas:
   reenvío de puertos.
 - Sin HTTPS (por ahora): sobre HTTP el navegador no ofrece las notificaciones (`Notification`) ni instala la PWA con
   service worker; con WireGuard el tráfico ya va cifrado. El sonido y el contador de la pestaña sí funcionan.
+
+## Tests de la página
+
+La lógica del dictado por voz tiene pruebas de Node (sin navegador): `node --test tests/web/*.test.mjs`.
+El CI de GitHub solo corre las de Rust.
 
 ## Seguridad
 

@@ -499,6 +499,30 @@ main { padding: 16px; }
   cursor: pointer;
 }
 :root[data-theme="dark"] .console-send { color: #10241a; }
+.console-mic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+}
+.console-mic[hidden] { display: none; }
+.console-mic:hover { border-color: var(--muted); }
+.console-mic[aria-pressed="true"] {
+  border-color: var(--st-error);
+  background: color-mix(in srgb, var(--st-error) 14%, var(--panel-2));
+  color: var(--st-error);
+  animation: mic-pulse 1.4s ease-in-out infinite;
+}
+@keyframes mic-pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--st-error) 25%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .console-mic[aria-pressed="true"] { animation: none; } }
+.console-status[data-kind="info"] { color: var(--muted); }
 .console-keys { display: flex; flex-wrap: wrap; gap: 4px; }
 .key {
   min-width: 34px;
@@ -850,6 +874,10 @@ main { padding: 16px; }
   }
   .agent-dialog .console-input {
     font-size: 16px; /* Evita zoom forzado en iOS */
+    min-height: 38px;
+  }
+  .agent-dialog .console-mic {
+    min-width: 44px;
     min-height: 38px;
   }
   .agent-dialog .console-send {
