@@ -4,7 +4,9 @@ import { createAlerts } from "./alerts.js";
 import { createOfficeRenderer } from "./office.js";
 import { createAgentDialog } from "./dialog.js";
 import { createLaunchDialog } from "./launcher.js";
+import { currentVoiceLang } from "./console.js";
 import { createPairDialog } from "./pairing.js";
+import { languageChoices, voiceAvailable } from "./voice.js";
 import { prefs } from "./prefs.js";
 
 // Tema: selector Claro | Oscuro (actúa como switch: cualquier clic alterna el tema).
@@ -122,6 +124,22 @@ soundBtn.addEventListener("click", () => {
 // El audio necesita un gesto del usuario: el primer clic en la página lo habilita.
 document.addEventListener("pointerdown", () => prefs.sound() && alerts.unlockAudio(), { once: true });
 showSound();
+
+// Idioma del dictado por voz: solo si el navegador puede dictar aquí (contexto seguro + reconocedor).
+const voiceLangBtn = document.getElementById("voice-lang");
+if (voiceAvailable()) {
+  const showVoiceLang = () => {
+    voiceLangBtn.textContent = `Voz: ${currentVoiceLang()}`;
+  };
+  voiceLangBtn.hidden = false;
+  voiceLangBtn.addEventListener("click", () => {
+    const choices = languageChoices(navigator.language);
+    const next = choices[(choices.indexOf(currentVoiceLang()) + 1) % choices.length];
+    prefs.setVoiceLang(next);
+    showVoiceLang();
+  });
+  showVoiceLang();
+}
 
 // Permiso para escribir: aviso en la cabecera (no en cada tarjeta).
 const writeBtn = document.getElementById("write");
