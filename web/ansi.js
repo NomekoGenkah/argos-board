@@ -108,6 +108,25 @@ export function ansiToHtml(str, isDark = typeof document !== "undefined" && docu
   if (!str.includes("\x1b")) {
     return escapeHtml(str);
   }
+  // Cada fila de la pantalla del terminal es independiente: un fondo o color
+  // abierto en una fila no debe pasar a la siguiente.
+  // Una fila que es solo fondo (la barra de contexto) es un bloque flex que se
+  // estira al ancho visible: no desborda la tarjeta y conserva sus proporciones.
+  // Al ser un bloque, no lleva "\n" detrás.
+  let html = "";
+  const lines = str.split("\n");
+  lines.forEach((line, i) => {
+    const row = lineToHtml(line, isDark);
+    html += row.html;
+    if (i < lines.length - 1 && !row.bar) html += "\n";
+  });
+  return html;
+}
+
+function lineToHtml(str, isDark) {
+  if (!str.includes("\x1b")) {
+    return { html: escapeHtml(str), bar: false };
+  }
 
   const regex = /\x1b\[([0-9;?]*)([a-zA-Z])|\x1b\].*?(?:\x07|\x1b\\)/g;
 
@@ -147,10 +166,14 @@ export function ansiToHtml(str, isDark = typeof document !== "undefined" && docu
   let html = "";
   let currentOpenStyle = null;
   let lastIndex = 0;
+  const runs = []; // { text, styleStr }: para detectar filas que son solo fondo
 
   function appendChunk(text) {
     if (!text) return;
     const styleStr = getStyleString();
+    const last = runs[runs.length - 1];
+    if (last && last.styleStr === styleStr) last.text += text;
+    else runs.push({ text, styleStr });
     if (currentOpenStyle !== styleStr) {
       if (currentOpenStyle !== null) {
         html += "</span>";
@@ -271,5 +294,15 @@ export function ansiToHtml(str, isDark = typeof document !== "undefined" && docu
     html += "</span>";
   }
 
-  return html;
+  const isBar =
+    runs.length > 0 &&
+    runs.every((r) => r.text.trim() === "") &&
+    runs.some((r) => r.styleStr.includes("background-color"));
+  if (isBar) {
+    const cells = runs
+      .map((r) => `<span style="${r.styleStr}; flex: ${r.text.length} 1 0">&nbsp;</span>`)
+      .join("");
+    return { html: `<span class="bar-row">${cells}</span>`, bar: true };
+  }
+  return { html, bar: false };
 }

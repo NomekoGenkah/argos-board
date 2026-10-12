@@ -9,6 +9,8 @@ use std::time::{Duration, Instant};
 
 static ANSI_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\].*?(?:\x07|\x1b\\)").unwrap());
+/// Restablece todos los estilos (SGR 0).
+const RESET: &str = "\x1b[m";
 static SGR_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\x1b\[([0-9;]*)m").unwrap());
 static CUF_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\x1b\[(\d*)C").unwrap());
 
@@ -341,7 +343,17 @@ where
         lines.pop();
     }
     let start = lines.len().saturating_sub(n);
-    lines[start..].iter().map(|l| redact(l)).collect()
+    lines[start..]
+        .iter()
+        .map(|l| {
+            let mut line = redact(l);
+            // Cada fila cierra sus estilos: así ningún fondo se filtra a la siguiente.
+            if line.contains('\x1b') && !line.ends_with(RESET) {
+                line.push_str(RESET);
+            }
+            line
+        })
+        .collect()
 }
 
 /// Helper para tests: procesa un texto multilínea plano.
@@ -395,7 +407,7 @@ mod tests {
         );
         assert_eq!(
             s.last_lines(),
-            vec!["uno", "\x1b[31mdos", "API_KEY=[REDACTED]"]
+            vec!["uno", "\x1b[31mdos\x1b[m", "API_KEY=[REDACTED]"]
         );
         assert_eq!(last_lines("a\nb\n\nc\n", 2), vec!["", "c"]);
         assert_eq!(last_lines("\n\na\n\n\n\nb  \n\n\n", 10), vec!["a", "", "b"]);
