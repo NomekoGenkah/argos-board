@@ -19,6 +19,15 @@ const ANSI_COLORS = {
   15: "var(--ansi-bright-white, #ffffff)",
 };
 
+// Como fondo, el negro y el gris brillante (el bloque de los mensajes del usuario y de lo
+// pegado) usan grises neutros propios: las variables de texto son cafés y, como fondo,
+// dejan el texto sin contraste y tiñen la pantalla.
+const ANSI_BG_COLORS = {
+  ...ANSI_COLORS,
+  0: "var(--ansi-bg-black, #2b2b2b)",
+  8: "var(--ansi-bg-bright-black, #3a3a3a)",
+};
+
 const COLOR_STEPS = [0, 95, 135, 175, 215, 255];
 
 /**
@@ -54,9 +63,9 @@ export function adjustContrast(r, g, b, isDark) {
   return [r, g, b];
 }
 
-/** Devuelve la expresión CSS para un índice de la paleta de 256 colores. */
-export function color256(idx, isDark) {
-  if (idx >= 0 && idx < 16) return ANSI_COLORS[idx];
+/** Devuelve la expresión CSS para un índice de la paleta de 256 colores (`bg`: como fondo). */
+export function color256(idx, isDark, bg = false) {
+  if (idx >= 0 && idx < 16) return (bg ? ANSI_BG_COLORS : ANSI_COLORS)[idx];
   if (idx >= 16 && idx <= 231) {
     const n = idx - 16;
     let r = COLOR_STEPS[Math.floor(n / 36)];
@@ -180,7 +189,10 @@ function lineToHtml(str, isDark) {
         currentOpenStyle = null;
       }
       if (styleStr.length > 0) {
-        html += `<span style="${styleStr}">`;
+        // Con fondo: inline-block para que cubra toda la altura de la línea y no deje
+        // rendijas entre filas (ver `.lines .bg`).
+        const cls = styleStr.includes("background-color") ? ' class="bg"' : "";
+        html += `<span${cls} style="${styleStr}">`;
         currentOpenStyle = styleStr;
       }
     }
@@ -254,19 +266,19 @@ function lineToHtml(str, isDark) {
       } else if (code === 39) {
         state.fg = null;
       } else if (code >= 40 && code <= 47) {
-        state.bg = ANSI_COLORS[code - 40];
+        state.bg = ANSI_BG_COLORS[code - 40];
       } else if (code === 49) {
         state.bg = null;
       } else if (code >= 90 && code <= 97) {
         state.fg = ANSI_COLORS[code - 90 + 8];
       } else if (code >= 100 && code <= 107) {
-        state.bg = ANSI_COLORS[code - 100 + 8];
+        state.bg = ANSI_BG_COLORS[code - 100 + 8];
       } else if (code === 38 || code === 48) {
         const isFg = code === 38;
         if (i + 1 < codes.length && codes[i + 1] === 5 && i + 2 < codes.length) {
           const color = isFg
             ? color256(codes[i + 2], isDark)
-            : color256(codes[i + 2]);
+            : color256(codes[i + 2], undefined, true);
           if (isFg) state.fg = color;
           else state.bg = color;
           i += 2;
