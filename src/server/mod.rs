@@ -87,8 +87,29 @@ fn validate_binds(binds: &[IpAddr]) -> Result<Vec<IpAddr>> {
     Ok(out)
 }
 
-pub async fn serve(port: u16, binds: Vec<IpAddr>, allow_hosts: Vec<String>) -> Result<()> {
-    let extra = validate_binds(&binds)?;
+pub async fn serve(
+    port: u16,
+    local_only: bool,
+    binds: Vec<IpAddr>,
+    allow_hosts: Vec<String>,
+) -> Result<()> {
+    // Dónde ofrecer el tablero además de 127.0.0.1: las IPs de --bind o, por defecto, las
+    // redes privadas de esta máquina. Con --bind, un fallo es un error; con la detección
+    // automática, una dirección que no se pueda abrir solo se omite con un aviso.
+    let explicit = !binds.is_empty();
+    let candidates: Vec<(IpAddr, String)> = if local_only {
+        Vec::new()
+    } else if explicit {
+        validate_binds(&binds)?
+            .into_iter()
+            .map(|ip| (ip, "--bind".to_string()))
+            .collect()
+    } else {
+        crate::netif::private_interfaces()
+            .into_iter()
+            .map(|(name, ip)| (ip, name))
+            .collect()
+    };
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
         .await
         .map_err(|e| {
@@ -102,18 +123,28 @@ pub async fn serve(port: u16, binds: Vec<IpAddr>, allow_hosts: Vec<String>) -> R
         })?;
     let port = listener.local_addr()?.port();
     let mut listeners = vec![listener];
-    for ip in &extra {
-        listeners.push(
-            tokio::net::TcpListener::bind((*ip, port))
-                .await
-                .with_context(|| format!("no se pudo escuchar en {}", host_port(*ip, port)))?,
-        );
+    let mut extra: Vec<(IpAddr, String)> = Vec::new();
+    for (ip, name) in candidates {
+        match tokio::net::TcpListener::bind((ip, port)).await {
+            Ok(l) => {
+                listeners.push(l);
+                extra.push((ip, name));
+            }
+            Err(e) if explicit => {
+                return Err(e)
+                    .with_context(|| format!("no se pudo escuchar en {}", host_port(ip, port)));
+            }
+            Err(e) => eprintln!(
+                "argos-board: no se pudo escuchar en {} ({name}): {e}",
+                host_port(ip, port)
+            ),
+        }
     }
     let token = config::create_token().context("creando el token de ingesta")?;
     let control = config::control_token().context("creando el token de control")?;
 
     let mut hosts = vec![format!("localhost:{port}"), format!("127.0.0.1:{port}")];
-    hosts.extend(extra.iter().map(|ip| host_port(*ip, port)));
+    hosts.extend(extra.iter().map(|(ip, _)| host_port(*ip, port)));
     hosts.extend(
         allow_hosts
             .iter()
@@ -137,25 +168,21 @@ pub async fn serve(port: u16, binds: Vec<IpAddr>, allow_hosts: Vec<String>) -> R
         }
     });
 
+    let pairing = Arc::new(Pairing::new(store.clone()));
     let app = router(AppState {
         board,
         token: token.into(),
         control: control.clone().into(),
         launcher,
         hosts: Arc::new(hosts),
-        pairing: Arc::new(Pairing::new(store)),
+        pairing,
     });
     eprintln!("argos-board {VERSION} escuchando en http://localhost:{port}");
-    // El enlace con el token va al usuario por la terminal, nunca a un log.
+    // El enlace con el token y el código van al usuario por la terminal, nunca a un log.
     eprintln!(
         "Para escribir en los agentes desde la página, abre: http://localhost:{port}/#k={control}"
     );
-    for ip in &extra {
-        eprintln!(
-            "Otros dispositivos: http://{}/ (se emparejan con un código de `argos-board pair`)",
-            host_port(*ip, port)
-        );
-    }
+    announce_network(&extra, local_only, port, &store);
     let mut servers = tokio::task::JoinSet::new();
     for l in listeners {
         let make = app
@@ -167,6 +194,46 @@ pub async fn serve(port: u16, binds: Vec<IpAddr>, allow_hosts: Vec<String>) -> R
         res??;
     }
     Ok(())
+}
+
+/// Dice desde dónde conectarse con el celular y, si aún no hay ningún dispositivo
+/// emparejado, genera y muestra el código para emparejar el primero.
+fn announce_network(extra: &[(IpAddr, String)], local_only: bool, port: u16, store: &Store) {
+    if local_only {
+        eprintln!("Modo --local-only: el tablero solo se ofrece en esta máquina.");
+        return;
+    }
+    if extra.is_empty() {
+        eprintln!(
+            "No encontré una red privada en esta máquina: el tablero solo se ofrece aquí. Si tu red \
+             tiene otra dirección, indícala con --bind <IP>."
+        );
+        return;
+    }
+    eprintln!();
+    eprintln!("Desde el celular u otro dispositivo de la red, abre:");
+    for (ip, name) in extra {
+        eprintln!("    http://{}/   ({name})", host_port(*ip, port));
+    }
+    match store.list() {
+        Ok(devices) if devices.is_empty() => match store.create_code(Utc::now()) {
+            Ok((code, _)) => {
+                eprintln!();
+                eprintln!("Código de emparejamiento:  {code}");
+                eprintln!(
+                    "    (un solo uso, caduca en {} minutos; ingrésalo en esa página)",
+                    devices::CODE_TTL_MINUTES
+                );
+            }
+            Err(e) => eprintln!("argos-board: no se pudo crear el código de emparejamiento: {e:#}"),
+        },
+        Ok(devices) => eprintln!(
+            "{} dispositivo(s) emparejado(s). Para sumar otro: `argos-board pair`.",
+            devices.len()
+        ),
+        Err(e) => eprintln!("argos-board: no se pudieron leer los dispositivos emparejados: {e:#}"),
+    }
+    eprintln!();
 }
 
 fn router(state: AppState) -> Router {

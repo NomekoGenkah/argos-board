@@ -29,7 +29,7 @@ impl Drop for Server {
 
 fn start_server(cfg: &Path, port: u16) -> Server {
     let child = Command::new(BIN)
-        .args(["serve", "--port", &port.to_string()])
+        .args(["serve", "--local-only", "--port", &port.to_string()])
         .env("ARGOS_BOARD_CONFIG_DIR", cfg)
         .stderr(Stdio::null())
         .spawn()
@@ -593,7 +593,7 @@ fn browser_input_reaches_the_agent() {
 /// Servidor con un PATH y un entorno propios (para lanzar agentes falsos).
 fn start_server_with(cfg: &Path, port: u16, path: &str, envs: &[(&str, &str)]) -> Server {
     let child = Command::new(BIN)
-        .args(["serve", "--port", &port.to_string()])
+        .args(["serve", "--local-only", "--port", &port.to_string()])
         .env("ARGOS_BOARD_CONFIG_DIR", cfg)
         .env("PATH", path)
         .envs(envs.iter().copied())
@@ -922,6 +922,10 @@ fn remote_access_requires_a_paired_device() {
         403
     );
 
+    // `serve` ya generó un código al arrancar (aún no hay dispositivos); lo descartamos.
+    assert!(cfg.path().join("pairing.json").exists());
+    std::fs::remove_file(cfg.path().join("pairing.json")).unwrap();
+
     // Sin código activo no se puede emparejar.
     let (status, body) = pair_request(&lan, port, "AAAA-AAAA");
     assert_eq!(status, 403, "{body}");
@@ -1049,4 +1053,89 @@ fn bind_rejects_unsafe_addresses() {
             "{ip}"
         );
     }
+}
+
+/// Arranca `serve` con la salida de error en `log` y espera a que termine de anunciar dónde escucha.
+fn start_serve_logged(cfg: &Path, port: u16, args: &[&str], log: &Path) -> Server {
+    let server = Server(
+        Command::new(BIN)
+            .args(["serve", "--port", &port.to_string()])
+            .args(args)
+            .env("ARGOS_BOARD_CONFIG_DIR", cfg)
+            .stderr(std::fs::File::create(log).unwrap())
+            .spawn()
+            .unwrap(),
+    );
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let text = std::fs::read_to_string(log).unwrap_or_default();
+        let announced = ["Desde el celular", "--local-only", "No encontré"]
+            .iter()
+            .any(|m| text.contains(m));
+        if announced && std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            return server;
+        }
+        assert!(Instant::now() < deadline, "el servidor no arrancó: {text}");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn serve_offers_the_network_by_default_and_shows_a_pairing_code() {
+    let Some(lan) = lan_ip() else {
+        eprintln!("sin IP privada en esta máquina: se omite");
+        return;
+    };
+    let lan = lan.to_string();
+    let cfg = tempfile::tempdir().unwrap();
+    let logs = tempfile::tempdir().unwrap();
+    let port = free_port();
+
+    // Sin flags: escucha también en la red y dice desde dónde conectarse, con el código.
+    let log = logs.path().join("serve1.log");
+    let server = start_serve_logged(cfg.path(), port, &[], &log);
+    let text = std::fs::read_to_string(&log).unwrap();
+    assert!(text.contains(&format!("http://{lan}:{port}/")), "{text}");
+    let code = text
+        .lines()
+        .find_map(|l| l.strip_prefix("Código de emparejamiento:"))
+        .unwrap_or_else(|| panic!("serve no mostró el código: {text}"))
+        .trim()
+        .to_string();
+    assert_eq!(
+        http_req(&lan, port, "GET", "/", &format!("{lan}:{port}"), &[], "").0,
+        200
+    );
+
+    // Ese código, sin ejecutar `pair`, empareja el primer dispositivo.
+    let (status, body) = pair_request(&lan, port, &code);
+    assert_eq!(status, 200, "{body}");
+    drop(server);
+
+    // Con un dispositivo ya emparejado no se genera un código nuevo en cada arranque.
+    let log = logs.path().join("serve2.log");
+    let _server = start_serve_logged(cfg.path(), port, &[], &log);
+    let text = std::fs::read_to_string(&log).unwrap();
+    assert!(text.contains("1 dispositivo(s) emparejado(s)"), "{text}");
+    assert!(!text.contains("Código de emparejamiento"), "{text}");
+}
+
+#[test]
+fn local_only_keeps_the_server_off_the_network() {
+    let Some(lan) = lan_ip() else {
+        eprintln!("sin IP privada en esta máquina: se omite");
+        return;
+    };
+    let cfg = tempfile::tempdir().unwrap();
+    let logs = tempfile::tempdir().unwrap();
+    let port = free_port();
+    let log = logs.path().join("serve.log");
+    let _server = start_serve_logged(cfg.path(), port, &["--local-only"], &log);
+    let text = std::fs::read_to_string(&log).unwrap();
+    assert!(!text.contains("Código de emparejamiento"), "{text}");
+    assert!(std::net::TcpStream::connect((lan.to_string().as_str(), port)).is_err());
+    assert_eq!(
+        http_get(port, "/api/agents", &format!("127.0.0.1:{port}")).0,
+        200
+    );
 }

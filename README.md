@@ -33,7 +33,7 @@ vuelve a ejecutar `cargo install --path .` para actualizar el comando instalado.
 
 ```sh
 # 1. Servidor (una sola vez)
-argos-board serve            # http://localhost:8787  (--port para otro puerto)
+argos-board serve            # http://localhost:8787  (--port para otro puerto); muestra también la dirección para el celular
 
 # 2. Un agente por terminal, envuelto por el wrapper
 argos-board run -- claude
@@ -145,41 +145,55 @@ subas al repo sin revisarlos.
 
 ## Acceso desde otros dispositivos (celular, otra notebook)
 
-Por defecto el servidor solo escucha en `127.0.0.1`. Para usarlo desde otro dispositivo de tu red (p. ej. por
-WireGuard, o en el Wi-Fi de casa), pídele que escuche además en **una IP privada concreta**:
+`argos-board serve` ya escucha, además de en esta máquina, en las **redes privadas** a las que está conectada
+(LAN, WireGuard…), y al arrancar dice desde dónde conectarse y, la primera vez, da un código:
 
-```sh
-argos-board serve --bind 10.8.0.1            # la IP de WireGuard del servidor (se puede repetir --bind)
-argos-board serve --bind 192.168.1.134       # o la del Wi-Fi de casa
+```
+Desde el celular u otro dispositivo de la red, abre:
+    http://192.168.1.134:8787/   (eth0)
+    http://10.8.0.1:8787/        (wg0)
+
+Código de emparejamiento:  K7QM-2XPD
+    (un solo uso, caduca en 5 minutos; ingrésalo en esa página)
 ```
 
-`serve` imprime la dirección (`http://10.8.0.1:8787/`). Un dispositivo nuevo **se empareja** una vez, con un código:
+En el celular abre esa dirección: la página pide el código. Al canjearlo, ese dispositivo recibe su propio token
+(se guarda en su navegador) y queda con **acceso total**: ver, escribir en los agentes y lanzarlos. Un solo nivel de
+acceso, a propósito. El código sirve una sola vez, caduca a los 5 minutos y se anula tras 5 intentos fallidos.
 
 ```sh
-argos-board pair        # en el servidor (por SSH si no tiene pantalla): imprime p. ej. K7QM-2XPD
-```
-
-En el celular abre esa dirección: la página pide el código. Sirve una sola vez, caduca a los 5 minutos y se anula
-tras 5 intentos fallidos. Al canjearlo, el dispositivo recibe su propio token (se guarda en ese navegador) y
-queda con **acceso total**: ver, escribir en los agentes y lanzarlos. Un solo nivel de acceso, a propósito.
-
-```sh
+argos-board pair                # otro código (p. ej. por SSH en un servidor sin pantalla, o para sumar otro dispositivo)
 argos-board devices             # lista los dispositivos emparejados
 argos-board revoke <id|nombre>  # revoca uno (o --all); sus sesiones abiertas se cortan en unos segundos
 ```
 
-Un dispositivo que no se usa durante 30 días deja de ser válido. Notas:
+Con dispositivos ya emparejados, `serve` no genera un código en cada arranque (solo recuerda `argos-board pair`).
+Un dispositivo que no se usa durante 30 días deja de ser válido.
 
-- `--bind` rechaza `0.0.0.0` y las IPs públicas: argos-board no se expone fuera de la red local.
+Para limitarlo:
+
+```sh
+argos-board serve --local-only        # solo esta máquina, sin ofrecerlo a la red
+argos-board serve --bind 10.8.0.1     # solo esa(s) IP(s) (p. ej. solo WireGuard, no el Wi-Fi); se puede repetir
+```
+
+Notas:
+
+- Solo se ofrece en IPs **privadas** (10.x, 172.16-31.x, 192.168.x, 100.64.x, enlace local); `--bind` rechaza
+  `0.0.0.0` y las IPs públicas. Se omiten las interfaces de contenedores (docker, virbr…).
 - Desde la red no se ve nada sin emparejar (ni siquiera la lectura), y la ingesta de wrappers sigue siendo solo local.
 - **No pongas un proxy inverso delante**: el servidor distingue «esta máquina» por la dirección de origen de la
   conexión, y un proxy local haría que todo parezca local.
+- WSL2: la dirección que se muestra es la de WSL. Con `networkingMode=mirrored` es la de tu red y llega directo
+  (puede hacer falta abrir el puerto en el firewall de Windows); en modo NAT no se llega desde fuera sin un
+  reenvío de puertos.
 - Sin HTTPS (por ahora): sobre HTTP el navegador no ofrece las notificaciones (`Notification`) ni instala la PWA con
   service worker; con WireGuard el tráfico ya va cifrado. El sonido y el contador de la pestaña sí funcionan.
 
 ## Seguridad
 
-- El servidor escucha solo en `127.0.0.1` (y, si lo pides con `--bind`, en IPs privadas concretas; ver arriba); se
+- El servidor escucha en `127.0.0.1` y en las IPs privadas de esta máquina (`--local-only` o `--bind` lo limitan; ver
+  arriba); se
   valida `Host` y `Origin` (protección contra DNS rebinding y páginas externas) y que cada conexión venga de la
   propia máquina o de una red privada.
 - La ingesta exige un token que `serve` genera al iniciar en `~/.config/argos-board/token` (permisos `0600`).

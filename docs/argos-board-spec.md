@@ -134,9 +134,9 @@ Reglas:
 
 ## 8. Seguridad y privacidad
 
-- Bind a loopback; opcionalmente, además, a IPs privadas concretas con `--bind` (nunca `0.0.0.0` ni públicas). El `Host` permitido es el de loopback y el de esas IPs (más `--allow-host`); una conexión de un par que no sea la propia máquina ni una red privada se rechaza.
+- Bind a loopback y, por defecto, a las IPv4 privadas de las interfaces activas de la máquina (sin loopback ni interfaces de contenedores); `--local-only` lo limita a loopback y `--bind <IP>` a las IPs dadas (nunca `0.0.0.0` ni públicas). El `Host` permitido es el de loopback y el de esas IPs (más `--allow-host`); una conexión de un par que no sea la propia máquina ni una red privada se rechaza.
 - **Acceso desde la red (emparejamiento).** Un par que no es loopback no recibe nada del WebSocket (solo `auth_required`) ni de `/api/agents` hasta autenticarse con el token de un dispositivo emparejado. El token de control del enlace de `serve` solo vale desde loopback. La ingesta de wrappers (`/ingest`) es solo loopback.
-  - `argos-board pair` escribe un código de 8 símbolos legibles (`pairing.json`, `0600`), de un solo uso, 5 minutos de vida; `POST /api/pair` lo canjea por un token de dispositivo (256 bits, `devices.json`, `0600`). Se anula tras 5 fallos y hay un límite global de 10 intentos por minuto. Un solo nivel de acceso (total) por dispositivo.
+  - Al arrancar, `serve` imprime las direcciones para otros dispositivos y, si aún no hay ninguno emparejado, un código de emparejamiento. `argos-board pair` escribe un código de 8 símbolos legibles (`pairing.json`, `0600`), de un solo uso, 5 minutos de vida; `POST /api/pair` lo canjea por un token de dispositivo (256 bits, `devices.json`, `0600`). Se anula tras 5 fallos y hay un límite global de 10 intentos por minuto. Un solo nivel de acceso (total) por dispositivo.
   - `serve` relee los archivos en cada uso; las sesiones abiertas comprueban cada 5 s que su dispositivo siga vigente. Sin uso durante 30 días el dispositivo caduca. `argos-board devices` y `revoke` administran la lista.
   - Sin HTTPS por ahora (se asume un túnel cifrado como WireGuard): la API `Notification` y el service worker no están disponibles sobre HTTP.
 - En el WebSocket del navegador validar la cabecera `Origin`/`Host` (evita rebinding DNS y páginas externas leyendo el tablero).

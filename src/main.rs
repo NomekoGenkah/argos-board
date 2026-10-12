@@ -2,6 +2,7 @@ mod config;
 mod devices;
 mod git;
 mod model;
+mod netif;
 mod profiles;
 mod redact;
 mod server;
@@ -27,17 +28,22 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Inicia el servidor web (por defecto solo 127.0.0.1).
+    /// Inicia el servidor web: en esta máquina y en las redes privadas a las que está
+    /// conectada (LAN, WireGuard), para entrar desde el celular. Muestra las direcciones y,
+    /// si aún no hay dispositivos emparejados, un código para emparejar el primero.
     Serve {
         #[arg(long, default_value_t = config::DEFAULT_PORT)]
         port: u16,
-        /// Además de 127.0.0.1, escucha en esta IP privada (p. ej. la de WireGuard o la
-        /// del Wi-Fi de casa). Se puede repetir. Los demás dispositivos se emparejan con
-        /// `argos-board pair`. No admite 0.0.0.0 ni IPs públicas.
+        /// Solo en esta máquina (127.0.0.1): no se ofrece a la red.
+        #[arg(long, conflicts_with = "bind")]
+        local_only: bool,
+        /// Escucha solo en estas IPs privadas (además de 127.0.0.1) en vez de en todas las
+        /// redes privadas detectadas; p. ej. solo la de WireGuard. Se puede repetir.
+        /// No admite 0.0.0.0 ni IPs públicas.
         #[arg(long, value_name = "IP", value_delimiter = ',')]
         bind: Vec<IpAddr>,
         /// Nombre extra con el que se accede (p. ej. `servidor.local`); se suma a las
-        /// IPs de --bind como `Host` permitido.
+        /// IPs como `Host` permitido.
         #[arg(long, value_name = "HOST")]
         allow_host: Vec<String>,
     },
@@ -80,6 +86,7 @@ fn main() {
     match cli.cmd {
         Cmd::Serve {
             port,
+            local_only,
             bind,
             allow_host,
         } => {
@@ -91,7 +98,7 @@ fn main() {
                 .with_writer(std::io::stderr)
                 .init();
             let rt = tokio::runtime::Runtime::new().expect("runtime tokio");
-            if let Err(e) = rt.block_on(server::serve(port, bind, allow_host)) {
+            if let Err(e) = rt.block_on(server::serve(port, local_only, bind, allow_host)) {
                 eprintln!("error: {e:#}");
                 std::process::exit(1);
             }
