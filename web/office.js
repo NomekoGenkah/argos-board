@@ -9,6 +9,7 @@
 
 import * as S from "./sprites.js";
 import { LABELS, KINDS, formatDuration, sortAgents } from "./render.js";
+import { stripAnsi } from "./ansi.js";
 
 export const ZONE_OF = {
   working: "office",
@@ -69,6 +70,7 @@ const SCENE = {
     muted: "#a48f88",
     iris: "#318561",
     glow: 0,
+    isDark: false,
   },
   dark: {
     wall: "#2d2422",
@@ -100,6 +102,7 @@ const SCENE = {
     muted: "#8a7a75",
     iris: "#1ad988",
     glow: 1,
+    isDark: true,
   },
 };
 
@@ -711,6 +714,13 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     rect(0, WALL_H - 13, vw, 1, th.panelLine);
     rect(0, WALL_H - 3, vw, 3, th.base);
 
+    if (th.isDark) {
+      // Tira LED ambiental oculta a lo largo del panel de la pared
+      rect(0, WALL_H - 13, vw, 1, "#1ad988");
+      ctx.fillStyle = "rgb(26 217 136 / .14)";
+      ctx.fillRect(0, WALL_H - 12, vw, 3);
+    }
+
     // Una ventana, el calendario, el ojo de Argos y el reloj, centrados.
     const x0 = Math.floor((vw - 136) / 2);
     drawWindow(th, x0, 5, t);
@@ -725,18 +735,21 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
 
   const plantPal = plainPal({ g: "#24644a", G: "#318561", T: "#994739", t: "#7d3a2f" });
 
-  function skyFor(date) {
+  function skyFor(date, isDark) {
+    if (isDark) {
+      return { bands: ["#070a1a", "#0d132a", "#151d3d"], stars: true, city: true };
+    }
     const h = date.getHours() + date.getMinutes() / 60;
     if (h >= 7.5 && h < 17.5) return { bands: ["#7cc3f0", "#9fd3f4", "#c4e5f8"], clouds: true };
     if (h >= 17.5 && h < 19.5) return { bands: ["#5b5aa6", "#e0796a", "#f7b267"], sun: "#ffd27a" };
     if (h >= 6 && h < 7.5) return { bands: ["#7b9ad1", "#f2a7a0", "#fbd7a8"], sun: "#fff0c2" };
-    return { bands: ["#141c3a", "#1b2650", "#26346a"], stars: true };
+    return { bands: ["#141c3a", "#1b2650", "#26346a"], stars: true, city: true };
   }
 
   function drawWindow(th, x, y, t) {
     const w = 38;
     const h = 26;
-    const sky = skyFor(new Date());
+    const sky = skyFor(new Date(), th.isDark);
     rect(x - 1, y - 1, w + 2, h + 2, S.OUTLINE);
     rect(x, y, w, h, th.frame);
     const ix = x + 2;
@@ -764,16 +777,44 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     if (sky.stars) {
       [
         [3, 2],
-        [12, 6],
-        [24, 3],
-        [8, 12],
-        [28, 14],
-        [17, 16],
+        [10, 4],
+        [18, 2],
+        [24, 4],
+        [6, 8],
+        [14, 9],
+        [29, 7],
       ].forEach(([sx, sy], i) => {
-        if ((t + i * 3) % 13 !== 0) rect(ix + sx, iy + sy, 1, 1, "#fff6d8");
+        if (reduced.matches || (t + i * 4) % 11 !== 0) {
+          rect(ix + sx, iy + sy, 1, 1, i % 2 === 0 ? "#fff6d8" : "#9ed0ff");
+        }
       });
-      rect(ix + iw - 8, iy + 3, 4, 4, "#f4efd8");
-      rect(ix + iw - 7, iy + 3, 3, 3, sky.bands[0]);
+      // Luna creciente brillante
+      rect(ix + iw - 8, iy + 2, 4, 4, "#fff2b8");
+      rect(ix + iw - 7, iy + 2, 3, 3, sky.bands[0]);
+    }
+    if (sky.city) {
+      // Silueta nocturna de edificios con ventanitas cálidas
+      const bldgs = [
+        [0, 8, 5],
+        [5, 11, 6],
+        [11, 7, 5],
+        [16, 12, 5],
+        [21, 9, 6],
+        [27, 13, 7],
+      ];
+      for (const [bx, bh, bw] of bldgs) {
+        rect(ix + bx, iy + ih - bh, bw, bh, "#090d1f");
+        if (bh >= 12) {
+          rect(ix + bx + Math.floor(bw / 2), iy + ih - bh - 1, 1, 1, t % 8 < 4 ? "#ff3333" : "#771111");
+        }
+        for (let wy = iy + ih - bh + 2; wy < iy + ih - 2; wy += 3) {
+          for (let wx = ix + bx + 1; wx < ix + bx + bw - 1; wx += 2) {
+            if ((S.hash(`win-${wx}-${wy}`) & 3) !== 0) {
+              rect(wx, wy, 1, 1, "#ffdb70");
+            }
+          }
+        }
+      }
     }
     ctx.restore();
     rect(x + Math.floor(w / 2) - 1, y, 2, h, th.frame);
@@ -869,6 +910,10 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       }
     }
     if (EYE[iy - 1 - ey]?.[ix - 1 - ex] === "W") rect(ix - 1, iy - 1, 1, 1, "#ffffff");
+    if (th.isDark) {
+      ctx.fillStyle = "rgb(26 217 136 / .09)";
+      ctx.fillRect(x - 2, y - 2, 30, 23);
+    }
   }
 
   function gaze(cx, t) {
@@ -899,6 +944,12 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     rect(dx + 1, dy + 11, 44, 1, th.deskTopHi);
     rect(dx + 1, dy + 17, 44, 10, th.deskFront);
     rect(dx + 1, dy + 17, 44, 1, th.deskFrontDark);
+    if (th.isDark) {
+      // Tira LED cálida ámbar bajo el borde de tu escritorio
+      rect(dx + 1, dy + 17, 44, 1, "#f59e0b");
+      ctx.fillStyle = "rgb(245 158 11 / .12)";
+      ctx.fillRect(dx + 1, dy + 18, 44, 3);
+    }
     rect(dx + 17, dy + 19, 13, 7, th.plaqueIn);
     S.drawText(ctx, "TU", dx + 20, dy + 20, th.plaque);
     // Encima: portátil, timbre y una planta.
@@ -1131,8 +1182,16 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     const sy = y + 6;
     const sw = 18;
     const sh = 11;
+    if (th.isDark) {
+      // ScreenBar LED moderna montada sobre el monitor
+      rect(x + 9, y + 2, 16, 1, S.OUTLINE);
+      rect(x + 10, y + 2, 14, 1, "#ffe8c2");
+      // Iluminación suave sobre el teclado
+      ctx.fillStyle = "rgb(255 235 200 / .07)";
+      ctx.fillRect(x + 12, y + 21, 26, 4);
+    }
     if (th.glow && state && state !== "disconnected") {
-      ctx.fillStyle = state === "error" ? "rgb(255 120 100 / .10)" : "rgb(150 200 255 / .08)";
+      ctx.fillStyle = state === "error" ? "rgb(255 120 100 / .14)" : "rgb(120 200 255 / .12)";
       ctx.fillRect(sx, y + 21, sw, 5);
       ctx.fillRect(sx - 3, y + 21, sw + 6, 3);
     }
@@ -1176,7 +1235,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       return;
     }
     rect(sx, sy, sw, sh, a.state === "error" ? "#3a1412" : "#17202d");
-    const lines = (a.last_lines ?? []).filter((l) => l.trim() !== "").slice(-5);
+    const lines = (a.last_lines ?? []).map(stripAnsi).filter((l) => l.trim() !== "").slice(-5);
     lines.forEach((text, i) => {
       const ly = sy + 1 + i * 2;
       const selected = /[❯›»]/.test(text);

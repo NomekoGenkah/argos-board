@@ -6,21 +6,34 @@ import { createAgentDialog } from "./dialog.js";
 import { createLaunchDialog } from "./launcher.js";
 import { prefs } from "./prefs.js";
 
-// Tema: selector Claro | Oscuro (como el de Tablero | Oficina).
+// Tema: selector Claro | Oscuro (actúa como switch: cualquier clic alterna el tema).
 const themeBtns = { light: document.getElementById("theme-light"), dark: document.getElementById("theme-dark") };
 function applyTheme(t) {
   document.documentElement.dataset.theme = t;
   for (const [k, b] of Object.entries(themeBtns)) b.setAttribute("aria-pressed", String(k === t));
 }
 applyTheme(prefs.theme());
-for (const [t, b] of Object.entries(themeBtns)) {
-  b.addEventListener("click", () => {
-    prefs.setTheme(t);
-    applyTheme(t);
+function toggleTheme() {
+  const next = prefs.theme() === "dark" ? "light" : "dark";
+  prefs.setTheme(next);
+  applyTheme(next);
+  document.querySelectorAll(".lines").forEach((pre) => {
+    delete pre.dataset.raw;
   });
+  window.dispatchEvent(new CustomEvent("argos:theme-change"));
 }
+themeBtns.light?.closest(".seg")?.addEventListener("click", toggleTheme);
 
 const store = createStore();
+
+// En la Oficina y en el Tablero, se puede abrir el panel completo (pantalla + consola).
+const agentDialog = createAgentDialog({
+  dialog: document.getElementById("agent-dialog"),
+  sendInput: store.sendInput,
+  stop: store.stop,
+  onBoard: (id) => openInBoard(id),
+});
+
 const { render, relayout, focusAgent } = createDomRenderer({
   cards: document.getElementById("cards"),
   empty: document.getElementById("empty"),
@@ -32,6 +45,7 @@ const { render, relayout, focusAgent } = createDomRenderer({
   version: document.getElementById("version"),
   sendInput: store.sendInput,
   stop: store.stop,
+  onOpenAgent: (id) => agentDialog.open(id),
 });
 
 // Dos vistas de los mismos datos: el Tablero (tarjetas) y la Oficina (pixel-art).
@@ -40,13 +54,6 @@ const officeEl = document.getElementById("office");
 const viewBtns = { board: document.getElementById("view-board"), office: document.getElementById("view-office") };
 const relayoutBtn = document.getElementById("relayout");
 let view = prefs.view();
-// En la Oficina, un clic en una mascota abre su panel (pantalla + consola).
-const agentDialog = createAgentDialog({
-  dialog: document.getElementById("agent-dialog"),
-  sendInput: store.sendInput,
-  stop: store.stop,
-  onBoard: (id) => openInBoard(id),
-});
 const office = createOfficeRenderer({ root: officeEl, prefs, onOpen: (id) => agentDialog.open(id) });
 
 function setView(v, { save = true } = {}) {
@@ -63,8 +70,10 @@ function openInBoard(id) {
   setView("board");
   requestAnimationFrame(() => focusAgent(id));
 }
-viewBtns.board.addEventListener("click", () => setView("board"));
-viewBtns.office.addEventListener("click", () => setView("office"));
+function toggleView() {
+  setView(view === "board" ? "office" : "board");
+}
+viewBtns.board?.closest(".seg")?.addEventListener("click", toggleView);
 relayoutBtn.addEventListener("click", () => (view === "board" ? relayout() : office.relayout()));
 setView(view, { save: false });
 

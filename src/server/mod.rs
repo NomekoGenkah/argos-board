@@ -423,7 +423,13 @@ async fn ingest_session(mut socket: WebSocket, board: Arc<Board>) {
 
 async fn static_file(uri: Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
-    let path = if path.is_empty() { "index.html" } else { path };
+    let path = if path.is_empty() {
+        "index.html"
+    } else if path == "favicon.ico" && Assets::get("favicon.ico").is_none() {
+        "favicon.svg"
+    } else {
+        path
+    };
     match Assets::get(path) {
         Some(file) => {
             let mime = mime_guess::from_path(path).first_or_octet_stream();

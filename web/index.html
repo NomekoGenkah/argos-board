@@ -2,8 +2,15 @@
 <html lang="es" data-theme="light">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Argos Board</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="apple-touch-icon" href="favicon.svg">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="theme-color" content="#318561">
   <script>
     // Tema antes del primer pintado (evita el parpadeo). Claro por defecto.
     try {
@@ -24,7 +31,7 @@
       <p id="conn" class="conn" data-conn="connecting" role="status">
         <span class="conn-dot" aria-hidden="true"></span><span class="conn-text">Conectando…</span>
       </p>
-      <div class="seg" role="group" aria-label="Vista">
+      <div class="seg" role="group" aria-label="Vista" title="Alternar entre Tablero y Oficina">
         <button id="view-board" class="seg-btn" type="button" aria-pressed="true">Tablero</button>
         <button id="view-office" class="seg-btn" type="button" aria-pressed="false">Oficina</button>
       </div>
@@ -33,7 +40,7 @@
       <button id="notify" class="btn" type="button" hidden>Activar avisos</button>
       <button id="sound" class="btn" type="button" aria-pressed="false" title="Suena cuando un agente te necesita">Sonido</button>
       <button id="relayout" class="btn" type="button" title="Ordena las tarjetas por estado y restablece su tamaño">Reordenar</button>
-      <div class="seg" role="group" aria-label="Tema">
+      <div class="seg" role="group" aria-label="Tema" title="Alternar entre tema Claro y Oscuro">
         <button id="theme-light" class="seg-btn" type="button" aria-pressed="true">Claro</button>
         <button id="theme-dark" class="seg-btn" type="button" aria-pressed="false">Oscuro</button>
       </div>
@@ -106,7 +113,16 @@
       <span class="badge"><span class="badge-icon" aria-hidden="true"></span><span class="badge-text"></span></span>
     </header>
     <p class="launch-line" hidden><span class="launch-text"></span> <code class="launch-code"></code></p>
-    <pre class="lines" tabindex="0" aria-label="Salida de la terminal"></pre>
+    <div class="lines-wrap">
+      <div class="lines-bar">
+        <span class="lines-count"></span>
+        <div class="lines-nav">
+          <button type="button" class="btn lines-btn" data-jump="top" title="Ir al inicio de la terminal">↑ Inicio</button>
+          <button type="button" class="btn lines-btn" data-jump="bottom" title="Ir al final de la terminal">↓ Final</button>
+        </div>
+      </div>
+      <pre class="lines" tabindex="0" aria-label="Salida de la terminal"></pre>
+    </div>
     <p class="dialog-readonly" hidden></p>
     <div class="console-slot"></div>
     <footer class="dialog-foot">
@@ -127,6 +143,7 @@
         </div>
         <div class="card-actions">
           <span class="badge"><span class="badge-icon" aria-hidden="true"></span><span class="badge-text"></span></span>
+          <button class="expand" type="button" title="Ver terminal completa" aria-label="Ver terminal completa">⤢</button>
           <button class="stop" type="button" hidden>Detener</button>
           <button class="dismiss" type="button" hidden>Quitar</button>
         </div>

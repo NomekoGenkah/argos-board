@@ -2,6 +2,7 @@
 // datos y lo pinta. Las actualizaciones en vivo solo cambian el contenido de
 // las tarjetas; la posición y el tamaño los decide el usuario.
 
+import { ansiToHtml } from "./ansi.js";
 import { createConsole } from "./console.js";
 import { launchText, wireStopButton } from "./launcher.js";
 
@@ -97,7 +98,7 @@ export function versionWarning(agentVersion, serverVersion) {
   return `Wrapper de otra versión (${agentVersion}): reinícialo para actualizarlo.`;
 }
 
-export function createDomRenderer({ cards, empty, conn, live, template, prefs, GridStack, version, sendInput, stop }) {
+export function createDomRenderer({ cards, empty, conn, live, template, prefs, GridStack, version, sendInput, stop, onOpenAgent }) {
   const els = new Map(); // id -> .grid-stack-item
   const consoles = new Map(); // id -> consola de la tarjeta
   let auth = "none";
@@ -184,10 +185,11 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     el.querySelector(".branch").textContent = a.git_branch || "—";
     const pre = el.querySelector(".lines");
     const text = a.last_lines.join("\n");
-    if (pre.textContent !== text) {
+    if (pre.dataset.raw !== text) {
+      pre.dataset.raw = text;
       // Solo se pega al final si el usuario no había subido a leer.
       const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 8;
-      pre.textContent = text;
+      pre.innerHTML = ansiToHtml(text);
       if (atBottom) stickToBottom(pre);
     }
     const warn = el.querySelector(".version-warn");
@@ -220,6 +222,19 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
       onDone: (error) => announce(error ? `No se pudo detener ${a.name}: ${error}` : `${a.name} detenido`),
     });
     item.querySelector(".stop").setAttribute("aria-label", `Detener ${a.name}`);
+    item.querySelector(".expand")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onOpenAgent?.(a.id);
+    });
+    item.querySelector(".card-head")?.addEventListener("click", (e) => {
+      if (e.target.closest("button") || e.target.closest("a")) return;
+      if (window.innerWidth <= 700) {
+        onOpenAgent?.(a.id);
+      }
+    });
+    item.querySelector(".lines")?.addEventListener("dblclick", () => {
+      onOpenAgent?.(a.id);
+    });
     const con = createConsole({ sendInput });
     item.querySelector(".console-slot").append(con.el);
     consoles.set(a.id, con);
@@ -361,6 +376,17 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     card.scrollIntoView({ block: "nearest", behavior: "smooth" });
     card.focus({ preventScroll: true });
   }
+
+  window.addEventListener("argos:theme-change", () => {
+    for (const [id, item] of els) {
+      const a = current.get(id);
+      if (a) {
+        const pre = item.querySelector(".lines");
+        if (pre) delete pre.dataset.raw;
+        fill(item, a);
+      }
+    }
+  });
 
   setInterval(tickTimes, 1000);
   return { render, relayout, focusAgent };
