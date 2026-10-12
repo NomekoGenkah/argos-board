@@ -35,6 +35,24 @@
   --k-opencode: #cdc5c2;
   --k-generic: #593c37;
 
+  /* Paleta ANSI 16 colores (modo claro) */
+  --ansi-black: #2b1f1d;
+  --ansi-red: #d93619;
+  --ansi-green: #24644a;
+  --ansi-yellow: #b87a04;
+  --ansi-blue: #1e56b3;
+  --ansi-magenta: #8a38a8;
+  --ansi-cyan: #0e7c86;
+  --ansi-white: #a0908c;
+  --ansi-bright-black: #5c4a46;
+  --ansi-bright-red: #e8563a;
+  --ansi-bright-green: #318561;
+  --ansi-bright-yellow: #9e6a03;
+  --ansi-bright-blue: #2f6fd0;
+  --ansi-bright-magenta: #a854c8;
+  --ansi-bright-cyan: #1498a4;
+  --ansi-bright-white: #191312;
+
   --shadow: 0 1px 2px rgb(89 60 55 / .06), 0 4px 14px rgb(89 60 55 / .06);
   color-scheme: light;
 }
@@ -65,6 +83,24 @@
   --k-opencode: #f4f1f0;
   --k-generic: #b39893;
 
+  /* Paleta ANSI 16 colores (modo oscuro) */
+  --ansi-black: #6e625f;
+  --ansi-red: #f07178;
+  --ansi-green: #1ad988;
+  --ansi-yellow: #ffcb6b;
+  --ansi-blue: #82aaff;
+  --ansi-magenta: #c792ea;
+  --ansi-cyan: #89ddff;
+  --ansi-white: #e6dcd9;
+  --ansi-bright-black: #9e8e8a;
+  --ansi-bright-red: #ff6a4d;
+  --ansi-bright-green: #98e8b0;
+  --ansi-bright-yellow: #ffe585;
+  --ansi-bright-blue: #a1c5ff;
+  --ansi-bright-magenta: #dfb4fc;
+  --ansi-bright-cyan: #b2f0ff;
+  --ansi-bright-white: #ffffff;
+
   --shadow: none;
   color-scheme: dark;
 }
@@ -74,6 +110,11 @@
   --radius-sm: 4px;  /* botones, entradas, insignias */
   --sans: "Montserrat", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: "Cascadia Mono", "Cascadia Code", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
 }
 
 * { box-sizing: border-box; }
@@ -336,7 +377,7 @@ main { padding: 16px; }
 .btn:disabled { cursor: default; opacity: .75; }
 
 /* Selector de vista (Tablero / Oficina) */
-.seg { display: inline-flex; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel-2); }
+.seg { display: inline-flex; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel-2); cursor: pointer; user-select: none; }
 .seg-btn {
   padding: 5px 13px;
   border: 0;
@@ -490,7 +531,11 @@ main { padding: 16px; }
   color: var(--text);
   box-shadow: 0 20px 60px rgb(0 0 0 / .3);
 }
-.panel-dialog::backdrop { background: rgb(25 19 18 / .45); }
+.panel-dialog::backdrop {
+  background: rgb(20 15 14 / .55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
 .panel-dialog h2 { margin: 0 0 8px; font-size: 18px; color: var(--heading); }
 .panel-dialog pre {
   overflow: auto;
@@ -504,10 +549,35 @@ main { padding: 16px; }
 .panel-dialog code { font-family: var(--mono); font-size: .95em; }
 .dialog-foot { display: flex; justify-content: flex-end; gap: 8px; margin: 12px 0 0; }
 .agent-dialog[open] { display: flex; flex-direction: column; gap: 10px; }
-.agent-dialog { --kind: var(--k-generic); border-left: 6px solid var(--kind); }
+.agent-dialog { --kind: var(--k-generic); border-left: 6px solid var(--kind); width: min(840px, calc(100vw - 32px)); }
 .dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.agent-dialog .lines { margin: 0; height: min(46vh, 420px); white-space: pre; }
+.lines-wrap { display: flex; flex-direction: column; min-height: 0; gap: 4px; }
+.lines-bar { display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; color: var(--muted); }
+.lines-nav { display: flex; gap: 6px; }
+.lines-btn {
+  cursor: pointer;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text);
+  font: 11px var(--mono);
+}
+.lines-btn:hover { border-color: var(--accent); color: var(--accent-strong); }
+.agent-dialog .lines { margin: 0; height: min(60vh, 520px); white-space: pre; }
 .dialog-readonly { margin: 0; font-size: 13px; color: var(--muted); }
+
+.card-actions .expand {
+  cursor: pointer;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.2;
+}
+.card-actions .expand:hover { border-color: var(--accent); color: var(--accent-strong); }
 
 /* Lanzar agentes */
 .btn.launch::before { content: "＋ "; color: var(--accent); font-weight: 700; }
@@ -615,3 +685,204 @@ main { padding: 16px; }
 .launch-note { margin: 0; font-size: 12.5px; color: var(--muted); }
 .launch-status { margin: 0; min-height: 1.2em; font-size: 13px; font-weight: 600; }
 .launch-status[data-kind="error"] { color: var(--accent-strong); }
+
+/* ==========================================================================
+   Mobile & Touch Responsiveness (Smartphones <= 640px)
+   ========================================================================== */
+
+@media (max-width: 640px) {
+  /* Cabecera optimizada para pantallas pequeñas con safe area */
+  .top {
+    padding: max(10px, env(safe-area-inset-top)) 12px 10px;
+    gap: 8px 12px;
+  }
+  .brand h1 {
+    font-size: 16.5px;
+    gap: 8px;
+  }
+  .version {
+    display: none;
+  }
+  .top-actions {
+    gap: 6px;
+    width: 100%;
+    justify-content: space-between;
+  }
+  .top-actions #relayout {
+    display: none; /* En vista de 1 columna vertical no aplica reorganizar mosaico */
+  }
+  .conn {
+    font-size: 12px;
+    margin-right: auto;
+  }
+  .btn, .seg-btn {
+    min-height: 34px;
+    padding: 6px 10px;
+    font-size: 12.5px;
+  }
+
+  /* Área principal y lienzo */
+  main {
+    padding: 8px 8px max(24px, env(safe-area-inset-bottom));
+  }
+  .grid-stack-item > .ui-resizable-se {
+    display: none !important; /* Oculta manija de redimensión en táctil */
+  }
+
+  /* Tarjetas móviles */
+  .card {
+    padding: 12px 12px 14px;
+    border-radius: var(--radius);
+    gap: 8px;
+  }
+  .card-head {
+    cursor: pointer; /* Indicio visual de que un toque abre la terminal */
+    gap: 6px 8px;
+  }
+  .name {
+    font-size: 15px;
+  }
+  .card-actions {
+    gap: 6px;
+  }
+  .card-actions .expand {
+    width: 36px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    border-radius: var(--radius-sm);
+  }
+  .card .lines {
+    font-size: 11.5px;
+    min-height: 72px;
+    max-height: 200px;
+    line-height: 1.4;
+  }
+  .card .console .console-input {
+    font-size: 16px; /* Evita que Safari en iOS haga zoom forzado */
+  }
+
+  /* Bottom Sheet: Panel de terminal a pantalla completa / deslizable */
+  .agent-dialog {
+    position: fixed;
+    inset: auto 0 0 0;
+    width: 100vw;
+    max-width: 100vw;
+    min-width: 100vw;
+    height: 92dvh;
+    max-height: 92dvh;
+    margin: 0;
+    padding: 12px 14px max(14px, env(safe-area-inset-bottom));
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-left: 6px solid var(--kind);
+    border-radius: 18px 18px 0 0;
+    box-shadow: 0 -12px 40px rgb(0 0 0 / .45);
+    animation: sheet-slide-up 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .agent-dialog::before {
+    content: "";
+    display: block;
+    width: 38px;
+    height: 4px;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--muted) 45%, transparent);
+    margin: -4px auto 6px;
+  }
+  .agent-dialog .dialog-head {
+    gap: 8px;
+  }
+  .agent-dialog .name {
+    font-size: 16px;
+  }
+  .agent-dialog .lines-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .agent-dialog .lines {
+    flex: 1 1 auto;
+    height: 100%;
+    min-height: 120px;
+    font-size: 11.5px;
+    line-height: 1.4;
+  }
+  .agent-dialog .lines-bar {
+    font-size: 11px;
+  }
+  .agent-dialog .lines-btn {
+    min-height: 28px;
+    padding: 3px 8px;
+    font-size: 11.5px;
+  }
+  .agent-dialog .console-slot {
+    flex-shrink: 0;
+  }
+  .agent-dialog .console-input {
+    font-size: 16px; /* Evita zoom forzado en iOS */
+    min-height: 38px;
+  }
+  .agent-dialog .console-send {
+    min-height: 38px;
+    padding: 0 16px;
+  }
+  .agent-dialog .console-keys {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+    gap: 6px;
+  }
+  .agent-dialog .console-keys .key {
+    min-width: 44px;
+    min-height: 36px;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .agent-dialog .dialog-foot {
+    margin-top: 4px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .agent-dialog .dialog-foot .btn {
+    flex: 1 1 90px;
+    min-height: 38px;
+  }
+
+  /* Diálogo de lanzamiento en móvil */
+  .launch-dialog {
+    width: calc(100vw - 20px);
+    max-height: 88dvh;
+    padding: 16px 14px;
+    margin: auto;
+  }
+  .launch-dirs {
+    grid-template-columns: 1fr;
+  }
+
+  /* Vista oficina con desplazamiento táctil horizontal fluido */
+  .office {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 8px 4px 16px;
+  }
+}
+
+@keyframes sheet-slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
