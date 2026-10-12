@@ -29,7 +29,7 @@ pub fn create_token() -> Result<String> {
     Ok(token)
 }
 
-fn new_secret() -> String {
+pub(crate) fn new_secret() -> String {
     format!(
         "{}{}",
         uuid::Uuid::new_v4().simple(),
@@ -152,7 +152,7 @@ pub fn read_token() -> Option<String> {
 }
 
 #[cfg(unix)]
-fn write_private(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
+pub(crate) fn write_private(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
     use std::io::Write;
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
     let mut f = std::fs::OpenOptions::new()
@@ -167,7 +167,7 @@ fn write_private(path: &std::path::Path, contents: &str) -> std::io::Result<()> 
 }
 
 #[cfg(not(unix))]
-fn write_private(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
+pub(crate) fn write_private(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
     std::fs::write(path, contents)
 }
 

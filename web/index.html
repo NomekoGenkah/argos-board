@@ -63,6 +63,21 @@
 
   <div id="live" class="sr-only" aria-live="polite" aria-atomic="false"></div>
 
+  <dialog id="pair-dialog" class="panel-dialog pair-dialog" aria-labelledby="pair-dialog-title">
+    <h2 id="pair-dialog-title">Emparejar este dispositivo</h2>
+    <p>Desde la red, este dispositivo necesita un código de un solo uso. Aparece en la terminal donde corre
+      <code>argos-board serve</code> (la primera vez) o se genera en el servidor con:</p>
+    <pre><code>argos-board pair</code></pre>
+    <p>Ingrésalo aquí. Caduca a los 5 minutos y se anula tras 5 intentos fallidos.</p>
+    <form class="pair-form" novalidate>
+      <label for="pair-code" class="sr-only">Código de emparejamiento</label>
+      <input id="pair-code" class="pair-input" name="code" maxlength="12" autocomplete="off"
+        autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="ABCD-EFGH">
+      <button type="submit" class="btn primary">Emparejar</button>
+    </form>
+    <p class="pair-error" role="alert"></p>
+  </dialog>
+
   <dialog id="write-dialog" class="panel-dialog" aria-labelledby="write-dialog-title">
     <h2 id="write-dialog-title">Escribir en los agentes</h2>
     <p class="write-dialog-text"></p>

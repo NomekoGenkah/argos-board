@@ -521,7 +521,8 @@ main { padding: 16px; }
 .btn.write::before { content: "✎ "; color: var(--muted); }
 .btn.write[data-auth="ok"] { border-color: var(--accent); }
 .btn.write[data-auth="ok"]::before { color: var(--accent); }
-.btn.write[data-auth="bad"] { border-color: var(--accent-strong); color: var(--accent-strong); }
+.btn.write[data-auth="bad"],
+.btn.write[data-auth="pair"] { border-color: var(--accent-strong); color: var(--accent-strong); }
 
 /* Paneles (diálogos) */
 .panel-dialog {
@@ -550,6 +551,22 @@ main { padding: 16px; }
   font: 12.5px/1.45 var(--mono);
 }
 .panel-dialog code { font-family: var(--mono); font-size: .95em; }
+.pair-dialog { width: min(440px, calc(100vw - 32px)); }
+.pair-form { display: flex; gap: 8px; margin-top: 12px; }
+.pair-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--term-bg);
+  color: var(--term-text);
+  font: 600 18px var(--mono);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.pair-input::placeholder { font-weight: 400; opacity: .4; }
+.pair-error { min-height: 1.4em; margin: 8px 0 0; color: var(--accent-strong); font-size: 13px; }
 .dialog-foot { display: flex; justify-content: flex-end; gap: 8px; margin: 12px 0 0; }
 .agent-dialog[open] { display: flex; flex-direction: column; gap: 10px; }
 .agent-dialog { --kind: var(--k-generic); border-left: 6px solid var(--kind); width: min(840px, calc(100vw - 32px)); }
@@ -787,6 +804,10 @@ main { padding: 16px; }
     display: flex;
     flex-direction: column;
     gap: 8px;
+  }
+  /* El display:flex de arriba anularía el ocultamiento nativo del <dialog> cerrado. */
+  .agent-dialog:not([open]) {
+    display: none;
   }
   .agent-dialog::before {
     content: "";

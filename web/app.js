@@ -4,6 +4,7 @@ import { createAlerts } from "./alerts.js";
 import { createOfficeRenderer } from "./office.js";
 import { createAgentDialog } from "./dialog.js";
 import { createLaunchDialog } from "./launcher.js";
+import { createPairDialog } from "./pairing.js";
 import { prefs } from "./prefs.js";
 
 // Tema: selector Claro | Oscuro (actúa como switch: cualquier clic alterna el tema).
@@ -128,6 +129,7 @@ const writeDialog = document.getElementById("write-dialog");
 const WRITE_TEXT = {
   none: ["Solo lectura", "Esta página todavía no tiene permiso para escribir en los agentes."],
   bad: ["Token inválido", "El token guardado ya no es válido (¿se renovó?). Abre el enlace nuevo."],
+  pair: ["Sin emparejar", "Este dispositivo no está emparejado: ingresa un código de `argos-board pair` para ver y controlar los agentes."],
   pending: ["Solo lectura", "Comprobando el permiso para escribir…"],
   ok: ["Escritura activa", "Esta página puede escribir en los agentes que lo permiten."],
 };
@@ -173,5 +175,7 @@ store.onChange(launchDialog.render);
 store.onChange(afterLaunch);
 store.onChange(agentDialog.render);
 store.onChange(showWrite);
+const pairDialog = createPairDialog({ dialog: document.getElementById("pair-dialog"), store });
+store.onChange(pairDialog.render);
 store.onChange(alerts.handle);
 store.connect();

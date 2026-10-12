@@ -1,12 +1,15 @@
 mod config;
+mod devices;
 mod git;
 mod model;
+mod netif;
 mod profiles;
 mod redact;
 mod server;
 mod wrapper;
 
 use clap::{Parser, Subcommand};
+use std::net::IpAddr;
 use std::path::PathBuf;
 
 /// Versión + commit del build, p. ej. `0.1.0 (abe63f4)`.
@@ -25,10 +28,35 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Inicia el servidor web (solo 127.0.0.1).
+    /// Inicia el servidor web: en esta máquina y en las redes privadas a las que está
+    /// conectada (LAN, WireGuard), para entrar desde el celular. Muestra las direcciones y,
+    /// si aún no hay dispositivos emparejados, un código para emparejar el primero.
     Serve {
         #[arg(long, default_value_t = config::DEFAULT_PORT)]
         port: u16,
+        /// Solo en esta máquina (127.0.0.1): no se ofrece a la red.
+        #[arg(long, conflicts_with = "bind")]
+        local_only: bool,
+        /// Escucha solo en estas IPs privadas (además de 127.0.0.1) en vez de en todas las
+        /// redes privadas detectadas; p. ej. solo la de WireGuard. Se puede repetir.
+        /// No admite 0.0.0.0 ni IPs públicas.
+        #[arg(long, value_name = "IP", value_delimiter = ',')]
+        bind: Vec<IpAddr>,
+        /// Nombre extra con el que se accede (p. ej. `servidor.local`); se suma a las
+        /// IPs como `Host` permitido.
+        #[arg(long, value_name = "HOST")]
+        allow_host: Vec<String>,
+    },
+    /// Genera un código de un solo uso para emparejar un dispositivo (celular, otra notebook).
+    Pair,
+    /// Lista los dispositivos emparejados.
+    Devices,
+    /// Revoca un dispositivo (por id o nombre), o todos con --all.
+    Revoke {
+        /// Id (o prefijo de al menos 3 caracteres) o nombre; mira `argos-board devices`.
+        target: Option<String>,
+        #[arg(long, conflicts_with = "target")]
+        all: bool,
     },
     /// Ejecuta un agente dentro de un PTY y lo reporta al servidor.
     Run {
@@ -56,7 +84,12 @@ enum Cmd {
 fn main() {
     let cli = Cli::parse();
     match cli.cmd {
-        Cmd::Serve { port } => {
+        Cmd::Serve {
+            port,
+            local_only,
+            bind,
+            allow_host,
+        } => {
             tracing_subscriber::fmt()
                 .with_env_filter(
                     tracing_subscriber::EnvFilter::try_from_default_env()
@@ -65,11 +98,14 @@ fn main() {
                 .with_writer(std::io::stderr)
                 .init();
             let rt = tokio::runtime::Runtime::new().expect("runtime tokio");
-            if let Err(e) = rt.block_on(server::serve(port)) {
+            if let Err(e) = rt.block_on(server::serve(port, local_only, bind, allow_host)) {
                 eprintln!("error: {e:#}");
                 std::process::exit(1);
             }
         }
+        Cmd::Pair => exit_on_error(cmd_pair()),
+        Cmd::Devices => exit_on_error(cmd_devices()),
+        Cmd::Revoke { target, all } => exit_on_error(cmd_revoke(target, all)),
         Cmd::Run {
             name,
             project,
@@ -126,4 +162,70 @@ fn init_wrapper_log() {
             path.to_string_lossy()
         ),
     }
+}
+
+fn exit_on_error(result: anyhow::Result<()>) {
+    if let Err(e) = result {
+        eprintln!("error: {e:#}");
+        std::process::exit(1);
+    }
+}
+
+fn cmd_pair() -> anyhow::Result<()> {
+    let (code, _) = devices::Store::open()?.create_code(chrono::Utc::now())?;
+    println!("Código de emparejamiento:  {code}");
+    println!(
+        "Caduca en {} minutos, sirve una sola vez y se anula tras {} intentos fallidos.",
+        devices::CODE_TTL_MINUTES,
+        devices::MAX_FAILURES
+    );
+    println!(
+        "En el dispositivo, abre la dirección del servidor (la que imprime `serve`) e ingresa el código."
+    );
+    Ok(())
+}
+
+fn cmd_devices() -> anyhow::Result<()> {
+    let list = devices::Store::open()?.list()?;
+    if list.is_empty() {
+        println!("No hay dispositivos emparejados. Crea un código con `argos-board pair`.");
+        return Ok(());
+    }
+    println!(
+        "{:<10} {:<24} {:<18} Visto por última vez",
+        "ID", "Nombre", "Emparejado"
+    );
+    for d in list {
+        println!(
+            "{:<10} {:<24} {:<18} {}",
+            d.id,
+            d.name,
+            d.created_at
+                .with_timezone(&chrono::Local)
+                .format("%Y-%m-%d %H:%M"),
+            d.last_seen
+                .with_timezone(&chrono::Local)
+                .format("%Y-%m-%d %H:%M"),
+        );
+    }
+    Ok(())
+}
+
+fn cmd_revoke(target: Option<String>, all: bool) -> anyhow::Result<()> {
+    let store = devices::Store::open()?;
+    let gone = match (target, all) {
+        (_, true) => store.revoke_all()?,
+        (Some(t), false) => store.revoke(&t)?,
+        (None, false) => {
+            anyhow::bail!("indica un id o nombre (mira `argos-board devices`), o usa --all")
+        }
+    };
+    if gone.is_empty() {
+        anyhow::bail!("ningún dispositivo coincide (mira `argos-board devices`)");
+    }
+    for d in &gone {
+        println!("Revocado: {} ({})", d.name, d.id);
+    }
+    println!("Las sesiones abiertas de esos dispositivos se cierran en unos segundos.");
+    Ok(())
 }
