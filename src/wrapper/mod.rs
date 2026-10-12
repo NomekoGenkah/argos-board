@@ -279,7 +279,7 @@ pub fn run(opts: RunOptions) -> Result<i32> {
         };
         tracing::info!(code, "el agente terminó");
         {
-            let s = screen.lock().unwrap();
+            let mut s = screen.lock().unwrap();
             let _ = tx.send(IngestMsg::Screen { last_lines: s.last_lines(), last_output_at: s.last_output_at });
             if let Some(d) = dumper.as_mut() {
                 d.dump(AgentState::Exited.as_str(), s.size(), &s.contents());
