@@ -24,3 +24,16 @@ test("los tramos con fondo llevan la clase bg y los demás no", () => {
 test("una fila solo de fondo sigue siendo una barra", () => {
   assert.match(ansiToHtml("\x1b[100m      \x1b[m", true), /class="bar-row"/);
 });
+
+test("sobre un fondo RGB propio el texto claro no se oscurece en el tema claro", () => {
+  const box = "\x1b[38;2;255;255;255;48;2;30;30;30mhola\x1b[m";
+  assert.match(ansiToHtml(box, false), /color: rgb\(255, 255, 255\); background-color: rgb\(30, 30, 30\)/);
+  // En orden inverso (fondo y luego color) pasa igual, y también con 256 colores.
+  const reversed = "\x1b[48;2;30;30;30m\x1b[38;2;255;255;255mhola\x1b[m";
+  assert.match(ansiToHtml(reversed, false), /color: rgb\(255, 255, 255\)/);
+  assert.match(ansiToHtml("\x1b[48;5;236m\x1b[38;5;255mhola\x1b[m", false), /color: rgb\(238, 238, 238\)/);
+});
+
+test("sin fondo propio el texto claro sí se oscurece en el tema claro", () => {
+  assert.doesNotMatch(ansiToHtml("\x1b[38;2;255;255;255mhola\x1b[m", false), /color: rgb\(255, 255, 255\)/);
+});

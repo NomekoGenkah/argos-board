@@ -9,6 +9,7 @@ de 120x40 con `argos-board run --dump-screens` y, donde hizo falta, con `tmux ca
 | `claude` | Claude Code 2.1.296 (Haiku 5.5) | `auto` (habitual) y `--permission-mode default` |
 | `opencode` | OpenCode 1.18.35 con `deepseek/deepseek-flash` | permisos por defecto |
 | `agy` | Antigravity CLI 1.3.3 (Gemini 3.8 Flash) | configuración por defecto del usuario |
+| `copilot` | GitHub Copilot CLI 1.0.96 (modelo `auto`) | `Manual Approval` (por defecto), grabado el 2026-10-13 |
 
 Se eliminaron datos personales (email, rutas con el usuario). Las rutas del proyecto se
 reemplazaron por `/tmp/argos-calib/proyecto`.
@@ -16,7 +17,7 @@ reemplazaron por `/tmp/argos-calib/proyecto`.
 ## Formato
 
 ```
-# agente: <claude|opencode|agy>
+# agente: <claude|opencode|agy|copilot>
 # categoria: <pregunta|permiso|confianza|fin_de_turno>
 # descripcion: ...
 # origen: ...
@@ -46,3 +47,8 @@ reemplazaron por `/tmp/argos-calib/proyecto`.
 - Antigravity, con la configuración actual del usuario, ejecutó comandos que modifican
   archivos sin pedir revisión, así que no hay fixture de permiso para `agy`. OpenCode
   tampoco pidió permisos con su configuración por defecto.
+- Copilot CLI: el diálogo de confianza y los permisos (shell, archivos) comparten el pie
+  `↑/↓ to navigate · enter to select · esc to cancel`, así que ese texto no distingue pregunta de
+  permiso. Se distinguen por `No, and tell Copilot what to do differently` (permiso) y
+  `Do you trust the files in this folder?` (confianza). Su herramienta `ask_user` tiene otro pie:
+  `↑/↓ select · enter accept · ctrl+d decline · esc cancel`.

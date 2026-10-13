@@ -3,7 +3,7 @@
 Documento de requisitos (SRS) y prompt de implementación para Claude Code.
 Nombre del proyecto y del repositorio de GitHub: `argos-board`.
 
-**Entorno de desarrollo y ejecución:** Windows 11 con desarrollo dentro de **WSL2 (Ubuntu)**. Los agentes (`claude`, `opencode`, `agy`), el wrapper y el servidor corren dentro de WSL2. El navegador puede ser el de Windows. Target de v1: **Linux (x86_64)**.
+**Entorno de desarrollo y ejecución:** Windows 11 con desarrollo dentro de **WSL2 (Ubuntu)**. Los agentes (`claude`, `opencode`, `agy`, `copilot`), el wrapper y el servidor corren dentro de WSL2. El navegador puede ser el de Windows. Target de v1: **Linux (x86_64)**.
 
 ## 1. Objetivo
 
@@ -12,6 +12,7 @@ Ver en una sola página web local, en tiempo real, el estado de varios agentes d
 - Claude Code (`claude`)
 - OpenCode con DeepSeek (`opencode`; DeepSeek recomienda OpenCode >= 1.14.24)
 - Antigravity CLI (`agy`), el reemplazo de Gemini CLI desde junio de 2026 (binario Go)
+- GitHub Copilot CLI (`copilot`)
 
 La página es **solo de observación**: no lanza, detiene ni controla agentes.
 
@@ -56,7 +57,7 @@ Fuera del alcance (v1):
 - Restaura SIEMPRE la terminal al salir (guard con `Drop`, también ante panic o señal).
 - Alimenta un emulador de terminal (crate `vt100`) con la misma salida para conocer el contenido real de la pantalla.
 - Envía eventos al servidor (sección 4). **Si el servidor no está disponible, el agente debe seguir funcionando igual**: reintentar la conexión en segundo plano y no bloquear ni ensuciar la salida del agente.
-- Nombre del agente: `--name` o, si no se da, `<binario>@<carpeta>`. Perfil de detección según el nombre del binario (`claude`, `opencode`, `agy`); cualquier otro usa un perfil genérico.
+- Nombre del agente: `--name` o, si no se da, `<binario>@<carpeta>`. Perfil de detección según el nombre del binario (`claude`, `opencode`, `agy`, `copilot`); cualquier otro usa un perfil genérico.
 
 ### 3.2 `argos-board serve [--port 8787]`
 - Escucha SOLO en `127.0.0.1` (nunca `0.0.0.0`). Si el puerto está ocupado, falla con un mensaje claro.
@@ -72,7 +73,7 @@ Snapshot de un agente (JSON, estable porque lo consumen el tablero y la vista Of
 {
   "id": "uuid",
   "name": "claude@proyecto-a",
-  "kind": "claude | opencode | agy | generic",
+  "kind": "claude | opencode | agy | copilot | generic",
   "state": "working | waiting_input | waiting_approval | idle | error | exited | disconnected",
   "state_since": "2026-10-10T20:00:00Z",
   "started_at": "2026-10-10T19:40:00Z",
@@ -148,7 +149,7 @@ Reglas:
   - El contenido de la entrada nunca va a los logs (solo agente, tipo y tamaño).
   - Si se escribe a la vez en la terminal y en la página, las teclas se mezclan (no se bloquea).
 - **Lanzar agentes desde la página** (mismo token de control):
-  - Solo tipos conocidos e instalados en el `PATH` de `serve` (`claude`, `opencode`, `agy`); nunca un comando del navegador. Los argumentos salen de `config.toml` (`[launch.<tipo>] args = [...]`), nunca del navegador.
+  - Solo tipos conocidos e instalados en el `PATH` de `serve` (`claude`, `opencode`, `agy`, `copilot`); nunca un comando del navegador. Los argumentos salen de `config.toml` (`[launch.<tipo>] args = [...]`), nunca del navegador.
   - Solo en carpetas dentro de `launch_roots` (por defecto, el home); se resuelven `..` y enlaces antes de comparar. El listado de carpetas tiene el mismo límite y no muestra las ocultas.
   - Si hay tmux, cada agente corre en una sesión de un socket propio de argos-board (`tmux -L argos-board`), con el entorno de `serve`; sobrevive a reinicios de `serve` y se toma con `tmux -L argos-board attach -t argos-…`. Sin tmux (o con `ARGOS_BOARD_NO_TMUX`), corre oculto como hijo de `serve` y solo existe en la página.
   - *Detener* solo actúa sobre sesiones de tmux llamadas `argos-…` o sobre procesos que lanzó este mismo `serve`.
@@ -166,7 +167,7 @@ Reglas:
 *(Antes "preparación para v2"; implementada el 2026-10-11, issue #16.)* Una segunda vista de los mismos datos, elegida con un botón *Tablero / Oficina* de la cabecera y recordada en el navegador. Objetivo: ver de un vistazo quién trabaja, quién espera una decisión y quién terminó, sin complejidad de juego.
 
 - Renderizador propio (`web/office.js`, canvas 2D con escala entera y `image-rendering: pixelated`) suscrito a la capa de datos como el tablero y las alertas. Sprites propios definidos como texto (`web/sprites.js`), recoloreados por `kind`; sin assets externos ni dependencias.
-- Cada agente es una **mascota** de una misma familia de bichitos de bloque, con forma y color propios por `kind`: Claude (bloque naranja con cuatro patas), Antigravity (domo azul que flota, con antena), OpenCode (robot blanco con la cara como pantalla de terminal; trabajando muestra `>_`), otros (cubito marrón).
+- Cada agente es una **mascota** de una misma familia de bichitos de bloque, con forma y color propios por `kind`: Claude (bloque naranja con cuatro patas), Antigravity (domo azul que flota, con antena), OpenCode (robot blanco con la cara como pantalla de terminal; trabajando muestra `>_`), Copilot (cabeza violeta con orejas), otros (cubito marrón).
 - **Lugares en un mismo plano**, cada uno con su piso, tabiques y cartel; el lugar dice el estado de un vistazo:
   - *Te esperan* (`waiting_input`, `waiting_approval`): fila frente al escritorio del usuario, por orden de llegada (`state_since`); con un cartel **?** que saltan o un papel para firmar y globo ✋. El cartel de la zona muestra cuántos esperan.
   - *Oficina* (`working`, `error`, `disconnected`): en su escritorio. Tecleando con el monitor como miniatura de `last_lines`; con error, ojos en X, monitor rojo con humo y globo **!**; desconectado, gris con estática y globo "…".

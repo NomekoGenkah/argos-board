@@ -13,6 +13,7 @@ pub enum AgentKind {
     Claude,
     Opencode,
     Agy,
+    Copilot,
     Generic,
 }
 
@@ -27,6 +28,7 @@ impl AgentKind {
             "claude" => Self::Claude,
             "opencode" => Self::Opencode,
             "agy" => Self::Agy,
+            "copilot" => Self::Copilot,
             _ => Self::Generic,
         }
     }
@@ -346,6 +348,10 @@ mod tests {
             AgentKind::Opencode
         );
         assert_eq!(AgentKind::from_program("agy"), AgentKind::Agy);
+        assert_eq!(
+            AgentKind::from_program("/usr/local/bin/copilot"),
+            AgentKind::Copilot
+        );
         assert_eq!(AgentKind::from_program("bash"), AgentKind::Generic);
     }
 

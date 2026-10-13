@@ -58,6 +58,19 @@ ommmmmmmmmmmmmmo
 oooooooooooooooo
 `);
 
+// GitHub Copilot: una cabeza redonda con orejas laterales (los auriculares de su logo).
+const COPILOT_BODY = art(`
+...oooooooooo...
+..oMMMMMMMMMMo..
+.oMhhMMMMMMMMMo.
+ooMhMMMMMMMMMMoo
+oMMMMMMMMMMMMMMo
+oMMMMMMMMMMMMMMo
+ooMMMMMMMMMMMMoo
+.ommmmmmmmmmmmo.
+..oooooooooooo..
+`);
+
 // Cualquier otro comando: un cubito marrón.
 const GENERIC_BODY = art(`
 ..oooooooooooo..
@@ -113,6 +126,18 @@ export const MASCOTS = {
     armY: 5,
     legs: [3, 12],
     colors: { M: "#f4f1f0", m: "#c9c0bd", D: "#23242c" },
+  },
+  copilot: {
+    body: COPILOT_BODY,
+    eyes: [
+      [4, 3],
+      [11, 3],
+    ],
+    eyeH: 3,
+    eyeColor: OUTLINE,
+    armY: 4,
+    legs: [4, 11],
+    colors: { M: "#8957e5", m: "#6e40c9", h: "#c4a8ff" },
   },
   generic: {
     body: GENERIC_BODY,

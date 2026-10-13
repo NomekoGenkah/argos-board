@@ -20,6 +20,7 @@ export const KINDS = {
   claude: "Claude Code",
   opencode: "OpenCode",
   agy: "Antigravity",
+  copilot: "GitHub Copilot",
   generic: "Comando",
 };
 

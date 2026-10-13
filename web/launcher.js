@@ -3,7 +3,7 @@
 
 import { KINDS } from "./render.js";
 
-const KIND_ORDER = ["claude", "opencode", "agy"];
+const KIND_ORDER = ["claude", "opencode", "agy", "copilot"];
 
 /** Carpetas recientes: los proyectos de los agentes a la vista, sin repetir y dentro de las raíces. */
 export function recentFolders(agents, roots = [], limit = 6) {

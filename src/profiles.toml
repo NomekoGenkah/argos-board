@@ -29,6 +29,14 @@ waiting_input = ['enter Select · esc Skip', '↑/↓ Navigate · enter Confirm'
 waiting_approval = []
 error = []
 
+[profiles.copilot]
+# GitHub Copilot CLI 1.0.96: permisos de shell y de archivos (el pie «esc to cancel» lo comparten
+# con el diálogo de confianza, así que el patrón es la opción «No, and tell Copilot…»), la
+# herramienta de preguntas (ask_user) y el diálogo de confianza en la carpeta.
+waiting_input = ['↑/↓ select · enter accept', 'Do you trust the files in this folder\?']
+waiting_approval = ['No, and tell Copilot what to do differently']
+error = []
+
 [profiles.generic]
 waiting_input = []
 waiting_approval = []
