@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-const AGENTS: &[&str] = &["claude", "opencode", "agy"];
+const AGENTS: &[&str] = &["claude", "opencode", "agy", "copilot"];
 const CATEGORIES: &[&str] = &["pregunta", "permiso", "confianza", "fin_de_turno"];
 
 #[test]

@@ -22,6 +22,7 @@ pub fn binary(kind: AgentKind) -> Option<&'static str> {
         AgentKind::Claude => Some("claude"),
         AgentKind::Opencode => Some("opencode"),
         AgentKind::Agy => Some("agy"),
+        AgentKind::Copilot => Some("copilot"),
         AgentKind::Generic => None,
     }
 }
@@ -144,10 +145,15 @@ impl Launcher {
 
     pub fn info(&self) -> LaunchInfo {
         LaunchInfo {
-            kinds: [AgentKind::Claude, AgentKind::Opencode, AgentKind::Agy]
-                .into_iter()
-                .filter(|k| binary(*k).and_then(find_in_path).is_some())
-                .collect(),
+            kinds: [
+                AgentKind::Claude,
+                AgentKind::Opencode,
+                AgentKind::Agy,
+                AgentKind::Copilot,
+            ]
+            .into_iter()
+            .filter(|k| binary(*k).and_then(find_in_path).is_some())
+            .collect(),
             tmux: self.tmux.is_some(),
             roots: self.roots.iter().map(|r| r.display().to_string()).collect(),
         }

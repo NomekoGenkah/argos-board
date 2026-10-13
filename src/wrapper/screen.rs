@@ -64,6 +64,80 @@ pub fn paints_background(line: &str) -> bool {
     })
 }
 
+/// Fondo que una aplicación de pantalla completa (p. ej. OpenCode) pinta en todo el lienzo.
+type CanvasBg = vt100::Color;
+
+/// Fondo de un código SGR (`40..47`, `100..107`, `48;5;n`, `48;2;r;g;b`), con cuántos parámetros usa.
+fn sgr_bg(params: &[u32]) -> Option<(CanvasBg, usize)> {
+    match params {
+        [c @ 40..=47, ..] => Some((vt100::Color::Idx((c - 40) as u8), 1)),
+        [c @ 100..=107, ..] => Some((vt100::Color::Idx((c - 100 + 8) as u8), 1)),
+        [48, 5, n, ..] => Some((vt100::Color::Idx(*n as u8), 3)),
+        [48, 2, r, g, b, ..] => Some((vt100::Color::Rgb(*r as u8, *g as u8, *b as u8), 5)),
+        _ => None,
+    }
+}
+
+/// Cambia por «fondo por defecto» (`49`) el fondo del lienzo en las secuencias SGR de la fila.
+/// Sin esto, la pantalla entera cuenta como «barra de color» y no se recorta ninguna fila vacía.
+fn drop_canvas_bg(line: &str, canvas: CanvasBg) -> String {
+    SGR_RE
+        .replace_all(line, |caps: &regex::Captures| {
+            let params: Vec<u32> = caps[1]
+                .split(';')
+                .map(|p| p.parse::<u32>().unwrap_or(0))
+                .collect();
+            let mut out: Vec<String> = Vec::with_capacity(params.len());
+            let mut i = 0;
+            while i < params.len() {
+                // Los argumentos de 38;5;n y 38;2;r;g;b no son códigos SGR.
+                let skip = match &params[i..] {
+                    [38, 5, ..] => 3,
+                    [38, 2, ..] => 5,
+                    rest => match sgr_bg(rest) {
+                        Some((bg, n)) if bg == canvas => {
+                            out.push("49".into());
+                            i += n;
+                            continue;
+                        }
+                        Some((_, n)) => n,
+                        None => 1,
+                    },
+                };
+                let end = (i + skip).min(params.len());
+                out.extend(params[i..end].iter().map(u32::to_string));
+                i = end;
+            }
+            format!("\x1b[{}m", out.join(";"))
+        })
+        .into_owned()
+}
+
+/// El fondo del lienzo: el de las celdas sin texto (vacías o con un espacio) cuando cubre más de la mitad de la pantalla.
+/// Una aplicación que lo pinta entero (OpenCode) rellena con ese fondo; las barras de color
+/// de otras (la de contexto de Claude) son pocas celdas y nunca llegan a la mitad.
+fn canvas_bg(screen: &vt100::Screen) -> Option<CanvasBg> {
+    let (rows, cols) = screen.size();
+    let mut counts: Vec<(CanvasBg, usize)> = Vec::new();
+    for r in 0..rows {
+        for c in 0..cols {
+            let Some(cell) = screen.cell(r, c) else {
+                continue;
+            };
+            let bg = cell.bgcolor();
+            if !cell.contents().trim().is_empty() || bg == vt100::Color::Default {
+                continue;
+            }
+            match counts.iter_mut().find(|(b, _)| *b == bg) {
+                Some((_, n)) => *n += 1,
+                None => counts.push((bg, 1)),
+            }
+        }
+    }
+    let (bg, n) = counts.into_iter().max_by_key(|(_, n)| *n)?;
+    (n * 2 > usize::from(rows) * usize::from(cols)).then_some(bg)
+}
+
 /// Hay "salida reciente" si el PTY escribió algo en esta ventana.
 pub const ACTIVITY_WINDOW: Duration = Duration::from_secs(2);
 /// Un estado percibido debe sostenerse este tiempo antes de reportarse.
@@ -212,6 +286,15 @@ impl Screen {
         let (rows, cols) = self.size();
         let rows_len = usize::from(rows);
         let screen = self.parser.screen_mut();
+        screen.set_scrollback(0);
+        let canvas = canvas_bg(screen);
+        let tidy = |row: Vec<u8>| {
+            let s = expand_cuf(&String::from_utf8_lossy(&row));
+            match canvas {
+                Some(bg) => drop_canvas_bg(&s, bg),
+                None => s,
+            }
+        };
 
         // Determina cuántas filas hay en el búfer de scrollback.
         screen.set_scrollback(usize::MAX);
@@ -222,8 +305,7 @@ impl Screen {
             screen.set_scrollback(offset);
             let chunk_size = offset.min(rows_len);
             for row in screen.rows_formatted(0, cols).take(chunk_size) {
-                let s = String::from_utf8_lossy(&row);
-                lines.push(expand_cuf(&s));
+                lines.push(tidy(row));
             }
             offset -= chunk_size;
         }
@@ -232,8 +314,7 @@ impl Screen {
         screen.set_scrollback(0);
         let mut curr_visible = Vec::new();
         for row in screen.rows_formatted(0, cols) {
-            let s = String::from_utf8_lossy(&row);
-            curr_visible.push(expand_cuf(&s));
+            curr_visible.push(tidy(row));
         }
 
         let cleaned_curr = clean_lines(curr_visible.iter().map(String::as_str), MAX_LINES);
@@ -571,6 +652,56 @@ mod tests {
             "los espacios con fondo no se recortan"
         );
         assert!(lines[1].contains("48;5;237"));
+    }
+
+    #[test]
+    fn fullscreen_canvas_background_does_not_fill_the_card() {
+        // Como OpenCode: pinta todo el lienzo con su fondo y borra con él.
+        let mut s = Screen::new(10, 40);
+        s.process(
+            b"\x1b[?1049h\x1b[38;2;255;255;255m\x1b[48;2;10;10;10m\x1b[2J\x1b[4;5Hhola\x1b[8;5H\x1b[48;2;30;30;30m  caja  \x1b[48;2;10;10;10m",
+            Instant::now(),
+        );
+        let lines = s.last_lines();
+        let text: Vec<String> = lines
+            .iter()
+            .map(|l| strip_ansi(l).trim().to_string())
+            .collect();
+        assert_eq!(text, vec!["hola", "", "caja"]);
+        assert!(
+            !lines.iter().any(|l| l.contains("48;2;10;10;10")),
+            "{lines:?}"
+        );
+        assert!(
+            lines[2].contains("48;2;30;30;30"),
+            "la caja conserva su fondo"
+        );
+    }
+
+    #[test]
+    fn canvas_filled_with_spaces_is_dropped_too() {
+        // OpenCode no borra con `\x1b[K`: escribe espacios con su fondo en cada fila.
+        let mut s = Screen::new(6, 20);
+        let mut out = b"\x1b[48;2;10;10;10m".to_vec();
+        for r in 1..=6 {
+            out.extend(format!("\x1b[{r};1H{}", " ".repeat(20)).bytes());
+        }
+        out.extend(b"\x1b[3;3Hhola");
+        s.process(&out, Instant::now());
+        let lines = s.last_lines();
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert_eq!(strip_ansi(&lines[0]).trim(), "hola");
+    }
+
+    #[test]
+    fn small_color_bars_are_not_taken_for_the_canvas() {
+        let mut s = Screen::new(5, 40);
+        s.process(
+            b"x\r\n\x1b[48;5;69m \x1b[48;5;237m          \x1b[49m\r\n",
+            Instant::now(),
+        );
+        let lines = s.last_lines();
+        assert!(lines[1].contains("48;5;237"), "{lines:?}");
     }
 
     #[test]

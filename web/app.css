@@ -32,6 +32,7 @@
   /* Colores por agente (excepción a la paleta) */
   --k-claude: #e07a39;
   --k-agy: #2f6fd0;
+  --k-copilot: #7048c6;
   --k-opencode: #cdc5c2;
   --k-generic: #593c37;
 
@@ -82,6 +83,7 @@
 
   --k-claude: #f08a48;
   --k-agy: #5b93ec;
+  --k-copilot: #b392f0;
   --k-opencode: #f4f1f0;
   --k-generic: #b39893;
 
@@ -231,6 +233,7 @@ main { padding: 16px; }
 :is(.card, .agent-dialog)[data-kind="claude"] { --kind: var(--k-claude); }
 :is(.card, .agent-dialog)[data-kind="agy"] { --kind: var(--k-agy); }
 :is(.card, .agent-dialog)[data-kind="opencode"] { --kind: var(--k-opencode); }
+:is(.card, .agent-dialog)[data-kind="copilot"] { --kind: var(--k-copilot); }
 :is(.card, .agent-dialog)[data-state="waiting_input"],
 :is(.card, .agent-dialog)[data-state="waiting_approval"] { outline: 2px solid var(--st-waiting); outline-offset: -1px; }
 /* Terminadas: fondo y borde apagados, sin bajar el contraste del texto (WCAG AA). */
@@ -677,6 +680,7 @@ main { padding: 16px; }
 .launch-kind[data-kind="claude"] { --kind: var(--k-claude); }
 .launch-kind[data-kind="agy"] { --kind: var(--k-agy); }
 .launch-kind[data-kind="opencode"] { --kind: var(--k-opencode); }
+.launch-kind[data-kind="copilot"] { --kind: var(--k-copilot); }
 .launch-kind .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--kind); box-shadow: 0 0 0 1px rgb(0 0 0 / .2); }
 .launch-kind:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
 .launch-kind:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }

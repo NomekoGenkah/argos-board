@@ -141,6 +141,7 @@ function lineToHtml(str, isDark) {
 
   let state = {
     fg: null,
+    fgRaw: null,
     bg: null,
     bold: false,
     dim: false,
@@ -152,8 +153,12 @@ function lineToHtml(str, isDark) {
 
   function getStyleString() {
     const styles = [];
-    const fg = state.inverse ? (state.bg || "var(--term-bg)") : state.fg;
-    const bg = state.inverse ? (state.fg || "var(--term-text)") : state.bg;
+    // El ajuste de contraste es contra el fondo de la página: sobre un fondo RGB propio
+    // (la caja del prompt de OpenCode) el color original es el que se lee.
+    const ownBg = state.bg?.startsWith("rgb(");
+    const text = ownBg ? state.fgRaw : state.fg;
+    const fg = state.inverse ? (state.bg || "var(--term-bg)") : text;
+    const bg = state.inverse ? (text || "var(--term-text)") : state.bg;
 
     if (fg) styles.push(`color: ${fg}`);
     if (bg) styles.push(`background-color: ${bg}`);
@@ -230,6 +235,7 @@ function lineToHtml(str, isDark) {
       if (code === 0) {
         state = {
           fg: null,
+          fgRaw: null,
           bg: null,
           bold: false,
           dim: false,
@@ -262,15 +268,15 @@ function lineToHtml(str, isDark) {
       } else if (code === 29) {
         state.strikethrough = false;
       } else if (code >= 30 && code <= 37) {
-        state.fg = ANSI_COLORS[code - 30];
+        state.fg = state.fgRaw = ANSI_COLORS[code - 30];
       } else if (code === 39) {
-        state.fg = null;
+        state.fg = state.fgRaw = null;
       } else if (code >= 40 && code <= 47) {
         state.bg = ANSI_BG_COLORS[code - 40];
       } else if (code === 49) {
         state.bg = null;
       } else if (code >= 90 && code <= 97) {
-        state.fg = ANSI_COLORS[code - 90 + 8];
+        state.fg = state.fgRaw = ANSI_COLORS[code - 90 + 8];
       } else if (code >= 100 && code <= 107) {
         state.bg = ANSI_BG_COLORS[code - 100 + 8];
       } else if (code === 38 || code === 48) {
@@ -279,19 +285,24 @@ function lineToHtml(str, isDark) {
           const color = isFg
             ? color256(codes[i + 2], isDark)
             : color256(codes[i + 2], undefined, true);
-          if (isFg) state.fg = color;
-          else state.bg = color;
+          if (isFg) {
+            state.fg = color;
+            state.fgRaw = color256(codes[i + 2]);
+          } else state.bg = color;
           i += 2;
         } else if (i + 1 < codes.length && codes[i + 1] === 2 && i + 4 < codes.length) {
           let r = Math.max(0, Math.min(255, codes[i + 2]));
           let g = Math.max(0, Math.min(255, codes[i + 3]));
           let b = Math.max(0, Math.min(255, codes[i + 4]));
+          const raw = `rgb(${r}, ${g}, ${b})`;
           if (isFg && isDark !== undefined) {
             [r, g, b] = adjustContrast(r, g, b, isDark);
           }
           const rgb = `rgb(${r}, ${g}, ${b})`;
-          if (isFg) state.fg = rgb;
-          else state.bg = rgb;
+          if (isFg) {
+            state.fg = rgb;
+            state.fgRaw = raw;
+          } else state.bg = rgb;
           i += 4;
         }
       }

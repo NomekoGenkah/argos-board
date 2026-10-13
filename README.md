@@ -1,14 +1,15 @@
 # argos-board
 
 Tablero web local para ver en tiempo real el estado de varios agentes de código CLI
-(`claude`, `opencode`, `agy`, o cualquier otro comando) que corren en terminales distintas.
+(`claude`, `opencode`, `agy`, `copilot`, o cualquier otro comando) que corren en terminales distintas.
 Solo observa: no lanza, detiene ni controla agentes.
 
 Especificación completa: [`docs/argos-board-spec.md`](docs/argos-board-spec.md).
 
 > **Estados:** `working` / `idle` (por cambios en la pantalla del agente), `waiting_input` (el agente te hizo una
 > pregunta y espera tu respuesta), `waiting_approval` (pide permiso), `error`, `exited` y `disconnected`.
-> `waiting_input` está calibrado para `claude`, `opencode` y `agy`; `waiting_approval` solo para `claude`; `error`
+> `waiting_input` está calibrado para `claude`, `opencode`, `agy` y `copilot`; `waiting_approval` para `claude` y
+> `copilot`; `error`
 > todavía no tiene patrones (ver *Perfiles de detección*).
 
 ```
@@ -50,7 +51,7 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
 ### La página
 
 - Una tarjeta por agente, con el color del agente en el borde: Claude Code naranja, Antigravity (`agy`) azul,
-  OpenCode blanco y cualquier otro comando marrón. El estado se muestra con texto, icono y color.
+  GitHub Copilot (`copilot`) violeta, OpenCode blanco y cualquier otro comando marrón. El estado se muestra con texto, icono y color.
 - **Lienzo**: arrastra la cabecera de una tarjeta para moverla y su borde derecho, inferior o la esquina para
   redimensionarla. Las tarjetas se empujan entre sí y nunca se superponen; las actualizaciones en vivo no las
   mueven. Al agrandar una tarjeta se ve más de la pantalla del agente. Con el teclado, sobre una tarjeta:
@@ -94,7 +95,7 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
 - Modo claro por defecto; el selector *Claro / Oscuro* de la cabecera cambia el tema (se recuerda en ese navegador).
 - **Oficina** (botón *Tablero / Oficina* de la cabecera): la misma información en pixel-art, en un solo plano.
   Cada agente es una mascota (Claude, un bicho naranja de bloque; Antigravity, un domo azul que flota con
-  antena; OpenCode, un robot blanco con cara de terminal) y **el lugar donde está dice su estado**:
+  antena; OpenCode, un robot blanco con cara de terminal; Copilot, una cabeza violeta con orejas) y **el lugar donde está dice su estado**:
   - **Te esperan**: los que te hicieron una pregunta (cartel **?**, saltan) o piden permiso (papel para firmar,
     globo ✋) hacen fila frente a tu escritorio, por orden de llegada; el cartel de la zona muestra cuántos son.
   - **Oficina**: en su escritorio, trabajando (teclean; el monitor es una miniatura de su pantalla real), con
@@ -225,7 +226,7 @@ navegador: `node --test tests/web/*.test.mjs`. El CI de GitHub solo corre las de
   `argos-board run --no-input -- claude`, o para todos, `allow_input = false` en `config.toml`. La página
   nunca manda bytes crudos (texto sin caracteres de control, o teclas de una lista cerrada) y lo que escribes
   no se guarda en ningún log.
-- **Lanzar agentes** usa los mismos tokens. Solo se lanzan los tipos conocidos (`claude`, `opencode`, `agy`) con
+- **Lanzar agentes** usa los mismos tokens. Solo se lanzan los tipos conocidos (`claude`, `opencode`, `agy`, `copilot`) con
   los argumentos de `config.toml`, nunca un comando que venga del navegador, y solo en carpetas dentro de
   `launch_roots`. *Detener* solo toca sesiones de tmux `argos-…` o procesos que lanzó ese mismo `serve`.
 - Nada se escribe a disco salvo el token (y los dumps si los pides). Las últimas líneas se redactan
