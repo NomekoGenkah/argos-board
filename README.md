@@ -360,3 +360,8 @@ Estructura:
   con su addon WebGL) para dibujar la terminal de cada agente; `web/fonts/` suma JetBrains Mono (OFL).
   `term.js` monta la terminal, `termgrid.js` (sin DOM) prepara lo que se le escribe y el tamaño de la letra, y
   `termthemes.js` tiene las paletas (Noche, Papel, Solarized), independientes del tema de la página.
+
+## Licencia
+
+[MIT](LICENSE). Las librerías incluidas en `web/vendor/` (gridstack.js, xterm.js) y las fuentes de `web/fonts/`
+(Montserrat y JetBrains Mono, licencia OFL) conservan la suya, con su archivo de licencia al lado.

@@ -137,3 +137,8 @@ node --test tests/web/*.test.mjs          # page logic that needs no browser
 - `src/model.rs` — agent snapshot and messages (stable contract, see the spec §4).
 - `web/` — the page, embedded in the binary: plain HTML, CSS and JS with no build; vendored libraries (gridstack,
   xterm.js) in `web/vendor/`; text in `web/lang/`; colours in `web/skins.css`.
+
+## License
+
+[MIT](LICENSE). The libraries in `web/vendor/` (gridstack.js, xterm.js) and the fonts in `web/fonts/` (Montserrat
+and JetBrains Mono, OFL) keep their own licenses, with their license file next to them.

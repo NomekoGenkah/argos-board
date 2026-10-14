@@ -3,6 +3,7 @@ name = "argos-board"
 version = "0.1.0"
 edition = "2024"
 description = "Tablero web local para ver agentes de código CLI trabajando"
+license = "MIT"
 
 [dependencies]
 anyhow = "1.0.104"
