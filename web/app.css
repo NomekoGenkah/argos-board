@@ -6,6 +6,14 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("fonts/jetbrains-mono-latin-wght.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Paleta base (Adobe Color del usuario): #D93619 #1AD988 #994739 #318561 #593C37 */
 :root,
 :root[data-theme="light"] {
@@ -115,7 +123,7 @@
   --radius: 6px;     /* tarjetas, paneles */
   --radius-sm: 4px;  /* botones, entradas, insignias */
   --sans: "Montserrat", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --mono: "Cascadia Mono", "Cascadia Code", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --mono: "JetBrains Mono", "Cascadia Mono", "Cascadia Code", "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
 }
 
 html {
@@ -334,26 +342,19 @@ main { padding: 16px; }
   font-weight: 500;
 }
 
-.lines {
-  margin: 0;
+/* Terminal del agente (xterm.js): una ventana con la paleta de su tema, no la de la página. */
+.term {
+  position: relative;
   flex: 1 1 auto;
-  min-height: 92px; /* unas 5 líneas: la pantalla del agente siempre se ve */
-  padding: 10px 12px;
-  background: var(--term-bg);
-  color: var(--term-text);
-  border: 1px solid var(--border);
+  min-height: 120px;
+  padding: 6px;
   border-radius: var(--radius-sm);
-  font: 12.5px/1.45 var(--mono);
-  white-space: pre;
-  overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  background: var(--term-surface, #15110f);
+  overflow: hidden;
 }
-
-/* Un span en línea solo pinta la altura del texto: inline-block pinta la línea entera. */
-.lines .bg { display: inline-block; vertical-align: top; }
-.lines .bar-row { display: flex; width: 100%; line-height: 1.45; overflow: hidden; }
-.lines .bar-row > span { min-width: 0; overflow: hidden; }
+.term.term--scroll { overflow: auto; scrollbar-width: thin; }
+.term-screen { width: fit-content; margin: 0 auto; }
+.term .xterm { cursor: default; }
 
 .empty { max-width: 560px; margin: 10vh auto; text-align: center; color: var(--muted); }
 .empty h2 { color: var(--heading); font-size: 19px; }
@@ -388,6 +389,18 @@ main { padding: 16px; }
 
 .btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 .btn:disabled { cursor: default; opacity: .75; }
+
+/* Selector del tema de la terminal (provisional: pasa al panel de ajustes) */
+.select-wrap { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.select {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+}
 
 /* Selector de vista (Tablero / Oficina) */
 .seg { display: inline-flex; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel-2); cursor: pointer; user-select: none; }
@@ -511,6 +524,7 @@ main { padding: 16px; }
   cursor: pointer;
 }
 :root[data-theme="dark"] .console-send { color: #10241a; }
+.console-attach,
 .console-mic {
   display: inline-flex;
   align-items: center;
@@ -524,8 +538,17 @@ main { padding: 16px; }
   color: var(--text);
   cursor: pointer;
 }
+.console-attach[hidden],
 .console-mic[hidden] { display: none; }
+.console-attach:hover,
 .console-mic:hover { border-color: var(--muted); }
+.console-attach:hover { color: var(--accent); }
+.console.dragover {
+  outline: 2px dashed var(--accent);
+  outline-offset: 4px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
 .console-mic[aria-pressed="true"] {
   border-color: var(--st-error);
   background: color-mix(in srgb, var(--st-error) 14%, var(--panel-2));
@@ -535,7 +558,8 @@ main { padding: 16px; }
 @keyframes mic-pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--st-error) 25%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .console-mic[aria-pressed="true"] { animation: none; } }
 .console-status[data-kind="info"] { color: var(--muted); }
-.console-keys { display: flex; flex-wrap: wrap; gap: 4px; }
+.console-keys { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.console-modes { display: contents; }
 .key {
   min-width: 34px;
   padding: 3px 8px;
@@ -547,6 +571,14 @@ main { padding: 16px; }
   cursor: pointer;
 }
 .key:hover { border-color: var(--muted); }
+.key.key-mode {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+.key.key-mode:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel-2));
+}
 .key[data-key="ctrl_c"] { margin-left: auto; color: var(--st-error); }
 .console-status { margin: 0; min-height: 1.2em; font-size: 12px; font-weight: 600; color: var(--muted); }
 .console-status[data-kind="ok"] { color: var(--st-working); }
@@ -620,7 +652,7 @@ main { padding: 16px; }
   font: 11px var(--mono);
 }
 .lines-btn:hover { border-color: var(--accent); color: var(--accent-strong); }
-.agent-dialog .lines { margin: 0; height: min(60vh, 520px); white-space: pre; }
+.agent-dialog .term { flex: none; height: clamp(300px, 62vh, 720px); }
 .dialog-readonly { margin: 0; font-size: 13px; color: var(--muted); }
 
 .card-actions .expand {
@@ -811,11 +843,9 @@ main { padding: 16px; }
     font-size: 16px;
     border-radius: var(--radius-sm);
   }
-  .card .lines {
-    font-size: 11.5px;
+  .card .term {
     min-height: 72px;
     max-height: 200px;
-    line-height: 1.4;
   }
   .card .console .console-input {
     font-size: 16px; /* Evita que Safari en iOS haga zoom forzado */
@@ -871,12 +901,10 @@ main { padding: 16px; }
     display: flex;
     flex-direction: column;
   }
-  .agent-dialog .lines {
+  .agent-dialog .term {
     flex: 1 1 auto;
     height: 100%;
     min-height: 120px;
-    font-size: 11.5px;
-    line-height: 1.4;
   }
   .agent-dialog .lines-bar {
     font-size: 11px;

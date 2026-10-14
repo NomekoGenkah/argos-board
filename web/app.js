@@ -8,6 +8,7 @@ import { currentVoiceLang } from "./console.js";
 import { createPairDialog } from "./pairing.js";
 import { languageChoices, voiceAvailable } from "./voice.js";
 import { prefs } from "./prefs.js";
+import { DEFAULT_TERM_THEME, TERM_THEMES } from "./termthemes.js";
 
 // Tema: selector Claro | Oscuro (actúa como switch: cualquier clic alterna el tema).
 const themeBtns = { light: document.getElementById("theme-light"), dark: document.getElementById("theme-dark") };
@@ -20,9 +21,6 @@ function toggleTheme() {
   const next = prefs.theme() === "dark" ? "light" : "dark";
   prefs.setTheme(next);
   applyTheme(next);
-  document.querySelectorAll(".lines").forEach((pre) => {
-    delete pre.dataset.raw;
-  });
   window.dispatchEvent(new CustomEvent("argos:theme-change"));
 }
 themeBtns.light?.closest(".seg")?.addEventListener("click", toggleTheme);
@@ -34,11 +32,13 @@ const agentDialog = createAgentDialog({
   dialog: document.getElementById("agent-dialog"),
   sendInput: store.sendInput,
   voice: store.voice,
+  uploadFile: store.uploadFile,
   stop: store.stop,
   onBoard: (id) => openInBoard(id),
+  prefs,
 });
 
-const { render, relayout, focusAgent } = createDomRenderer({
+const { render, relayout, focusAgent, setTermTheme } = createDomRenderer({
   cards: document.getElementById("cards"),
   empty: document.getElementById("empty"),
   conn: document.getElementById("conn"),
@@ -49,8 +49,19 @@ const { render, relayout, focusAgent } = createDomRenderer({
   version: document.getElementById("version"),
   sendInput: store.sendInput,
   voice: store.voice,
+  uploadFile: store.uploadFile,
   stop: store.stop,
   onOpenAgent: (id) => agentDialog.open(id),
+});
+
+// Tema de la terminal: independiente del de la página (la terminal es una ventana con su paleta).
+const termThemeSelect = document.getElementById("term-theme");
+for (const [key, t] of Object.entries(TERM_THEMES)) termThemeSelect.add(new Option(t.label, key));
+termThemeSelect.value = prefs.termTheme() in TERM_THEMES ? prefs.termTheme() : DEFAULT_TERM_THEME;
+termThemeSelect.addEventListener("change", () => {
+  prefs.setTermTheme(termThemeSelect.value);
+  setTermTheme(termThemeSelect.value);
+  agentDialog.setTermTheme(termThemeSelect.value);
 });
 
 // Dos vistas de los mismos datos: el Tablero (tarjetas) y la Oficina (pixel-art).

@@ -18,7 +18,9 @@
     } catch (e) {}
   </script>
   <link rel="preload" href="fonts/montserrat-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/jetbrains-mono-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="vendor/gridstack/gridstack.min.css">
+  <link rel="stylesheet" href="vendor/xterm/xterm.css">
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -41,6 +43,10 @@
       <button id="sound" class="btn" type="button" aria-pressed="false" title="Suena cuando un agente te necesita">Sonido</button>
       <button id="voice-lang" class="btn" type="button" title="Idioma del dictado por voz (clic para cambiar)" hidden></button>
       <button id="relayout" class="btn" type="button" title="Ordena las tarjetas por estado y restablece su tamaño">Reordenar</button>
+      <label class="select-wrap" title="Colores de la terminal de cada agente">
+        <span class="select-label">Terminal</span>
+        <select id="term-theme" class="select" aria-label="Tema de la terminal"></select>
+      </label>
       <div class="seg" role="group" aria-label="Tema" title="Alternar entre tema Claro y Oscuro">
         <button id="theme-light" class="seg-btn" type="button" aria-pressed="true">Claro</button>
         <button id="theme-dark" class="seg-btn" type="button" aria-pressed="false">Oscuro</button>
@@ -137,7 +143,7 @@
           <button type="button" class="btn lines-btn" data-jump="bottom" title="Ir al final de la terminal">↓ Final</button>
         </div>
       </div>
-      <pre class="lines" tabindex="0" aria-label="Salida de la terminal"></pre>
+      <div class="term" tabindex="0" role="region" aria-label="Salida de la terminal"></div>
     </div>
     <p class="dialog-readonly" hidden></p>
     <div class="console-slot"></div>
@@ -172,7 +178,7 @@
       </dl>
       <p class="version-warn" hidden></p>
       <p class="launch-line" hidden><span class="launch-text"></span> <code class="launch-code"></code></p>
-      <pre class="lines" tabindex="0" aria-label="Salida de la terminal"></pre>
+      <div class="term" tabindex="0" role="region" aria-label="Salida de la terminal"></div>
       <div class="console-slot"></div>
     </article>
     </div>

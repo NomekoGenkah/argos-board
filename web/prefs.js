@@ -62,6 +62,15 @@ export const prefs = {
     save("argos-seats", seats);
   },
 
+  // Tema de la terminal de los agentes (independiente del tema de la página).
+  termTheme() {
+    const v = load("argos-term-theme", null);
+    return typeof v === "string" ? v : null;
+  },
+  setTermTheme(name) {
+    save("argos-term-theme", name);
+  },
+
   theme() {
     return load("argos-theme", "light") === "dark" ? "dark" : "light";
   },

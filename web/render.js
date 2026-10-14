@@ -2,7 +2,8 @@
 // datos y lo pinta. Las actualizaciones en vivo solo cambian el contenido de
 // las tarjetas; la posición y el tamaño los decide el usuario.
 
-import { ansiToHtml } from "./ansi.js";
+import { createTermView } from "./term.js";
+import { DEFAULT_TERM_THEME } from "./termthemes.js";
 import { createConsole } from "./console.js";
 import { launchText, wireStopButton } from "./launcher.js";
 
@@ -99,9 +100,10 @@ export function versionWarning(agentVersion, serverVersion) {
   return `Wrapper de otra versión (${agentVersion}): reinícialo para actualizarlo.`;
 }
 
-export function createDomRenderer({ cards, empty, conn, live, template, prefs, GridStack, version, sendInput, voice, stop, onOpenAgent }) {
+export function createDomRenderer({ cards, empty, conn, live, template, prefs, GridStack, version, sendInput, voice, uploadFile, stop, onOpenAgent }) {
   const els = new Map(); // id -> .grid-stack-item
   const consoles = new Map(); // id -> consola de la tarjeta
+  const views = new Map(); // id -> vista de la terminal de la tarjeta
   let auth = "none";
   let current = new Map();
   let lastEvent = null;
@@ -166,12 +168,6 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     }
     grid.batchUpdate(false);
   }
-  grid.on("resizestop", (_, el) => stickToBottom(el.querySelector(".lines")));
-
-  function stickToBottom(pre) {
-    pre.scrollTop = pre.scrollHeight;
-  }
-
   function fill(item, a) {
     const el = item.querySelector(".card");
     item.dataset.name = a.name;
@@ -184,15 +180,7 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     project.textContent = shortPath(a.project) || "—";
     project.title = a.project;
     el.querySelector(".branch").textContent = a.git_branch || "—";
-    const pre = el.querySelector(".lines");
-    const text = a.last_lines.join("\n");
-    if (pre.dataset.raw !== text) {
-      pre.dataset.raw = text;
-      // Solo se pega al final si el usuario no había subido a leer.
-      const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 8;
-      pre.innerHTML = ansiToHtml(text);
-      if (atBottom) stickToBottom(pre);
-    }
+    views.get(a.id)?.update(a);
     const warn = el.querySelector(".version-warn");
     const message = ENDED.has(a.state) ? null : versionWarning(a.version, serverVersion);
     warn.hidden = !message;
@@ -233,21 +221,19 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
         onOpenAgent?.(a.id);
       }
     });
-    item.querySelector(".lines")?.addEventListener("dblclick", () => {
+    item.querySelector(".term")?.addEventListener("dblclick", () => {
       onOpenAgent?.(a.id);
     });
-    const con = createConsole({ sendInput, voice });
+    views.set(a.id, createTermView(item.querySelector(".term"), { theme: prefs.termTheme() ?? DEFAULT_TERM_THEME }));
+    const con = createConsole({ sendInput, voice, uploadFile });
     item.querySelector(".console-slot").append(con.el);
     consoles.set(a.id, con);
     cards.append(item);
     const saved = prefs.layout(a.name);
     grid.makeWidget(item, { id: a.id, ...MIN_CARD, ...(saved ?? { ...DEFAULT_CARD, autoPosition: true }) });
-    requestAnimationFrame(() => {
-      // Una tarjeta nueva (sin tamaño guardado) toma, una sola vez, el alto que
-      // necesita su contenido (p. ej. un agente lanzado: botones, tmux y consola).
-      stickToBottom(item.querySelector(".lines"));
-    });
-    // Otra vez cuando gridstack ya la acomodó (es idempotente).
+    // Una tarjeta nueva (sin tamaño guardado) toma, una sola vez, el alto que
+    // necesita su contenido (p. ej. un agente lanzado: botones, tmux y consola),
+    // cuando gridstack ya la acomodó (es idempotente).
     if (!saved) for (const ms of [50, 450]) setTimeout(() => fitHeight(item), ms);
     return item;
   }
@@ -355,6 +341,8 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
         grid.removeWidget(item);
         els.delete(id);
         consoles.delete(id);
+        views.get(id)?.dispose();
+        views.delete(id);
       }
     }
     for (const a of visible) {
@@ -378,17 +366,11 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     card.focus({ preventScroll: true });
   }
 
-  window.addEventListener("argos:theme-change", () => {
-    for (const [id, item] of els) {
-      const a = current.get(id);
-      if (a) {
-        const pre = item.querySelector(".lines");
-        if (pre) delete pre.dataset.raw;
-        fill(item, a);
-      }
-    }
-  });
+  /** Cambia el tema de la terminal de todas las tarjetas. */
+  function setTermTheme(name) {
+    for (const view of views.values()) view.setTheme(name);
+  }
 
   setInterval(tickTimes, 1000);
-  return { render, relayout, focusAgent };
+  return { render, relayout, focusAgent, setTermTheme };
 }

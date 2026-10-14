@@ -80,11 +80,14 @@ Snapshot de un agente (JSON, estable porque lo consumen el tablero y la vista Of
   "project": "/ruta/al/proyecto",
   "git_branch": "main",
   "last_lines": ["...", "..."],
+  "grid": { "cols": 120, "rows": 40, "alt": true, "cursor": [3, 8], "history": ["..."], "lines": ["..."] },
   "last_output_at": "2026-10-10T20:00:05Z",
   "version": "0.1.0 (abe63f4)",
   "accepts_input": true
 }
 ```
+
+`grid` (o `null` con un wrapper anterior): la pantalla tal como la ve la terminal del agente, para dibujarla celda por celda. `cols`/`rows` son las de la terminal; `lines` son las filas visibles con secuencias SGR (con `alt`, una aplicación de pantalla completa como OpenCode, son las `rows` filas sin recortes; si no, se omiten las filas en blanco del final); `cursor` es `[fila, columna]` dentro de `lines` o `null` si está oculto; `history` son las filas que salieron por arriba (vacío con `alt`). Las filas se redactan igual que `last_lines`.
 
 `launch` (o `null`): si se lanzó desde la página, `{ "id", "tmux_session", "attach" }` (`attach` es el comando para tomarlo desde una terminal si corre en tmux).
 
@@ -122,7 +125,7 @@ Reglas:
 - Indicador de conexión con el servidor y reconexión automática del WebSocket.
 - Alerta al entrar en `waiting_input` o `waiting_approval`: notificación del navegador (pedir permiso con un botón explícito del usuario), sonido opcional, y contador en el título de la pestaña. Sin alertas duplicadas por el mismo evento (clave: agente + estado + `state_since`; las ya avisadas se recuerdan por pestaña en `sessionStorage`, y al abrir la página no se avisa de lo que ya estaba esperando: lo muestra el contador).
 - Tarjetas `exited`/`disconnected` quedan atenuadas y desaparecen tras 10 minutos.
-- HTML, CSS y JS planos, sin framework ni build. Se permiten librerías JS sin dependencias ni build, incluidas en `web/vendor/` con su licencia y embebidas en el binario (nunca desde un CDN: sin llamadas de red salientes). Hoy: gridstack.js para el lienzo. Separar claramente la capa de **datos** (WebSocket + estado) de la capa de **render** así conviven el tablero (DOM) y la Oficina (canvas, sección 9) sin tocar el resto.
+- HTML, CSS y JS planos, sin framework ni build. Se permiten librerías JS sin dependencias ni build, incluidas en `web/vendor/` con su licencia y embebidas en el binario (nunca desde un CDN: sin llamadas de red salientes). Hoy: gridstack.js para el lienzo y xterm.js (con su addon WebGL) para dibujar la terminal de cada agente. Separar claramente la capa de **datos** (WebSocket + estado) de la capa de **render** así conviven el tablero (DOM) y la Oficina (canvas, sección 9) sin tocar el resto.
 - Responsive y accesible (contraste, foco, `aria-live` para cambios de estado). Verificado con axe (WCAG 2.1 AA) en ambos temas y a 360 px; el orden del DOM sigue la posición visual del lienzo y solo se anuncian, agrupados, los cambios que requieren atención.
 - **Escribir en un agente** (si la página tiene permiso y el agente lo acepta): cada tarjeta tiene una caja de texto (Enter envía el texto y luego Enter; Mayús+Enter agrega una línea; con la caja vacía, ↑, ↓ y Esc van directo al agente) y teclas rápidas ↑ ↓ Enter Esc Tab Ctrl+C. En la Oficina, un clic en una mascota abre un panel con su pantalla en vivo y la misma consola. La cabecera dice si la página tiene permiso ("Escritura activa" / "Solo lectura") y explica cómo conseguirlo.
 - **Nuevo agente** (con permiso): un diálogo para elegir el tipo (solo los instalados), la carpeta (recientes, de los agentes a la vista, y navegación por subcarpetas dentro de las raíces permitidas) y un nombre opcional. La tarjeta del agente lanzado lo indica, muestra el comando `tmux … attach` si corre en tmux y tiene un botón *Detener* (con confirmación); lo mismo en el panel de la Oficina.
@@ -145,7 +148,7 @@ Reglas:
 - **Entrada desde la página.** Quien pueda escribir en un agente en modo automático puede ejecutar comandos en la máquina, así que:
   - La página necesita un **token de control** distinto del de ingesta (`control-token`, `0600`), que `serve` imprime en la terminal como enlace `http://localhost:<puerto>/#k=<token>`. Va en el fragmento (no viaja en las peticiones HTTP); la página lo guarda en el navegador y lo presenta por `/ws`. Sin él, la página funciona en solo lectura. Se conserva entre reinicios; borrar el archivo lo renueva (y desautoriza a todos los navegadores).
   - Cada wrapper decide si acepta entrada: por defecto sí; `run --no-input` o `allow_input = false` en `config.toml` lo apagan. El wrapper ignora la entrada si no la acepta, aunque el servidor se la mande.
-  - El navegador nunca manda bytes crudos: texto sin caracteres de control (salvo salto de línea y tabulación), como mucho 4096 bytes por mensaje, o teclas de una lista cerrada que el wrapper traduce según los modos de la terminal (cursor de aplicación, pegado entre corchetes). Máximo 30 entradas por segundo por página.
+  - El navegador nunca manda bytes crudos: texto sin caracteres de control (salvo salto de línea y tabulación), hasta 128 KB (131.072 bytes) por mensaje, o teclas de una lista cerrada que el wrapper traduce según los modos de la terminal (cursor de aplicación, pegado entre corchetes). Máximo 30 entradas por segundo por página.
   - El contenido de la entrada nunca va a los logs (solo agente, tipo y tamaño).
   - Si se escribe a la vez en la terminal y en la página, las teclas se mezclan (no se bloquea).
 - **Lanzar agentes desde la página** (mismo token de control):
@@ -181,7 +184,7 @@ Reglas:
 
 ## 10. Stack sugerido (verificar las últimas versiones estables)
 
-`tokio`, `axum` (con WebSocket), `portable-pty`, `vt100`, `crossterm` (modo raw y tamaño), `rust-embed`, `serde`/`serde_json`, `clap`, `regex`, `toml`, `directories`, `tracing`, `anyhow`. Frontend: gridstack.js (vendorizado en `web/vendor/`).
+`tokio`, `axum` (con WebSocket), `portable-pty`, `vt100`, `crossterm` (modo raw y tamaño), `rust-embed`, `serde`/`serde_json`, `clap`, `regex`, `toml`, `directories`, `tracing`, `anyhow`. Frontend: gridstack.js y xterm.js (vendorizados en `web/vendor/`).
 
 ## 11. Hitos
 

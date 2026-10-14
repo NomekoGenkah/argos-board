@@ -125,6 +125,15 @@ fn wrapper_reports_to_server_and_propagates_exit_code() {
     assert!(lines.contains("OPENAI_API_KEY=[REDACTED]"), "{lines}");
     assert!(!lines.contains("no-deberia-verse"), "{lines}");
 
+    // La rejilla exacta para dibujar la pantalla: ancho de la terminal, filas visibles y sin secretos.
+    let grid = &agent["grid"];
+    assert!(grid["cols"].as_u64().unwrap() > 0, "{grid}");
+    assert_eq!(grid["alt"], false);
+    let grid_lines = serde_json::to_string(&grid["lines"]).unwrap();
+    assert!(grid_lines.contains("(y/n)"), "{grid_lines}");
+    assert!(grid_lines.contains("OPENAI_API_KEY=[REDACTED]"), "{grid_lines}");
+    assert!(!grid_lines.contains("no-deberia-verse"), "{grid_lines}");
+
     // Con salida reciente → working; sin salida → idle (ventana de actividad + histéresis).
     // El estado inicial también es idle, así que primero hay que ver working.
     wait_for(port, "working", |a| a[0]["state"] == "working");
@@ -1315,4 +1324,109 @@ fn voice_is_unavailable_without_agy() {
         let err = ws_next(&mut ws).await.unwrap();
         assert!(is_type(&err, "voice_error"), "{err}");
     });
+}
+
+fn http_post(port: u16, path: &str, token: Option<&str>, body: &[u8]) -> (u16, String) {
+    use std::io::Read;
+    let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    let auth = token
+        .map(|t| format!("Authorization: Bearer {t}\r\n"))
+        .unwrap_or_default();
+    let head = format!(
+        "POST {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n{auth}Content-Length: {}\r\nConnection: close\r\n\r\n",
+        body.len()
+    );
+    s.write_all(head.as_bytes()).unwrap();
+    s.write_all(body).unwrap();
+    let mut buf = String::new();
+    s.read_to_string(&mut buf).unwrap();
+    let status = buf.split_whitespace().nth(1).unwrap().parse().unwrap();
+    let body_str = buf
+        .split_once("\r\n\r\n")
+        .map(|(_, b)| b.to_string())
+        .unwrap_or_default();
+    (status, body_str)
+}
+
+#[test]
+fn upload_file_to_agent_project() {
+    let cfg = tempfile::tempdir().unwrap();
+    let port = free_port();
+    let _server = start_server(cfg.path(), port);
+
+    let project = tempfile::tempdir().unwrap();
+    let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fake_agent.sh");
+    let mut wrapper = Command::new(BIN)
+        .args([
+            "run",
+            "--name",
+            "fake@upload",
+            "--project",
+            &project.path().display().to_string(),
+            "--port",
+            &port.to_string(),
+            "--",
+            "sh",
+            &script.display().to_string(),
+            "pregunta",
+        ])
+        .env("ARGOS_BOARD_CONFIG_DIR", cfg.path())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+
+    let list = wait_for(port, "fake@upload", |a| {
+        a.iter().any(|x| x["name"] == "fake@upload")
+    });
+    let agent_id = list
+        .iter()
+        .find(|x| x["name"] == "fake@upload")
+        .unwrap()["id"]
+        .as_str()
+        .unwrap();
+    let control = std::fs::read_to_string(cfg.path().join("control-token")).unwrap();
+
+    // 1. Subida no autorizada (sin token) -> 401
+    let (status, resp) = http_post(
+        port,
+        &format!("/api/agents/{agent_id}/upload?name=test.md"),
+        None,
+        b"# Hola",
+    );
+    assert_eq!(status, 401, "{resp}");
+
+    // 2. Subida con token correcto -> 200
+    let md_content = b"# Documento Markdown\nDetalles del proyecto";
+    let (status, resp) = http_post(
+        port,
+        &format!("/api/agents/{agent_id}/upload?name=documento.md"),
+        Some(control.trim()),
+        md_content,
+    );
+    assert_eq!(status, 200, "{resp}");
+    let v: serde_json::Value = serde_json::from_str(&resp).unwrap();
+    assert_eq!(v["ok"], true);
+    assert_eq!(v["relative_path"], ".argos/uploads/documento.md");
+    assert_eq!(v["is_image"], false);
+
+    // Verificar en disco
+    let uploaded_file = project.path().join(".argos/uploads/documento.md");
+    assert_eq!(std::fs::read(&uploaded_file).unwrap(), md_content);
+    let gitignore = project.path().join(".argos/.gitignore");
+    assert!(gitignore.exists());
+
+    // 3. Subida de imagen -> is_image true
+    let (status, resp) = http_post(
+        port,
+        &format!("/api/agents/{agent_id}/upload?name=captura.png"),
+        Some(control.trim()),
+        b"fake png bytes",
+    );
+    assert_eq!(status, 200, "{resp}");
+    let v: serde_json::Value = serde_json::from_str(&resp).unwrap();
+    assert_eq!(v["is_image"], true);
+    assert_eq!(v["relative_path"], ".argos/uploads/captura.png");
+
+    let _ = wrapper.kill();
 }

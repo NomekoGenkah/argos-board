@@ -52,6 +52,11 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
 
 - Una tarjeta por agente, con el color del agente en el borde: Claude Code naranja, Antigravity (`agy`) azul,
   GitHub Copilot (`copilot`) violeta, OpenCode blanco y cualquier otro comando marrón. El estado se muestra con texto, icono y color.
+- **La terminal de cada tarjeta** se dibuja celda por celda con xterm.js, con las mismas columnas y filas que la
+  terminal del agente (la letra se ajusta para que entre completa; si bajaría de 5 px, la caja hace scroll y muestra
+  el final), su cursor y los caracteres de cuadro y bloque de OpenCode o Copilot sin costuras. Usa su propia paleta,
+  no la del tema de la página: el selector *Terminal* de la cabecera elige Noche, Papel o Solarized (se recuerda en
+  ese navegador). Las aplicaciones de pantalla completa pintan además su propio fondo, y los márgenes lo toman.
 - **Lienzo**: arrastra la cabecera de una tarjeta para moverla y su borde derecho, inferior o la esquina para
   redimensionarla. Las tarjetas se empujan entre sí y nunca se superponen; las actualizaciones en vivo no las
   mueven. Al agrandar una tarjeta se ve más de la pantalla del agente. Con el teclado, sobre una tarjeta:
@@ -67,8 +72,10 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
   repite por salida nueva ni al recargar la página.
 - **Escribir en un agente**: cada tarjeta tiene una caja de texto. Enter envía (el texto y luego Enter);
   Mayús+Enter agrega una línea; con la caja vacía, ↑, ↓ y Esc van directo al agente (para moverse en sus
-  menús). Debajo, teclas rápidas: ↑ ↓ Enter Esc Tab y Ctrl+C. Probado con `claude`, `opencode` y `agy`
-  (responder sus preguntas, escribir prompts, texto de varias líneas). La cabecera dice si la página tiene
+  menús). Debajo, teclas rápidas: ↑ ↓ Enter Esc Tab ⇧Tab, comandos rápidos de modo (/plan, /auto según
+  el agente) y Ctrl+C. Probado con `claude`, `opencode`, `agy` y `copilot`. El botón de clip 📎 o arrastrar
+  archivos (.md, imágenes, etc.) los guarda en `.argos/uploads/` en el proyecto del agente y agrega su referencia
+  (`@.argos/uploads/...`) a la consola. La cabecera dice si la página tiene
   permiso: *Escritura activa* o *Solo lectura* (al hacer clic, explica cómo conseguirlo).
 - **Dictado por voz**: junto a *Enviar*, cada consola tiene un botón de micrófono. Púlsalo, habla (lo que dices
   aparece en la caja mientras hablas) y púlsalo de nuevo para terminar; revisas y envías como cualquier texto.
@@ -280,4 +287,7 @@ Estructura:
 - `web/` — página embebida en el binario. `data.js` (datos/WebSocket) está separado de `render.js` (DOM) y de
   `office.js` (la Oficina en canvas; sus sprites, dibujados como texto, están en `sprites.js`);
   `prefs.js` guarda las preferencias locales. `web/fonts/` incluye Montserrat (licencia OFL, `OFL.txt`) y
-  `web/vendor/gridstack/` incluye gridstack.js 14.0.0 (MIT) para el lienzo.
+  `web/vendor/gridstack/` incluye gridstack.js 14.0.0 (MIT) para el lienzo y `web/vendor/xterm/` xterm.js 6.0.0 (MIT,
+  con su addon WebGL) para dibujar la terminal de cada agente; `web/fonts/` suma JetBrains Mono (OFL).
+  `term.js` monta la terminal, `termgrid.js` (sin DOM) prepara lo que se le escribe y el tamaño de la letra, y
+  `termthemes.js` tiene las paletas (Noche, Papel, Solarized), independientes del tema de la página.

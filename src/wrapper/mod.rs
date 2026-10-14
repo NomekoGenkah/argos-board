@@ -220,7 +220,7 @@ pub fn run(opts: RunOptions) -> Result<i32> {
         let mut wait = tokio::task::spawn_blocking(move || child.wait());
         let mut tick = tokio::time::interval(TICK);
         let mut last_git = Instant::now();
-        let mut last_lines: Vec<String> = Vec::new();
+        let mut last_grid: Option<(Vec<String>, crate::model::ScreenGrid)> = None;
         let mut signals = signals::Signals::new();
 
         let status = loop {
@@ -228,22 +228,24 @@ pub fn run(opts: RunOptions) -> Result<i32> {
                 res = &mut wait => break res,
                 _ = tick.tick() => {
                     let now = Instant::now();
-                    let (changed, pattern, lines, out_at) = {
+                    let (changed, pattern, capture, out_at) = {
                         let mut s = screen.lock().unwrap();
                         let pattern = profile.classify(&s.contents());
                         let changed = s.activity.tick(now, pattern);
                         if let (Some(st), Some(d)) = (changed, dumper.as_mut()) {
                             d.dump(st.as_str(), s.size(), &s.contents());
                         }
-                        (changed, pattern, s.last_lines(), s.last_output_at)
+                        (changed, pattern, s.capture(), s.last_output_at)
                     };
                     if let Some(state) = changed {
                         tracing::debug!(state = state.as_str(), por_patron = pattern.is_some(), "cambio de estado");
                         let _ = tx.send(IngestMsg::State { state, since: Utc::now() });
                     }
-                    if lines != last_lines {
-                        last_lines = lines.clone();
-                        let _ = tx.send(IngestMsg::Screen { last_lines: lines, last_output_at: out_at });
+                    let current = (capture.last_lines, capture.grid);
+                    if last_grid.as_ref() != Some(&current) {
+                        last_grid = Some(current.clone());
+                        let (last_lines, grid) = current;
+                        let _ = tx.send(IngestMsg::Screen { last_lines, grid: Some(grid), last_output_at: out_at });
                     }
                     if last_git.elapsed() >= GIT_EVERY {
                         last_git = now;
@@ -280,7 +282,8 @@ pub fn run(opts: RunOptions) -> Result<i32> {
         tracing::info!(code, "el agente terminó");
         {
             let mut s = screen.lock().unwrap();
-            let _ = tx.send(IngestMsg::Screen { last_lines: s.last_lines(), last_output_at: s.last_output_at });
+            let c = s.capture();
+            let _ = tx.send(IngestMsg::Screen { last_lines: c.last_lines, grid: Some(c.grid), last_output_at: s.last_output_at });
             if let Some(d) = dumper.as_mut() {
                 d.dump(AgentState::Exited.as_str(), s.size(), &s.contents());
             }

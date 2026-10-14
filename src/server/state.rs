@@ -117,6 +117,7 @@ impl Board {
                             project,
                             git_branch,
                             last_lines: Vec::new(),
+                            grid: None,
                             last_output_at: None,
                             version,
                             accepts_input,
@@ -148,9 +149,11 @@ impl Board {
             IngestMsg::Hello { .. } => unreachable!(),
             IngestMsg::Screen {
                 last_lines,
+                grid,
                 last_output_at,
             } => {
                 e.snap.last_lines = last_lines;
+                e.snap.grid = grid;
                 e.snap.last_output_at = last_output_at;
             }
             IngestMsg::State { state, since } => {
@@ -206,6 +209,21 @@ impl Board {
         let tx = e.input.as_ref().ok_or("el agente está desconectado")?;
         tx.send(WrapperCmd::Input { input })
             .map_err(|_| "el agente está desconectado")
+    }
+
+    /// Devuelve la ruta del proyecto si el agente existe, está activo y acepta entrada.
+    pub fn upload_target(&self, agent: Uuid) -> Result<std::path::PathBuf, &'static str> {
+        let agents = self.agents.lock().unwrap();
+        let e = agents.get(&agent).ok_or("ese agente ya no está")?;
+        match e.snap.state {
+            AgentState::Exited => return Err("el agente terminó"),
+            AgentState::Disconnected => return Err("el agente está desconectado"),
+            _ => {}
+        }
+        if !e.snap.accepts_input {
+            return Err("este agente no acepta entrada desde la web");
+        }
+        Ok(std::path::PathBuf::from(&e.snap.project))
     }
 
     /// La conexión `conn` se cerró. Si no hubo `exit`, el agente queda `disconnected`.
@@ -354,5 +372,58 @@ mod tests {
         assert_eq!(b.snapshot()[0].state, AgentState::Exited);
         b.sweep(Duration::ZERO);
         assert!(b.snapshot().is_empty());
+    }
+
+    #[test]
+    fn upload_target_requires_active_agent_and_accepts_input() {
+        let b = Board::new();
+        let id = Uuid::new_v4();
+        // Agente no existe
+        assert!(b.upload_target(id).is_err());
+        // Agente que no acepta entrada
+        let c1 = b.new_conn();
+        b.apply(
+            c1,
+            None,
+            IngestMsg::Hello {
+                id,
+                name: "test".into(),
+                kind: AgentKind::Claude,
+                project: "/tmp/project1".into(),
+                pid: None,
+                started_at: Utc::now(),
+                git_branch: "main".into(),
+                version: None,
+                accepts_input: false,
+                launch: None,
+            },
+        );
+        assert_eq!(
+            b.upload_target(id).err().unwrap(),
+            "este agente no acepta entrada desde la web"
+        );
+        // Agente que sí acepta entrada
+        let id2 = Uuid::new_v4();
+        let c2 = b.new_conn();
+        b.apply(
+            c2,
+            None,
+            IngestMsg::Hello {
+                id: id2,
+                name: "test2".into(),
+                kind: AgentKind::Claude,
+                project: "/tmp/project2".into(),
+                pid: None,
+                started_at: Utc::now(),
+                git_branch: "main".into(),
+                version: None,
+                accepts_input: true,
+                launch: None,
+            },
+        );
+        assert_eq!(
+            b.upload_target(id2).unwrap(),
+            std::path::PathBuf::from("/tmp/project2")
+        );
     }
 }

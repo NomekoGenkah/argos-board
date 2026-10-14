@@ -9,8 +9,9 @@ use crate::config;
 use crate::devices::{self, Pairing, Store, same_secret};
 use crate::model::{BrowserMsg, FromBrowser, IngestMsg, WrapperCmd};
 use anyhow::{Context, Result, bail};
+use axum::body::Bytes;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{ConnectInfo, DefaultBodyLimit, Request, State};
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Path, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode, Uri, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -261,6 +262,10 @@ fn router(state: AppState) -> Router {
             "/api/pair",
             post(api_pair).layer(DefaultBodyLimit::max(4 * 1024)),
         )
+        .route(
+            "/api/agents/{id}/upload",
+            post(api_upload).layer(DefaultBodyLimit::max(25 * 1024 * 1024)),
+        )
         .route("/ws", get(browser_ws))
         .route("/ingest", get(ingest_ws))
         .fallback(static_file)
@@ -371,6 +376,132 @@ async fn api_pair(
     }
 }
 
+fn authorized_for_control(
+    headers: &HeaderMap,
+    peer: &SocketAddr,
+    control: &str,
+    devices: &Store,
+) -> bool {
+    let token = header_str(headers, header::AUTHORIZATION)
+        .and_then(|h| h.strip_prefix("Bearer "))
+        .or_else(|| header_str(headers, header::HeaderName::from_static("x-argos-token")));
+    if let Some(t) = token {
+        if is_local_ip(peer.ip()) && same_secret(t, control) {
+            return true;
+        }
+        if devices.authenticate(t, Utc::now()).is_some() {
+            return true;
+        }
+    }
+    false
+}
+
+#[derive(serde::Deserialize)]
+struct UploadQuery {
+    #[serde(default)]
+    name: Option<String>,
+}
+
+fn sanitize_upload_filename(raw: &str) -> String {
+    let base = std::path::Path::new(raw)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("upload");
+    let clean: String = base
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '.' || *c == '-' || *c == '_')
+        .collect();
+    let clean = clean.trim_matches('.').to_string();
+    if clean.is_empty() {
+        "upload".into()
+    } else {
+        clean.chars().take(80).collect()
+    }
+}
+
+fn is_image_extension(ext: &str) -> bool {
+    matches!(
+        ext.to_lowercase().as_str(),
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp"
+    )
+}
+
+/// Sube un archivo al directorio `<proyecto>/.argos/uploads/` del agente.
+async fn api_upload(
+    State(st): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Path(id): Path<uuid::Uuid>,
+    Query(query): Query<UploadQuery>,
+    body: Bytes,
+) -> Response {
+    if !authorized_for_control(&headers, &peer, &st.control, st.pairing.store()) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "ok": false, "error": "esta acción requiere permiso de escritura" })),
+        )
+            .into_response();
+    }
+    if body.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "ok": false, "error": "el archivo está vacío" })),
+        )
+            .into_response();
+    }
+    let project_path = match st.board.upload_target(id) {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "ok": false, "error": e })),
+            )
+                .into_response();
+        }
+    };
+
+    let raw_name = query.name.as_deref().unwrap_or("archivo.dat");
+    let clean_name = sanitize_upload_filename(raw_name);
+    let ext = std::path::Path::new(&clean_name)
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+    let is_image = is_image_extension(ext);
+
+    let uploads_dir = project_path.join(".argos").join("uploads");
+    let gitignore_path = project_path.join(".argos").join(".gitignore");
+    let file_path = uploads_dir.join(&clean_name);
+
+    let write_res = tokio::task::spawn_blocking(move || -> Result<(), std::io::Error> {
+        std::fs::create_dir_all(&uploads_dir)?;
+        if !gitignore_path.exists() {
+            let _ = std::fs::write(&gitignore_path, "*\n!.gitignore\n");
+        }
+        std::fs::write(&file_path, &body)?;
+        Ok(())
+    })
+    .await;
+
+    match write_res {
+        Ok(Ok(())) => {
+            let rel = format!(".argos/uploads/{clean_name}");
+            tracing::info!(agent = %id, file = %rel, "archivo subido al proyecto");
+            Json(serde_json::json!({
+                "ok": true,
+                "filename": clean_name,
+                "relative_path": rel,
+                "is_image": is_image,
+            }))
+            .into_response()
+        }
+        _ => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "ok": false, "error": "no se pudo guardar el archivo en el proyecto" })),
+        )
+            .into_response(),
+    }
+}
+
 async fn browser_ws(
     State(st): State<AppState>,
     ConnectInfo(peer): ConnectInfo<SocketAddr>,
@@ -386,7 +517,7 @@ async fn browser_ws(
         control: st.control,
         devices: st.pairing.store().clone(),
     };
-    ws.max_message_size(64 * 1024)
+    ws.max_message_size(512 * 1024)
         .on_upgrade(move |socket| browser_session(socket, st.board, access, st.launcher, st.voice))
 }
 
@@ -890,5 +1021,19 @@ mod tests {
         assert!(!token_ok(&h, "abc"));
         h.insert(header::AUTHORIZATION, "Bearer abc".parse().unwrap());
         assert!(token_ok(&h, "abc"));
+    }
+
+    #[test]
+    fn upload_filename_sanitizing_and_extension() {
+        assert_eq!(sanitize_upload_filename("../secret/test.md"), "test.md");
+        assert_eq!(sanitize_upload_filename("docs/plan.md"), "plan.md");
+        assert_eq!(sanitize_upload_filename("screenshot.png"), "screenshot.png");
+        assert_eq!(sanitize_upload_filename("..."), "upload");
+        assert_eq!(sanitize_upload_filename(""), "upload");
+        assert!(is_image_extension("png"));
+        assert!(is_image_extension("JPG"));
+        assert!(is_image_extension("webp"));
+        assert!(!is_image_extension("md"));
+        assert!(!is_image_extension("txt"));
     }
 }
