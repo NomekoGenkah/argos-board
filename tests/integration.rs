@@ -131,7 +131,10 @@ fn wrapper_reports_to_server_and_propagates_exit_code() {
     assert_eq!(grid["alt"], false);
     let grid_lines = serde_json::to_string(&grid["lines"]).unwrap();
     assert!(grid_lines.contains("(y/n)"), "{grid_lines}");
-    assert!(grid_lines.contains("OPENAI_API_KEY=[REDACTED]"), "{grid_lines}");
+    assert!(
+        grid_lines.contains("OPENAI_API_KEY=[REDACTED]"),
+        "{grid_lines}"
+    );
     assert!(!grid_lines.contains("no-deberia-verse"), "{grid_lines}");
 
     // Con salida reciente → working; sin salida → idle (ventana de actividad + histéresis).
@@ -1379,10 +1382,7 @@ fn upload_file_to_agent_project() {
     let list = wait_for(port, "fake@upload", |a| {
         a.iter().any(|x| x["name"] == "fake@upload")
     });
-    let agent_id = list
-        .iter()
-        .find(|x| x["name"] == "fake@upload")
-        .unwrap()["id"]
+    let agent_id = list.iter().find(|x| x["name"] == "fake@upload").unwrap()["id"]
         .as_str()
         .unwrap();
     let control = std::fs::read_to_string(cfg.path().join("control-token")).unwrap();
@@ -1429,4 +1429,5 @@ fn upload_file_to_agent_project() {
     assert_eq!(v["relative_path"], ".argos/uploads/captura.png");
 
     let _ = wrapper.kill();
+    let _ = wrapper.wait();
 }
