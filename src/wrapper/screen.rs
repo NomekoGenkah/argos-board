@@ -343,14 +343,20 @@ impl Screen {
             combined.extend(self.history.iter().cloned());
             let history: Vec<String> = self.history.iter().cloned().collect();
             combined.extend(cleaned_curr);
-            (clean_lines(combined.iter().map(String::as_str), MAX_LINES), history)
+            (
+                clean_lines(combined.iter().map(String::as_str), MAX_LINES),
+                history,
+            )
         } else {
             // Con scrollback nativo de vt100 (p. ej. agy o CLI estándar).
             self.history.clear();
             self.prev_visible = cleaned_curr;
             let history = lines.clone();
             lines.extend(curr_visible);
-            (clean_lines(lines.iter().map(String::as_str), MAX_LINES), history)
+            (
+                clean_lines(lines.iter().map(String::as_str), MAX_LINES),
+                history,
+            )
         };
 
         let grid = build_grid(rows, cols, alt, cursor, history, raw_visible);
@@ -377,7 +383,10 @@ fn build_grid(
 ) -> ScreenGrid {
     let is_blank = |l: &str| strip_ansi(l).trim().is_empty() && !paints_background(l);
     if !alt {
-        let used = visible.iter().rposition(|l| !is_blank(l)).map_or(0, |i| i + 1);
+        let used = visible
+            .iter()
+            .rposition(|l| !is_blank(l))
+            .map_or(0, |i| i + 1);
         let cursor_row = cursor.map_or(0, |(r, _)| usize::from(r) + 1);
         visible.truncate(used.max(cursor_row).max(1));
     }
@@ -394,7 +403,11 @@ fn build_grid(
         rows,
         alt,
         cursor: cursor.filter(|(r, _)| usize::from(*r) < visible.len()),
-        history: if alt { Vec::new() } else { history.into_iter().skip(skip).map(seal).collect() },
+        history: if alt {
+            Vec::new()
+        } else {
+            history.into_iter().skip(skip).map(seal).collect()
+        },
         lines: visible.into_iter().map(seal).collect(),
     }
 }
@@ -832,8 +845,14 @@ mod tests {
         assert_eq!(g.lines.len(), 10, "{:?}", g.lines);
         assert!(g.history.is_empty());
         assert_eq!(strip_ansi(&g.lines[3]).trim(), "hola");
-        assert!(strip_ansi(&g.lines[0]).trim().is_empty(), "las filas de arriba siguen ahí");
-        assert!(g.lines[7].contains("48;2;30;30;30"), "el fondo propio se conserva");
+        assert!(
+            strip_ansi(&g.lines[0]).trim().is_empty(),
+            "las filas de arriba siguen ahí"
+        );
+        assert!(
+            g.lines[7].contains("48;2;30;30;30"),
+            "el fondo propio se conserva"
+        );
         assert_eq!(g.cursor, Some((3, 8)));
     }
 
@@ -844,7 +863,11 @@ mod tests {
         let g = s.capture().grid;
         assert!(!g.alt);
         assert_eq!(g.cursor, None, "cursor oculto");
-        let text = |v: &[String]| v.iter().map(|l| strip_ansi(l).trim().to_string()).collect::<Vec<_>>();
+        let text = |v: &[String]| {
+            v.iter()
+                .map(|l| strip_ansi(l).trim().to_string())
+                .collect::<Vec<_>>()
+        };
         assert_eq!(text(&g.history), vec!["uno", "dos"]);
         assert_eq!(text(&g.lines), vec!["tres", "cuatro"]);
 
@@ -861,6 +884,9 @@ mod tests {
         s.process(b"\x1b[31mAPI_KEY=secreto", Instant::now());
         let g = s.capture().grid;
         assert!(g.lines[0].contains("API_KEY=[REDACTED]"), "{:?}", g.lines);
-        assert!(g.lines[0].ends_with("\x1b[m"), "cada fila cierra sus estilos");
+        assert!(
+            g.lines[0].ends_with("\x1b[m"),
+            "cada fila cierra sus estilos"
+        );
     }
 }
