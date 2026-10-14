@@ -2,26 +2,28 @@
 // (ArrayBuffer de 640 bytes). Funciona en Firefox y Chrome; el navegador solo da acceso
 // al micrófono con la página en `localhost` o por HTTPS.
 
+import { t } from "./i18n.js";
+
 /** Mensaje comprensible para un error de `getUserMedia`. */
 export function micErrorText(e) {
   switch (e?.name) {
     case "NotAllowedError":
     case "SecurityError":
-      return "El navegador bloqueó el micrófono: dale permiso a esta página.";
+      return t("voice.notAllowed");
     case "NotFoundError":
     case "OverconstrainedError":
-      return "No se encontró un micrófono.";
+      return t("voice.noMic");
     case "NotReadableError":
-      return "El micrófono está en uso por otra aplicación.";
+      return t("voice.micBusy");
     default:
-      return `No se pudo abrir el micrófono: ${e?.message ?? e}`;
+      return t("voice.micFailed", e?.message ?? e);
   }
 }
 
 /** Abre el micrófono. Devuelve `{ stop() }`; rechaza con un error de `getUserMedia`. */
 export async function openMic({ onFrame }) {
   if (!navigator.mediaDevices?.getUserMedia) {
-    throw Object.assign(new Error("este navegador no ofrece micrófono aquí"), { name: "NotFoundError" });
+    throw Object.assign(new Error(t("voice.noMicHere")), { name: "NotFoundError" });
   }
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },

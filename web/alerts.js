@@ -2,11 +2,13 @@
 // Cuando un agente pasa a esperar al usuario: notificación del navegador,
 // sonido opcional y contador en el título de la pestaña.
 
+import { t } from "./i18n.js";
+
 export const NEEDS_YOU = new Set(["waiting_input", "waiting_approval"]);
 
 const WHAT = {
-  waiting_input: "te hizo una pregunta",
-  waiting_approval: "pide permiso",
+  waiting_input: "alert.input",
+  waiting_approval: "alert.approval",
 };
 
 const SESSION_KEY = "argos-notified";
@@ -60,7 +62,7 @@ export function createAlerts({ prefs, baseTitle, onActivate }) {
   function notify(a) {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     try {
-      const n = new Notification(`${a.name} ${WHAT[a.state]}`, {
+      const n = new Notification(t(WHAT[a.state], a.name), {
         body: a.project,
         tag: a.id, // una notificación viva por agente
         renotify: true,

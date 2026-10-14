@@ -2,6 +2,8 @@
 // datos y lo pinta. Las actualizaciones en vivo solo cambian el contenido de
 // las tarjetas; la posición y el tamaño los decide el usuario.
 
+import { applyDom, t } from "./i18n.js";
+
 import { createTermView } from "./term.js";
 import { DEFAULT_TERM_THEME } from "./termthemes.js";
 import { cardSizeFor, DEFAULT_TERM_MODE, gridOf } from "./termgrid.js";
@@ -9,13 +11,13 @@ import { createConsole } from "./console.js";
 import { launchText, wireStopButton } from "./launcher.js";
 
 export const LABELS = {
-  working: "Trabajando",
-  waiting_input: "Esperando tu respuesta",
-  waiting_approval: "Esperando aprobación",
-  idle: "Inactivo",
-  error: "Error",
-  exited: "Terminado",
-  disconnected: "Desconectado",
+  working: t("state.working"),
+  waiting_input: t("state.waiting_input"),
+  waiting_approval: t("state.waiting_approval"),
+  idle: t("state.idle"),
+  error: t("state.error"),
+  exited: t("state.exited"),
+  disconnected: t("state.disconnected"),
 };
 
 export const KINDS = {
@@ -23,7 +25,7 @@ export const KINDS = {
   opencode: "OpenCode",
   agy: "Antigravity",
   copilot: "GitHub Copilot",
-  generic: "Comando",
+  generic: t("kind.generic"),
 };
 
 // Solo estos cambios se anuncian a lectores de pantalla: working ↔ idle cambia
@@ -35,9 +37,9 @@ const ORDER = ["waiting_input", "waiting_approval", "error", "working", "idle", 
 const ENDED = new Set(["exited", "disconnected"]);
 
 const CONN_TEXT = {
-  connecting: "Conectando…",
-  open: "Conectado",
-  closed: "Sin conexión, reintentando…",
+  connecting: t("conn.connecting"),
+  open: t("conn.open"),
+  closed: t("conn.closed"),
 };
 
 // Lienzo: 12 columnas de ancho, filas de 24 px.
@@ -100,8 +102,8 @@ export function fillLaunch(el, a, auth) {
 /** Aviso si el wrapper que reporta es de otra versión que el servidor. */
 export function versionWarning(agentVersion, serverVersion) {
   if (!serverVersion || agentVersion === serverVersion) return null;
-  if (!agentVersion) return "Wrapper de una versión anterior: reinícialo para actualizarlo.";
-  return `Wrapper de otra versión (${agentVersion}): reinícialo para actualizarlo.`;
+  if (!agentVersion) return t("warn.old");
+  return t("warn.other", agentVersion);
 }
 
 export function createDomRenderer({ cards, empty, conn, live, template, prefs, GridStack, version, sendInput, voice, uploadFile, stop, onOpenAgent }) {
@@ -202,19 +204,20 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     fillLaunch(el, a, auth);
     const dismiss = el.querySelector(".dismiss");
     dismiss.hidden = !ENDED.has(a.state);
-    dismiss.setAttribute("aria-label", `Quitar ${a.name} del tablero`);
-    el.setAttribute("aria-label", `${a.name} (${KINDS[a.kind] ?? a.kind}): ${LABELS[a.state] ?? a.state}`);
+    dismiss.setAttribute("aria-label", t("card.dismissAria", a.name));
+    el.setAttribute("aria-label", t("card.aria", a.name, KINDS[a.kind] ?? a.kind, LABELS[a.state] ?? a.state));
     consoles.get(a.id)?.update(a, auth);
   }
 
   function createCard(a) {
     const item = template.content.firstElementChild.cloneNode(true);
+    applyDom(item);
     item.dataset.name = a.name;
     item.querySelector(".dismiss").addEventListener("click", () => {
       const agent = current.get(a.id);
       if (!agent) return;
       prefs.dismiss(agent);
-      announce(`${agent.name} quitado del tablero`);
+      announce(t("ann.dismissed", agent.name));
       rerender();
       cards.querySelector(".card")?.focus();
     });
@@ -225,9 +228,9 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     wireStopButton(item.querySelector(".stop"), {
       getAgent: () => current.get(a.id),
       stop,
-      onDone: (error) => announce(error ? `No se pudo detener ${a.name}: ${error}` : `${a.name} detenido`),
+      onDone: (error) => announce(error ? t("ann.stopFailed", a.name, error) : t("ann.stopped", a.name)),
     });
-    item.querySelector(".stop").setAttribute("aria-label", `Detener ${a.name}`);
+    item.querySelector(".stop").setAttribute("aria-label", t("card.stopAria", a.name));
     item.querySelector(".expand")?.addEventListener("click", (e) => {
       e.stopPropagation();
       onOpenAgent?.(a.id);
@@ -291,10 +294,10 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     const [dx, dy] = delta;
     if (ev.shiftKey) {
       grid.update(item, { w: Math.max(MIN_CARD.minW, n.w + dx), h: Math.max(MIN_CARD.minH, n.h + dy * 2) });
-      announce(`Tamaño: ${item.gridstackNode.w} de ${COLUMNS} columnas`);
+      announce(t("ann.size", item.gridstackNode.w, COLUMNS));
     } else {
       grid.update(item, { x: Math.max(0, n.x + dx), y: Math.max(0, n.y + dy) });
-      announce(`Posición: columna ${item.gridstackNode.x + 1}, fila ${item.gridstackNode.y + 1}`);
+      announce(t("ann.pos", item.gridstackNode.x + 1, item.gridstackNode.y + 1));
     }
     item.querySelector(".card").focus();
   }
@@ -309,7 +312,7 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     visible.forEach((a, i) => grid.update(els.get(a.id), slots[i]));
     grid.batchUpdate(false);
     grid.compact();
-    announce("Tarjetas reordenadas por estado");
+    announce(t("ann.relayout"));
   }
 
   // ---- Disposiciones: lienzo (libre), cuadrícula (iguales) y foco (uno grande y una lista).
@@ -377,7 +380,7 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     if (!name || name === focusName) return;
     focusName = name;
     prefs.setFocusName(name);
-    announce(`En primer plano: ${name}`);
+    announce(t("ann.front", name));
     arrange();
     els.get([...current.values()].find((a) => a.name === name)?.id)?.querySelector(".card")?.focus({ preventScroll: true });
   }
@@ -401,7 +404,7 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
       const a = current.get(id);
       if (!a) continue;
       item.querySelector(".since").textContent = formatDuration(now - Date.parse(a.state_since));
-      item.querySelector(".name").title = `Sesión: ${formatDuration(now - Date.parse(a.started_at))}`;
+      item.querySelector(".name").title = t("card.session", formatDuration(now - Date.parse(a.started_at)));
     }
   }
 
@@ -443,9 +446,9 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
       change.prev.state !== change.agent.state &&
       ANNOUNCED.has(change.agent.state)
     ) {
-      announce(`${change.agent.name}: ${LABELS[change.agent.state] ?? change.agent.state}`);
+      announce(t("ann.stateChange", change.agent.name, LABELS[change.agent.state] ?? change.agent.state));
     } else if (change.kind === "agent_added") {
-      announce(`Nuevo agente: ${change.agent.name}`);
+      announce(t("ann.newAgent", change.agent.name));
     }
 
     // Las tarjetas nuevas se agregan en orden de estado; las existentes no se mueven.

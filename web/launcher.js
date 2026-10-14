@@ -1,6 +1,8 @@
 // Lanzar agentes desde la página: el diálogo "Nuevo agente" (tipo, carpeta y
 // nombre) y el botón "Detener" de los agentes lanzados así.
 
+import { t } from "./i18n.js";
+
 import { KINDS } from "./render.js";
 
 const KIND_ORDER = ["claude", "opencode", "agy", "copilot"];
@@ -47,7 +49,7 @@ export function createLaunchDialog({ dialog, store, onLaunched }) {
   async function go(target) {
     const res = await store.listDirs(target);
     if (!res.ok) {
-      say(res.error || "No se pudo abrir la carpeta", "error");
+      say(res.error || t("launch.openFailed"), "error");
       return;
     }
     say("");
@@ -62,7 +64,7 @@ export function createLaunchDialog({ dialog, store, onLaunched }) {
         b.type = "button";
         b.className = "launch-dir";
         b.textContent = d;
-        b.setAttribute("aria-label", `Entrar en ${d}`);
+        b.setAttribute("aria-label", t("launch.enter", d));
         b.addEventListener("click", () => go(`${path.replace(/\/$/, "")}/${d}`));
         li.append(b);
         return li;
@@ -71,7 +73,7 @@ export function createLaunchDialog({ dialog, store, onLaunched }) {
     if (!res.dirs.length) {
       const li = document.createElement("li");
       li.className = "launch-empty";
-      li.textContent = "Sin subcarpetas";
+      li.textContent = t("launch.none");
       list.append(li);
     }
     updatePlaceholder();
@@ -84,13 +86,13 @@ export function createLaunchDialog({ dialog, store, onLaunched }) {
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const kind = selectedKind();
-    if (!kind) return say("Elige un agente", "error");
-    if (!path) return say("Elige una carpeta", "error");
+    if (!kind) return say(t("launch.pickAgent"), "error");
+    if (!path) return say(t("launch.pickFolder"), "error");
     submit.disabled = true;
-    say("Lanzando…");
+    say(t("launch.launching"));
     const res = await store.launch(kind, path, nameInput.value.trim());
     submit.disabled = false;
-    if (!res.ok) return say(res.error || "No se pudo lanzar", "error");
+    if (!res.ok) return say(res.error || t("launch.failed"), "error");
     dialog.close();
     onLaunched?.(res.name);
   });
@@ -111,8 +113,8 @@ export function createLaunchDialog({ dialog, store, onLaunched }) {
       }),
     );
     note.textContent = info.tmux
-      ? "Corre en una sesión de tmux: además de verlo aquí, podrás tomarlo desde una terminal."
-      : "Sin tmux: el agente solo existirá en esta página (y se cierra si se detiene argos-board serve).";
+      ? t("launch.tmux")
+      : t("launch.noTmux");
   }
 
   function fillRecent() {
@@ -162,14 +164,14 @@ export function wireStopButton(button, { getAgent, stop, onDone }) {
   const reset = () => {
     clearTimeout(armed);
     armed = null;
-    button.textContent = "Detener";
+    button.textContent = t("card.stop");
     button.dataset.armed = "";
   };
   button.addEventListener("click", async () => {
     const a = getAgent();
     if (!a) return;
     if (!armed) {
-      button.textContent = "¿Detener?";
+      button.textContent = t("card.stopConfirm");
       button.dataset.armed = "1";
       armed = setTimeout(reset, 3000);
       return;
@@ -178,7 +180,7 @@ export function wireStopButton(button, { getAgent, stop, onDone }) {
     button.disabled = true;
     const res = await stop(a.id);
     button.disabled = false;
-    onDone?.(res.ok ? null : res.error || "No se pudo detener");
+    onDone?.(res.ok ? null : res.error || t("launch.stopFailed"));
   });
   reset();
   return { reset };
@@ -188,6 +190,6 @@ export function wireStopButton(button, { getAgent, stop, onDone }) {
 export function launchText(agent) {
   if (!agent.launch) return null;
   return agent.launch.attach
-    ? { text: "En tmux:", code: agent.launch.attach }
-    : { text: "Lanzado desde la página (solo existe aquí).", code: null };
+    ? { text: t("launch.inTmux"), code: agent.launch.attach }
+    : { text: t("launch.fromPage"), code: null };
 }

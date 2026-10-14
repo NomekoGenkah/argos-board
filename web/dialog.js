@@ -1,6 +1,8 @@
 // Panel de un agente (desde la Oficina): su pantalla en vivo y la consola
 // para escribirle, sin salir de la vista.
 
+import { t } from "./i18n.js";
+
 import { createTermView } from "./term.js";
 import { DEFAULT_TERM_THEME } from "./termthemes.js";
 import { createConsole, inputBlocker } from "./console.js";
@@ -33,7 +35,7 @@ export function createAgentDialog({ dialog, sendInput, voice, uploadFile, stop, 
   const stopper = wireStopButton(dialog.querySelector('[data-act="stop"]'), {
     getAgent: () => last?.agents.get(agentId),
     stop,
-    onDone: (error) => (status.textContent = error ? `No se pudo detener: ${error}` : "Detenido"),
+    onDone: (error) => (status.textContent = error ? t("dlg.stopFailed", error) : t("dlg.stopped")),
   });
   const jumpTop = dialog.querySelector('[data-jump="top"]');
   const jumpBottom = dialog.querySelector('[data-jump="bottom"]');
@@ -55,15 +57,15 @@ export function createAgentDialog({ dialog, sendInput, voice, uploadFile, stop, 
     dialog.querySelector(".name").textContent = a.name;
     dialog.querySelector(".badge-text").textContent = LABELS[a.state] ?? a.state;
     view.update(a);
-    if (linesCount) linesCount.textContent = `${view.lineCount()} líneas`;
+    if (linesCount) linesCount.textContent = t("dlg.lines", view.lineCount());
     con.update(a, last.auth);
     fillLaunch(dialog, a, last.auth);
     const why = inputBlocker(a, last.auth);
     readonly.hidden = why !== "auth";
     readonly.textContent =
       last.auth === "bad"
-        ? "El token del enlace no es válido: abre el enlace que imprime argos-board serve para poder escribir."
-        : "Solo lectura: abre el enlace con token que imprime argos-board serve para poder escribir.";
+        ? t("dlg.readonlyBad")
+        : t("dlg.readonly");
   }
 
   return {

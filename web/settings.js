@@ -2,14 +2,15 @@
 // como preset. Sin DOM: lo usan el panel de ajustes y las pruebas.
 
 import { DEFAULT_TERM_MODE, TERM_MODES } from "./termgrid.js";
+import { t } from "./i18n.js";
 import { DEFAULT_TERM_THEME, TERM_THEMES } from "./termthemes.js";
 
 /** Valores válidos de cada ajuste y cómo se llaman en la página. */
 export const CHOICES = {
-  layout: { canvas: "Lienzo", grid: "Cuadrícula", focus: "Foco" },
-  theme: { light: "Claro", dark: "Oscuro" },
-  density: { comfortable: "Cómoda", compact: "Compacta" },
-  radius: { sharp: "Rectas", soft: "Suaves", round: "Redondas" },
+  layout: { canvas: t("choice.canvas"), grid: t("choice.grid"), focus: t("choice.focus") },
+  theme: { light: t("choice.light"), dark: t("choice.dark") },
+  density: { comfortable: t("choice.comfortable"), compact: t("choice.compact") },
+  radius: { sharp: t("choice.sharp"), soft: t("choice.soft"), round: t("choice.round") },
   termTheme: Object.fromEntries(Object.entries(TERM_THEMES).map(([k, t]) => [k, t.label])),
   termMode: TERM_MODES,
 };
@@ -46,12 +47,12 @@ export function parseShared(text) {
   try {
     raw = JSON.parse(text);
   } catch {
-    return { ok: false, error: "El texto no es un preset válido." };
+    return { ok: false, error: t("set.presetBadText") };
   }
   if (!raw || typeof raw !== "object" || raw.argos !== 1) {
-    return { ok: false, error: "El texto no es un preset de Argos Board." };
+    return { ok: false, error: t("set.presetNotArgos") };
   }
-  if (!KEYS.some((k) => Object.hasOwn(raw, k))) return { ok: false, error: "El preset no trae ningún ajuste." };
+  if (!KEYS.some((k) => Object.hasOwn(raw, k))) return { ok: false, error: t("set.presetEmpty") };
   return { ok: true, bundle: normalize(raw) };
 }
 

@@ -1,9 +1,11 @@
 // Temas de la terminal. Son independientes del tema de la página: la terminal es una ventana
 // con su propia paleta, así lo que el agente dibuja con sus colores se ve como lo pensó.
 
+import { t } from "./i18n.js";
+
 export const TERM_THEMES = {
   night: {
-    label: "Noche",
+    label: t("termTheme.night"),
     background: "#15110f",
     foreground: "#e6dcd9",
     cursor: "#e6dcd9",
@@ -27,7 +29,7 @@ export const TERM_THEMES = {
     brightWhite: "#ffffff",
   },
   paper: {
-    label: "Papel",
+    label: t("termTheme.paper"),
     background: "#fbf8f6",
     foreground: "#2b1f1d",
     cursor: "#2b1f1d",
@@ -51,7 +53,7 @@ export const TERM_THEMES = {
     brightWhite: "#191312",
   },
   solarized: {
-    label: "Solarized",
+    label: t("termTheme.solarized"),
     background: "#002b36",
     foreground: "#93a1a1",
     cursor: "#93a1a1",

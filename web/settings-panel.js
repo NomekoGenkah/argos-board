@@ -2,11 +2,12 @@
 // y los presets que juntan todo eso. Guarda en `prefs` y avisa a la página con `apply`.
 
 import { CHOICES, DEFAULTS, KEYS, cleanName, matchingPreset, normalize, parseShared, serialize } from "./settings.js";
+import { LANGS, setLangPref, storedLangPref, t } from "./i18n.js";
 
 const LAYOUT_NOTES = {
-  canvas: "Mueve y cambia el tamaño de cada tarjeta; la página lo recuerda.",
-  grid: "Tarjetas del mismo tamaño, en el orden en que llegaron.",
-  focus: "Un agente grande y los demás en una lista: toca uno para pasarlo al frente.",
+  canvas: t("set.layoutCanvas"),
+  grid: t("set.layoutGrid"),
+  focus: t("set.layoutFocus"),
 };
 
 /**
@@ -24,6 +25,12 @@ export function createSettingsPanel({ dialog, prefs, apply, canRelayout = (bundl
     radius: $("#set-radius"),
   };
   const themeBtns = { light: $("#theme-light"), dark: $("#theme-dark") };
+  // El idioma no forma parte de un preset (no es del aspecto): cambiarlo recarga la página.
+  const langSelect = $("#set-lang");
+  langSelect.add(new Option(t("set.langAuto"), "auto"));
+  for (const [code, name] of Object.entries(LANGS)) langSelect.add(new Option(name, code));
+  langSelect.value = storedLangPref();
+  langSelect.addEventListener("change", () => setLangPref(langSelect.value));
   const presetSelect = $("#preset-select");
   const presetName = $("#preset-name");
   const presetJson = $("#preset-json");
@@ -93,7 +100,7 @@ export function createSettingsPanel({ dialog, prefs, apply, canRelayout = (bundl
   function refreshPresets() {
     const presets = prefs.presets();
     const match = matchingPreset(presets, current());
-    presetSelect.replaceChildren(new Option("Sin preset", ""));
+    presetSelect.replaceChildren(new Option(t("set.presetNone"), ""));
     for (const name of Object.keys(presets)) presetSelect.add(new Option(name, name));
     presetSelect.value = match ?? "";
     $("#preset-delete").disabled = !match;
@@ -103,17 +110,17 @@ export function createSettingsPanel({ dialog, prefs, apply, canRelayout = (bundl
     const bundle = prefs.presets()[presetSelect.value];
     if (!bundle) return;
     applyBundle(bundle);
-    say(`Preset «${presetSelect.value}» aplicado.`);
+    say(t("set.presetApplied", presetSelect.value));
   });
   $("#preset-save").addEventListener("click", () => {
     const name = cleanName(presetName.value);
-    if (!name) return say("Escribe un nombre para el preset.", "error");
+    if (!name) return say(t("set.presetNeedName"), "error");
     const presets = prefs.presets();
     const replaced = Object.hasOwn(presets, name);
     prefs.setPresets({ ...presets, [name]: current() });
     presetName.value = "";
     refresh();
-    say(replaced ? `Preset «${name}» actualizado.` : `Preset «${name}» guardado.`);
+    say(replaced ? t("set.presetUpdated", name) : t("set.presetSaved", name));
   });
   $("#preset-delete").addEventListener("click", () => {
     const name = presetSelect.value;
@@ -121,22 +128,22 @@ export function createSettingsPanel({ dialog, prefs, apply, canRelayout = (bundl
     const { [name]: _gone, ...rest } = prefs.presets();
     prefs.setPresets(rest);
     refresh();
-    say(`Preset «${name}» borrado.`);
+    say(t("set.presetDeleted", name));
   });
   $("#preset-copy").addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(presetJson.value);
-      say("Copiado.");
+      say(t("set.presetCopied"));
     } catch {
       presetJson.select(); // sin permiso para el portapapeles (p. ej. por http): queda seleccionado para copiarlo a mano
-      say("Selecciona el texto y cópialo con Ctrl+C.");
+      say(t("set.presetSelect"));
     }
   });
   $("#preset-apply-json").addEventListener("click", () => {
     const parsed = parseShared(presetJson.value);
     if (!parsed.ok) return say(parsed.error, "error");
     applyBundle(parsed.bundle);
-    say("Preset aplicado.");
+    say(t("set.presetAppliedText"));
   });
 
   // ---- estado de los controles
