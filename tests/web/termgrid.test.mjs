@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cardSizeFor, fullFrame, gridOf, historyKey, MIN_FONT, pickFont, READABLE_FONT, ROW_RATIO, CELL_RATIO, visibleFrame } from "../../web/termgrid.js";
+import { cardSizeFor, FLOOR_FONT, fullFrame, gridOf, historyKey, lastContentRow, MIN_FONT, pickFont, READABLE_FONT, ROW_RATIO, CELL_RATIO, visibleFrame } from "../../web/termgrid.js";
 
 const grid = (extra = {}) => ({ cols: 40, rows: 10, alt: false, cursor: null, history: [], lines: ["uno", "dos"], ...extra });
 
@@ -69,21 +69,45 @@ test("auto: si la terminal entera se lee, entra entera; si no, se ajusta al anch
   assert.ok(big.size >= READABLE_FONT);
 
   const small = pick({ cols: 120, rows: 40, width: 468, height: 245, mode: "auto" });
-  assert.equal(small.size, READABLE_FONT, "al ancho daría menos de lo legible");
+  assert.equal(small.size, FLOOR_FONT, "al ancho daría menos de lo legible");
   assert.equal(small.scroll, true);
 
   // Ancho de sobra pero poco alto: se ajusta al ancho y solo recorre en vertical.
   const wide = pick({ cols: 100, rows: 40, width: 900, height: 250, mode: "auto" });
-  assert.ok(wide.size > READABLE_FONT);
+  assert.ok(wide.size >= READABLE_FONT);
   assert.equal(wide.scroll, true);
   assert.ok(measure(wide.size).cw * 100 <= 900);
 });
 
-test("la tarjeta nueva se dimensiona para una letra legible según el ancho del lienzo", () => {
-  const at = (containerPx) => cardSizeFor({ containerPx, columns: 12, cellPx: 24 });
+test("la tarjeta nueva toma el ancho más chico, de los que reparten bien el lienzo, con letra legible", () => {
+  const at = (containerPx, o = {}) => cardSizeFor({ containerPx, columns: 12, cellPx: 24, ...o });
   assert.equal(at(1568).w, 6, "en pantalla ancha, dos por fila");
-  assert.ok(at(1248).w >= 7, "más angosta, cada una pide más columnas");
-  assert.ok(at(600).w === 12 || at(600).w <= 12);
-  assert.ok(at(1568).h <= 34);
-  assert.equal(cardSizeFor({ containerPx: 1568, columns: 12, cellPx: 24, cols: 20, rows: 5 }).w, 4, "nunca menos de 4 columnas");
+  assert.equal(at(1248).w, 6);
+  assert.equal(at(900).w, 12, "si dos por fila no se leen, una por fila");
+  assert.equal(at(1568, { cols: 20, rows: 5 }).w, 4, "una terminal angosta cabe de a tres");
+  for (const px of [700, 900, 1248, 1568, 2400]) assert.ok(at(px).h <= 24 && at(px).h >= 10, `alto con ${px}`);
+});
+
+test("auto no baja del piso que se le da (más alto en un celular)", () => {
+  const phone = pick({ cols: 120, rows: 40, width: 360, height: 400, mode: "auto", floor: 8.5 });
+  assert.equal(phone.size, 8.5);
+  assert.equal(phone.scroll, true);
+});
+
+test("auto con tail: un agente que escribe de arriba abajo va al ancho aunque la terminal entera se lea", () => {
+  const o = { cols: 120, rows: 40, width: 781, height: 508, mode: "auto" };
+  const whole = pick(o);
+  const tail = pick({ ...o, tail: true });
+  assert.equal(whole.scroll, false);
+  assert.ok(tail.size >= whole.size);
+  assert.equal(tail.scroll, true, "sobra alto: se ve el final");
+  // Si cabe sin recorrer, no hay scroll.
+  assert.equal(pick({ ...o, rows: 10, tail: true }).scroll, false);
+});
+
+test("la última fila con contenido es hasta donde importa mostrar", () => {
+  const g = (lines, cursor = null) => grid({ lines, cursor });
+  assert.equal(lastContentRow(g(["a", "b", "\x1b[31m  \x1b[m", ""])), 1);
+  assert.equal(lastContentRow(g(["a", "", "", ""], [3, 0])), 3, "el cursor también cuenta");
+  assert.equal(lastContentRow(g(["", ""])), 0);
 });

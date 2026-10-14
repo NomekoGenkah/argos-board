@@ -15,6 +15,10 @@
     // Tema antes del primer pintado (evita el parpadeo). Claro por defecto.
     try {
       if (JSON.parse(localStorage.getItem("argos-theme")) === "dark") document.documentElement.dataset.theme = "dark";
+      const d = JSON.parse(localStorage.getItem("argos-density"));
+      if (d === "compact") document.documentElement.dataset.density = d;
+      const r = JSON.parse(localStorage.getItem("argos-radius"));
+      if (r === "sharp" || r === "round") document.documentElement.dataset.radius = r;
     } catch (e) {}
   </script>
   <link rel="preload" href="fonts/montserrat-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
@@ -26,35 +30,26 @@
 <body>
   <header class="top">
     <div class="brand">
-      <h1><span class="mark" aria-hidden="true"></span>Argos <span>Board</span></h1>
-      <span id="version" class="version"></span>
-    </div>
-    <div class="top-actions">
+      <h1><span class="mark" aria-hidden="true"></span>Argos</h1>
       <p id="conn" class="conn" data-conn="connecting" role="status">
         <span class="conn-dot" aria-hidden="true"></span><span class="conn-text">Conectando…</span>
       </p>
-      <div class="seg" role="group" aria-label="Vista" title="Alternar entre Tablero y Oficina">
-        <button id="view-board" class="seg-btn" type="button" aria-pressed="true">Tablero</button>
-        <button id="view-office" class="seg-btn" type="button" aria-pressed="false">Oficina</button>
-      </div>
-      <button id="launch" class="btn launch" type="button" aria-haspopup="dialog" hidden>Nuevo agente</button>
-      <button id="write" class="btn write" type="button" aria-haspopup="dialog" hidden></button>
-      <button id="notify" class="btn" type="button" hidden>Activar avisos</button>
-      <button id="sound" class="btn" type="button" aria-pressed="false" title="Suena cuando un agente te necesita">Sonido</button>
-      <button id="voice-lang" class="btn" type="button" title="Idioma del dictado por voz (clic para cambiar)" hidden></button>
-      <button id="relayout" class="btn" type="button" title="Ordena las tarjetas por estado y restablece su tamaño">Reordenar</button>
-      <label class="select-wrap" title="Colores de la terminal de cada agente">
-        <span class="select-label">Terminal</span>
-        <select id="term-theme" class="select" aria-label="Tema de la terminal"></select>
-      </label>
-      <label class="select-wrap" title="Cómo se ajusta la terminal al tamaño de cada tarjeta">
-        <span class="select-label">Ajuste</span>
-        <select id="term-mode" class="select" aria-label="Ajuste de la terminal en las tarjetas"></select>
-      </label>
-      <div class="seg" role="group" aria-label="Tema" title="Alternar entre tema Claro y Oscuro">
-        <button id="theme-light" class="seg-btn" type="button" aria-pressed="true">Claro</button>
-        <button id="theme-dark" class="seg-btn" type="button" aria-pressed="false">Oscuro</button>
-      </div>
+    </div>
+    <div class="seg" role="group" aria-label="Vista" title="Alternar entre Tablero y Oficina">
+      <button id="view-board" class="seg-btn" type="button" aria-pressed="true">Tablero</button>
+      <button id="view-office" class="seg-btn" type="button" aria-pressed="false">Oficina</button>
+    </div>
+    <button id="attention" class="attention" type="button" data-level="calm" disabled>Sin agentes</button>
+    <div class="top-actions">
+      <button id="launch" class="btn primary" type="button" aria-haspopup="dialog" hidden>
+        <svg class="ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><span>Nuevo agente</span>
+      </button>
+      <button id="write" class="btn write" type="button" aria-haspopup="dialog" hidden>
+        <svg class="ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l4-1 11-11a2.1 2.1 0 0 0-3-3L5 16l-1 4z"/></svg><span class="write-text"></span>
+      </button>
+      <button id="settings" class="icon-btn" type="button" aria-haspopup="dialog" aria-label="Ajustes" title="Ajustes">
+        <svg class="ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
+      </button>
     </div>
   </header>
 
@@ -99,6 +94,72 @@
     <form method="dialog" class="dialog-foot"><button class="btn">Entendido</button></form>
   </dialog>
 
+  <dialog id="settings-dialog" class="drawer" aria-labelledby="settings-title">
+    <header class="drawer-head">
+      <h2 id="settings-title">Ajustes</h2>
+      <button class="icon-btn" type="button" data-act="close" aria-label="Cerrar ajustes"><svg class="ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </header>
+    <div class="drawer-body">
+      <section class="set-group" aria-labelledby="set-presets">
+        <h3 id="set-presets">Presets</h3>
+        <p class="set-note">Un preset guarda la disposición, el tema, la terminal, la densidad y las esquinas. Se guardan en este navegador.</p>
+        <div class="set-row">
+          <select id="preset-select" class="select grow" aria-label="Aplicar un preset guardado"></select>
+          <button id="preset-delete" class="btn" type="button">Borrar</button>
+        </div>
+        <div class="set-row">
+          <input id="preset-name" class="field grow" maxlength="40" autocomplete="off" placeholder="Nombre del preset" aria-label="Nombre del preset">
+          <button id="preset-save" class="btn" type="button">Guardar actual</button>
+        </div>
+        <details class="set-share">
+          <summary>Compartir como texto</summary>
+          <textarea id="preset-json" class="field mono" rows="6" spellcheck="false" aria-label="Preset como texto"></textarea>
+          <div class="set-row">
+            <button id="preset-copy" class="btn" type="button">Copiar</button>
+            <button id="preset-apply-json" class="btn" type="button">Aplicar texto</button>
+          </div>
+        </details>
+        <p id="preset-msg" class="set-note" role="status"></p>
+      </section>
+
+      <section class="set-group" aria-labelledby="set-layout">
+        <h3 id="set-layout">Disposición</h3>
+        <div class="seg seg-wide" role="group" aria-label="Disposición del tablero" id="set-layout-seg"></div>
+        <p class="set-note" id="layout-note"></p>
+        <button id="relayout" class="btn" type="button" title="Ordena las tarjetas por estado y restablece su tamaño">Reordenar tarjetas</button>
+      </section>
+
+      <section class="set-group" aria-labelledby="set-term">
+        <h3 id="set-term">Terminal</h3>
+        <label class="set-field"><span>Colores</span><select id="term-theme" class="select"></select></label>
+        <label class="set-field"><span>Ajuste en las tarjetas</span><select id="term-mode" class="select"></select></label>
+      </section>
+
+      <section class="set-group" aria-labelledby="set-look">
+        <h3 id="set-look">Aspecto</h3>
+        <div class="set-field"><span>Tema</span>
+          <div class="seg" role="group" aria-label="Tema" title="Alternar entre tema Claro y Oscuro">
+            <button id="theme-light" class="seg-btn" type="button" aria-pressed="true">Claro</button>
+            <button id="theme-dark" class="seg-btn" type="button" aria-pressed="false">Oscuro</button>
+          </div>
+        </div>
+        <label class="set-field"><span>Densidad</span><select id="set-density" class="select"></select></label>
+        <label class="set-field"><span>Esquinas</span><select id="set-radius" class="select"></select></label>
+      </section>
+
+      <section class="set-group" aria-labelledby="set-alerts">
+        <h3 id="set-alerts">Avisos y voz</h3>
+        <div class="set-row wrap">
+          <button id="notify" class="btn" type="button" hidden>Activar avisos</button>
+          <button id="sound" class="btn" type="button" aria-pressed="false" title="Suena cuando un agente te necesita">Sonido</button>
+          <button id="voice-lang" class="btn" type="button" title="Idioma del dictado por voz (clic para cambiar)" hidden></button>
+        </div>
+      </section>
+
+      <p class="set-about"><span id="version" class="version"></span></p>
+    </div>
+  </dialog>
+
   <dialog id="launch-dialog" class="panel-dialog launch-dialog" aria-labelledby="launch-dialog-title">
     <h2 id="launch-dialog-title">Nuevo agente</h2>
     <form novalidate>
@@ -131,12 +192,13 @@
   </dialog>
 
   <dialog id="agent-dialog" class="panel-dialog agent-dialog" aria-labelledby="agent-dialog-title">
-    <header class="dialog-head">
+    <header class="dialog-head card-head">
+      <span class="lamp" aria-hidden="true"></span>
       <div class="title">
-        <span class="kind"></span>
         <h2 id="agent-dialog-title" class="name"></h2>
+        <span class="kind"></span>
       </div>
-      <span class="badge"><span class="badge-icon" aria-hidden="true"></span><span class="badge-text"></span></span>
+      <span class="badge"><span class="badge-text"></span></span>
     </header>
     <p class="launch-line" hidden><span class="launch-text"></span> <code class="launch-code"></code></p>
     <div class="lines-wrap">
@@ -163,22 +225,21 @@
     <div class="grid-stack-item">
     <article class="card grid-stack-item-content" tabindex="0" aria-describedby="cards-help">
       <header class="card-head">
+        <span class="lamp" aria-hidden="true"></span>
         <div class="title">
-          <span class="kind"></span>
           <h2 class="name"></h2>
+          <span class="kind"></span>
         </div>
+        <span class="badge"><span class="badge-text"></span><span class="since"></span></span>
         <div class="card-actions">
-          <span class="badge"><span class="badge-icon" aria-hidden="true"></span><span class="badge-text"></span></span>
-          <button class="expand" type="button" title="Ver terminal completa" aria-label="Ver terminal completa">⤢</button>
           <button class="stop" type="button" hidden>Detener</button>
           <button class="dismiss" type="button" hidden>Quitar</button>
+          <button class="expand icon-btn" type="button" title="Ver terminal completa" aria-label="Ver terminal completa"><svg class="ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg></button>
         </div>
       </header>
       <dl class="meta">
-        <div><dt>Proyecto</dt><dd class="project"></dd></div>
-        <div><dt>Rama</dt><dd class="branch"></dd></div>
-        <div><dt>En este estado</dt><dd class="since"></dd></div>
-        <div><dt>Sesión</dt><dd class="session"></dd></div>
+        <div class="meta-project"><svg class="ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><dt>Proyecto</dt><dd class="project"></dd></div>
+        <div class="meta-branch"><svg class="ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 7v10M18 10c0 4-6 3-12 7"/></svg><dt>Rama</dt><dd class="branch"></dd></div>
       </dl>
       <p class="version-warn" hidden></p>
       <p class="launch-line" hidden><span class="launch-text"></span> <code class="launch-code"></code></p>

@@ -8,23 +8,15 @@ import { currentVoiceLang } from "./console.js";
 import { createPairDialog } from "./pairing.js";
 import { languageChoices, voiceAvailable } from "./voice.js";
 import { prefs } from "./prefs.js";
-import { DEFAULT_TERM_THEME, TERM_THEMES } from "./termthemes.js";
-import { DEFAULT_TERM_MODE, TERM_MODES } from "./termgrid.js";
+import { NEEDS_YOU } from "./alerts.js";
+import { createSettingsPanel } from "./settings-panel.js";
 
-// Tema: selector Claro | Oscuro (actúa como switch: cualquier clic alterna el tema).
-const themeBtns = { light: document.getElementById("theme-light"), dark: document.getElementById("theme-dark") };
+// Aspecto: el tema, la densidad y las esquinas son atributos de <html>; los pone el panel de ajustes.
+const root = document.documentElement;
 function applyTheme(t) {
-  document.documentElement.dataset.theme = t;
-  for (const [k, b] of Object.entries(themeBtns)) b.setAttribute("aria-pressed", String(k === t));
-}
-applyTheme(prefs.theme());
-function toggleTheme() {
-  const next = prefs.theme() === "dark" ? "light" : "dark";
-  prefs.setTheme(next);
-  applyTheme(next);
+  root.dataset.theme = t;
   window.dispatchEvent(new CustomEvent("argos:theme-change"));
 }
-themeBtns.light?.closest(".seg")?.addEventListener("click", toggleTheme);
 
 const store = createStore();
 
@@ -39,7 +31,7 @@ const agentDialog = createAgentDialog({
   prefs,
 });
 
-const { render, relayout, focusAgent, setTermTheme, setTermMode } = createDomRenderer({
+const { render, relayout, focusAgent, setTermTheme, setTermMode, setLayout } = createDomRenderer({
   cards: document.getElementById("cards"),
   empty: document.getElementById("empty"),
   conn: document.getElementById("conn"),
@@ -53,25 +45,6 @@ const { render, relayout, focusAgent, setTermTheme, setTermMode } = createDomRen
   uploadFile: store.uploadFile,
   stop: store.stop,
   onOpenAgent: (id) => agentDialog.open(id),
-});
-
-// Tema de la terminal: independiente del de la página (la terminal es una ventana con su paleta).
-const termThemeSelect = document.getElementById("term-theme");
-for (const [key, t] of Object.entries(TERM_THEMES)) termThemeSelect.add(new Option(t.label, key));
-termThemeSelect.value = prefs.termTheme() in TERM_THEMES ? prefs.termTheme() : DEFAULT_TERM_THEME;
-termThemeSelect.addEventListener("change", () => {
-  prefs.setTermTheme(termThemeSelect.value);
-  setTermTheme(termThemeSelect.value);
-  agentDialog.setTermTheme(termThemeSelect.value);
-});
-
-// Cómo se ajusta la terminal a su tarjeta (el panel completo siempre usa «automática»).
-const termModeSelect = document.getElementById("term-mode");
-for (const [key, label] of Object.entries(TERM_MODES)) termModeSelect.add(new Option(label, key));
-termModeSelect.value = prefs.termMode() in TERM_MODES ? prefs.termMode() : DEFAULT_TERM_MODE;
-termModeSelect.addEventListener("change", () => {
-  prefs.setTermMode(termModeSelect.value);
-  setTermMode(termModeSelect.value);
 });
 
 // Dos vistas de los mismos datos: el Tablero (tarjetas) y la Oficina (pixel-art).
@@ -88,6 +61,7 @@ function setView(v, { save = true } = {}) {
   cardsEl.hidden = v !== "board";
   officeEl.hidden = v !== "office";
   for (const [k, b] of Object.entries(viewBtns)) b.setAttribute("aria-pressed", String(k === v));
+  relayoutBtn.textContent = v === "board" ? "Reordenar tarjetas" : "Reordenar escritorios";
   relayoutBtn.title =
     v === "board" ? "Ordena las tarjetas por estado y restablece su tamaño" : "Ordena los escritorios por estado";
   office.setActive(v === "office");
@@ -100,8 +74,28 @@ function toggleView() {
   setView(view === "board" ? "office" : "board");
 }
 viewBtns.board?.closest(".seg")?.addEventListener("click", toggleView);
-relayoutBtn.addEventListener("click", () => (view === "board" ? relayout() : office.relayout()));
 setView(view, { save: false });
+
+// Ajustes: disposición, tema, terminal, densidad, esquinas y presets (hoja a la derecha).
+const settings = createSettingsPanel({
+  dialog: document.getElementById("settings-dialog"),
+  prefs,
+  canRelayout: (bundle) => view === "office" || bundle.layout === "canvas",
+  apply: {
+    layout: setLayout,
+    theme: applyTheme,
+    density: (v) => (root.dataset.density = v),
+    radius: (v) => (root.dataset.radius = v),
+    termTheme: (v) => {
+      setTermTheme(v);
+      agentDialog.setTermTheme(v);
+    },
+    termMode: setTermMode,
+    relayout: () => (view === "board" ? relayout() : office.relayout()),
+  },
+});
+settings.applyStored();
+document.getElementById("settings").addEventListener("click", () => settings.open());
 
 const alerts = createAlerts({
   prefs,
@@ -177,7 +171,8 @@ function showWrite({ auth }) {
   lastAuth = auth;
   const [label, text] = WRITE_TEXT[auth] ?? WRITE_TEXT.none;
   writeBtn.hidden = false;
-  writeBtn.textContent = label;
+  writeBtn.querySelector(".write-text").textContent = label;
+  writeBtn.title = text;
   writeBtn.dataset.auth = auth;
   writeDialog.querySelector(".write-dialog-text").textContent = text;
 }
@@ -206,6 +201,31 @@ function afterLaunch(event) {
   focusWhenSeen = null;
   requestAnimationFrame(() => (view === "board" ? focusAgent(a.id) : office.focusAgent(a.id)));
 }
+
+// Lo que te espera, siempre a la vista: al pulsarlo se va al agente que lleva más tiempo esperando.
+const attentionBtn = document.getElementById("attention");
+let attentionTarget = null;
+const plural = (n, one, many) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
+function showAttention({ agents }) {
+  const list = [...agents.values()];
+  const waiting = list.filter((a) => NEEDS_YOU.has(a.state)).sort((a, b) => Date.parse(a.state_since) - Date.parse(b.state_since));
+  const errors = list.filter((a) => a.state === "error").length;
+  const working = list.filter((a) => a.state === "working").length;
+  let level = "calm";
+  let text = list.length ? "Todo en calma" : "Sin agentes";
+  if (waiting.length) [level, text] = ["wait", plural(waiting.length, "te espera", "te esperan")];
+  else if (errors) [level, text] = ["error", plural(errors, "con error", "con error")];
+  else if (working) [level, text] = ["work", plural(working, "trabajando", "trabajando")];
+  attentionTarget = waiting[0]?.id ?? null;
+  attentionBtn.dataset.level = level;
+  attentionBtn.textContent = text;
+  attentionBtn.disabled = !attentionTarget;
+  attentionBtn.title = attentionTarget ? `Ir a ${waiting[0].name}, que lleva más tiempo esperando` : "";
+}
+attentionBtn.addEventListener("click", () => {
+  if (attentionTarget) view === "board" ? focusAgent(attentionTarget) : office.focusAgent(attentionTarget);
+});
+store.onChange(showAttention);
 
 store.onChange(render);
 store.onChange(office.render);

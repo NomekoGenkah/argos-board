@@ -1,6 +1,8 @@
 // Preferencias de ESTE navegador (localStorage). Todo es prescindible: si el
 // almacenamiento falla (modo privado, bloqueado), la página funciona igual.
 
+import { normalizePresets } from "./settings.js";
+
 function load(key, fallback) {
   try {
     const v = localStorage.getItem(key);
@@ -78,6 +80,41 @@ export const prefs = {
   },
   setTermMode(mode) {
     save("argos-term-mode", mode);
+  },
+
+  // Disposición del tablero (lienzo | cuadrícula | foco), densidad y esquinas.
+  layoutMode() {
+    return load("argos-layout-mode", null);
+  },
+  setLayoutMode(v) {
+    save("argos-layout-mode", v);
+  },
+  density() {
+    return load("argos-density", null);
+  },
+  setDensity(v) {
+    save("argos-density", v);
+  },
+  radius() {
+    return load("argos-radius", null);
+  },
+  setRadius(v) {
+    save("argos-radius", v);
+  },
+  // Agente en primer plano de la disposición «foco», por nombre.
+  focusName() {
+    const v = load("argos-focus", null);
+    return typeof v === "string" ? v : null;
+  },
+  setFocusName(name) {
+    save("argos-focus", name);
+  },
+  // Presets de aspecto guardados en este navegador: nombre -> ajustes.
+  presets() {
+    return normalizePresets(load("argos-presets", {}));
+  },
+  setPresets(presets) {
+    save("argos-presets", presets);
   },
 
   theme() {

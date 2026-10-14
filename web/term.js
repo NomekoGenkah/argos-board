@@ -4,12 +4,13 @@
 import { Terminal } from "./vendor/xterm/xterm.mjs";
 import { WebglAddon } from "./vendor/xterm/addon-webgl.mjs";
 import { stripAnsi } from "./ansi.js";
-import { fullFrame, gridOf, historyKey, LINE_HEIGHT, pickFont, visibleFrame } from "./termgrid.js";
+import { FLOOR_FONT, FLOOR_FONT_PHONE, fullFrame, gridOf, historyKey, LINE_HEIGHT, lastContentRow, pickFont, visibleFrame } from "./termgrid.js";
 import { DEFAULT_TERM_THEME, termTheme } from "./termthemes.js";
 
 const FONT_FAMILY = '"JetBrains Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace';
 const SCROLLBACK = 1000;
 const SR_LINES = 60;
+const phone = window.matchMedia("(max-width: 700px)");
 const SLACK = 5; // px: menos que el relleno de la caja (.term), así que lo que sobra no se corta
 
 // La fuente se pide una vez: xterm mide la celda al abrirse y con otra letra saldría desalineada.
@@ -39,6 +40,9 @@ export function createTermView(host, { theme = DEFAULT_TERM_THEME, mode = "auto"
   let themeName = theme;
   let fitMode = mode;
   let fontOk = false;
+  let anchored = true; // ¿sigue el final, o la persona subió a leer?
+  let anchorTop = 0;
+  let tail = true; // ¿escribe de arriba abajo (no es de pantalla completa)? Solo importa el final
 
   const resizeObserver = new ResizeObserver(() => {
     if (!term) {
@@ -133,6 +137,7 @@ export function createTermView(host, { theme = DEFAULT_TERM_THEME, mode = "auto"
     const next = `${grid.cols}x${grid.lines.length}|${grid.cursor}|${grid.lines.join("\n")}|${historyKey(grid)}`;
     if (term && next === signature) return;
     signature = next;
+    tail = !grid.alt;
     const opening = !term;
     if (opening) open(grid);
 
@@ -154,6 +159,7 @@ export function createTermView(host, { theme = DEFAULT_TERM_THEME, mode = "auto"
       term.write(visibleFrame(grid));
     }
     if (opening || resized) fit();
+    else if (anchored) anchor();
     term.write("", sampleCanvas); // tras procesar lo escrito, ya se puede mirar el fondo de la esquina
     sr.textContent = (agent.last_lines ?? []).slice(-SR_LINES).map(stripAnsi).join("\n");
   }
@@ -184,12 +190,29 @@ export function createTermView(host, { theme = DEFAULT_TERM_THEME, mode = "auto"
   function fit() {
     if (!term || !ready()) return;
     const { w, h } = inner();
-    const { size, scroll } = pickFont({ cols: term.cols, rows: term.rows, width: w, height: h, mode: fitMode, measure, slack: SLACK });
+    const { size, scroll } = pickFont({ cols: term.cols, rows: term.rows, width: w, height: h, mode: fitMode, measure, slack: SLACK, tail, floor: phone.matches ? FLOOR_FONT_PHONE : FLOOR_FONT });
     if (term.options.fontSize !== size) term.options.fontSize = size;
     host.classList.toggle("term--scroll", scroll);
-    // Si no entra, se ve el final (donde el agente espera): igual que una terminal.
-    if (scroll) requestAnimationFrame(() => (host.scrollTop = host.scrollHeight));
+    anchored = true;
+    anchor();
   }
+
+  /** Si no entra, se ve hasta la última fila con contenido (donde el agente espera), no el borde de la pantalla. */
+  function anchor() {
+    if (!term || !host.classList.contains("term--scroll")) return;
+    requestAnimationFrame(() => {
+      const cs = getComputedStyle(host);
+      const pad = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+      const cell = measure(term.options.fontSize);
+      const row = latest ? lastContentRow(gridOf(latest)) : term.rows - 1;
+      anchorTop = Math.max(0, Math.round((row + 1) * cell.ch + pad - host.clientHeight));
+      host.scrollTop = anchorTop;
+    });
+  }
+  // Subir a leer suelta el ancla; volver al final la recupera.
+  host.addEventListener("scroll", () => {
+    if (host.classList.contains("term--scroll")) anchored = Math.abs(host.scrollTop - anchorTop) < 6;
+  });
 
   host.addEventListener("keydown", (ev) => {
     if (!term || ev.target !== host) return;

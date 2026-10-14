@@ -13,9 +13,13 @@ export const ROW_RATIO = 1.32 * LINE_HEIGHT;
 export const MIN_FONT = 5;
 export const MAX_FONT = 18;
 /** Con la terminal entera por debajo de esto no se lee: `auto` pasa a ajustar al ancho. */
-export const READABLE_FONT = 7;
-/** Letra con la que se dimensiona una tarjeta nueva. */
-export const TARGET_FONT = 9;
+export const READABLE_FONT = 8;
+/** Lo más chica que `auto` deja la letra al ajustar al ancho (si no entra, hay scroll horizontal). */
+export const FLOOR_FONT = 7;
+/** En un celular se lee peor: el piso sube. */
+export const FLOOR_FONT_PHONE = 8.5;
+/** Letra mínima con la que se dimensiona una tarjeta nueva. */
+export const TARGET_FONT = 8;
 
 const SEAL = "\x1b[0m";
 const FALLBACK_MAX_COLS = 240;
@@ -72,12 +76,14 @@ const FONT_STEP = 0.25;
  * redondea a píxeles de pantalla enteros a su manera, así que se mide en vez de calcularla.
  *
  * Modos: `fit` (la terminal entera), `width` (ajustada al ancho; lo que sobra de alto se
- * recorre) y `auto` (entera si así se lee; si no, al ancho y sin bajar de READABLE_FONT).
+ * recorre) y `auto` (entera si así se lee, con READABLE_FONT o más; si no, al ancho y sin bajar de `floor`).
+ * Con `tail` (un agente que escribe de arriba abajo, no una aplicación de pantalla completa) `auto` va
+ * directo al ancho: lo que importa es el final, y la letra más grande.
  * `slack` son los píxeles que se le perdonan a la caja (el relleno que la rodea los absorbe): con celdas
  * enteras, ganar una columna de píxeles suele pedir unos pocos más de los que hay.
  * Devuelve también si hace falta scroll (la terminal no entra al tamaño elegido).
  */
-export function pickFont({ cols, rows, width, height, mode = "fit", measure, slack = 0 }) {
+export function pickFont({ cols, rows, width, height, mode = "fit", measure, slack = 0, floor = FLOOR_FONT, tail = false }) {
   if (!(width > 0) || !(height > 0)) return { size: MIN_FONT, scroll: true };
   const steps = Math.round((MAX_FONT - MIN_FONT) / FONT_STEP);
   const at = (i) => MIN_FONT + i * FONT_STEP;
@@ -100,9 +106,9 @@ export function pickFont({ cols, rows, width, height, mode = "fit", measure, sla
   const whole = biggest(true);
   const overflows = (size) => measure(size).ch * rows > height + slack + 0.5;
   if (mode === "fit") return { size: whole.size, scroll: !whole.ok };
-  if (mode === "auto" && whole.ok && whole.size >= READABLE_FONT) return { size: whole.size, scroll: false };
+  if (mode === "auto" && !tail && whole.ok && whole.size >= READABLE_FONT) return { size: whole.size, scroll: false };
   const byWidth = biggest(false);
-  const size = mode === "auto" ? Math.max(byWidth.size, READABLE_FONT) : byWidth.size;
+  const size = mode === "auto" ? Math.max(byWidth.size, floor) : byWidth.size;
   return { size, scroll: !byWidth.ok || size > byWidth.size || overflows(size) };
 }
 
@@ -110,13 +116,31 @@ export function pickFont({ cols, rows, width, height, mode = "fit", measure, sla
 export const TERM_MODES = { auto: "Automática", fit: "Terminal entera", width: "Ajustar al ancho" };
 export const DEFAULT_TERM_MODE = "auto";
 
+/** Anchos de tarjeta que reparten bien el lienzo: de a 3, de a 2 o una sola por fila. */
+const CARD_WIDTHS = [4, 6, 12];
+
 /**
- * Tamaño inicial de una tarjeta (en columnas y filas del lienzo) para que la letra de la terminal
- * salga de TARGET_FONT. `chrome` es lo que ocupa la tarjeta fuera de la terminal (cabecera, datos, consola).
+ * Tamaño inicial de una tarjeta (en columnas y filas del lienzo): el ancho más chico, de los que
+ * reparten bien el lienzo, con el que la letra de la terminal sale de TARGET_FONT; y un alto que no
+ * pasa de `maxH` (la terminal hace scroll y muestra el final). `chrome` es lo que ocupa la tarjeta
+ * fuera de la terminal (cabecera, datos y consola).
  */
-export function cardSizeFor({ containerPx, columns, cellPx, cols = 120, rows = 40, chrome = 210, minW = 4, maxH = 34 }) {
-  const wantW = cols * CELL_RATIO * TARGET_FONT + 40;
-  const w = Math.min(columns, Math.max(minW, Math.ceil(wantW / (containerPx / columns))));
-  const wantH = Math.min(rows, 40) * ROW_RATIO * TARGET_FONT + chrome;
-  return { w, h: Math.min(maxH, Math.ceil(wantH / cellPx)) };
+export function cardSizeFor({ containerPx, columns, cellPx, cols = 120, rows = 40, chrome = 150, maxH = 24, widths = CARD_WIDTHS }) {
+  const colPx = containerPx / columns;
+  const fontAt = (w) => Math.min(12, (w * colPx - 32) / (cols * CELL_RATIO));
+  const w = widths.find((c) => fontAt(c) >= TARGET_FONT) ?? widths.at(-1) ?? columns;
+  const wantH = Math.min(rows, 40) * ROW_RATIO * fontAt(w) + chrome;
+  return { w, h: Math.max(10, Math.min(maxH, Math.ceil(wantH / cellPx))) };
+}
+
+/** Última fila con algo escrito (o donde está el cursor): hasta ahí importa mostrar, no hasta el final de la pantalla. */
+export function lastContentRow(grid) {
+  let last = -1;
+  for (let i = grid.lines.length - 1; i >= 0; i--) {
+    if (stripAnsi(grid.lines[i]).trim() !== "") {
+      last = i;
+      break;
+    }
+  }
+  return Math.max(last, grid.cursor ? grid.cursor[0] : -1, 0);
 }

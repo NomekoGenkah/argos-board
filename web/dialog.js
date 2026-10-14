@@ -49,7 +49,9 @@ export function createAgentDialog({ dialog, sendInput, voice, uploadFile, stop, 
     }
     dialog.dataset.state = a.state;
     dialog.dataset.kind = a.kind;
-    dialog.querySelector(".kind").textContent = KINDS[a.kind] ?? a.kind;
+    const kind = dialog.querySelector(".kind");
+    kind.textContent = KINDS[a.kind] ?? a.kind;
+    kind.hidden = a.name.toLowerCase().includes(a.kind);
     dialog.querySelector(".name").textContent = a.name;
     dialog.querySelector(".badge-text").textContent = LABELS[a.state] ?? a.state;
     view.update(a);
