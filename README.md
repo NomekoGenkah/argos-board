@@ -1,5 +1,7 @@
 # argos-board
 
+[English](README.en.md) · [Privacidad](PRIVACY.md)
+
 Tablero web local para ver en tiempo real el estado de varios agentes de código CLI
 (`claude`, `opencode`, `agy`, `copilot`, o cualquier otro comando) que corren en terminales distintas.
 Solo observa: no lanza, detiene ni controla agentes.
@@ -50,24 +52,53 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
 
 ### La página
 
-- **Cabecera**: la marca con un punto de conexión, el selector *Tablero / Oficina*, un resumen de lo que te
-  espera (`3 te esperan`; al pulsarlo va al agente que lleva más tiempo esperando; si nada espera, dice cuántos
-  trabajan o hay error), *Nuevo agente*, el permiso para escribir (solo habla cuando falta) y *Ajustes*.
+- **Cabecera**: la marca (un ojo cuya pupila toma el color de lo que pasa y que es también el icono de la
+  pestaña), el selector *Tablero / Oficina*, un resumen de lo que te espera (`3 te esperan`; al pulsarlo va al
+  agente que lleva más tiempo esperando; si nada espera, dice cuántos trabajan o hay error), *Nuevo agente*, el
+  permiso para escribir (solo habla cuando falta) y *Ajustes*.
 - Una tarjeta por agente, con el color del agente en el borde izquierdo: Claude Code naranja, Antigravity (`agy`) azul,
   GitHub Copilot (`copilot`) violeta, OpenCode blanco y cualquier otro comando marrón. La cabecera de la tarjeta es
-  una línea: lámpara de estado, nombre, estado con el tiempo que lleva así y acciones. El color solo lo tiene el
-  estado (verde trabajando, rojo te espera); la forma de la lámpara lo dice también sin color: llena, anillo que
-  late, anillo quieto, cuadrada. Debajo, el proyecto y la rama.
+  una línea: el ojo del agente, su nombre, el estado con el tiempo que lleva así y las acciones. Debajo, el proyecto
+  y la rama. El ojo dice el estado sin necesitar el color: trabajando, la pupila llena; esperando, la pupila grande
+  que late; inactivo, la pupila vacía; error, tachado; terminado o desconectado, el párpado cerrado. El color solo
+  lo tiene el estado (verde trabajando, rojo te espera).
+- **La terminal de cada tarjeta** se dibuja celda por celda con xterm.js, con las mismas columnas y filas que la
+  terminal del agente, su cursor y los caracteres de cuadro y bloque de OpenCode o Copilot sin costuras. Usa su
+  propia paleta, no la del tema de la página: se elige en *Ajustes*. Las aplicaciones de pantalla completa pintan
+  además su propio fondo, y los márgenes lo toman.
+  - *Ajuste en las tarjetas* decide cómo entra la terminal en su tarjeta: *Automática* (entera si así se lee, con
+    8 px o más; si no, ajustada al ancho, con letra de 7 px como mínimo —8,5 px en el celular—, y se ve hasta la
+    última fila con contenido; un agente que escribe de arriba abajo va directo al ancho), *Terminal entera* o
+    *Ajustar al ancho*. La letra mide píxeles de pantalla enteros por celda, así que se nota en saltos.
+  - Una tarjeta nueva (y *Reordenar*) toma el ancho que deja la letra en 8 px o más: de a tres, de a dos o una
+    por fila, según el ancho de la pantalla. Las tarjetas que ya tienen tamaño guardado lo conservan.
+- **Consumo** (barra al pie): lo que llevas gastado en cada agente, siempre a la vista. Para cada uno de
+  `claude`, `agy` y `opencode` que tengas instalado, el servidor le pregunta a su propio CLI (`claude -p "/usage"`,
+  `agy -p "/usage"`, `opencode stats`) desde una carpeta neutra; muestra el porcentaje de la sesión, la semana y las
+  5 h (con el reinicio al pasar el cursor) y, de OpenCode, el costo acumulado. Se actualiza solo cada 5 minutos
+  mientras la página está abierta (el botón de la barra lo fuerza, con permiso de escritura) y los resultados se
+  reutilizan, así que con la página cerrada no corre ningún comando. A partir del 75 % la barra va rayada y desde el
+  90 % cambia de color: el nivel se ve también sin color. Se oculta en *Ajustes* (o en el servidor con
+  `ARGOS_BOARD_NO_USAGE=1`). La primera consulta tarda unos segundos: los CLI tardan en arrancar.
 - **Ajustes** (botón de la cabecera): una hoja con todo lo que se personaliza. Se guarda en ese navegador.
+  - *Estilo*: **Atalaya** (el de base: una atalaya de noche, pizarra azul con la linterna ámbar solo en la marca),
+    **Cuaderno** (la paleta cálida de papel y tinta de las primeras versiones), **Fósforo** (la interfaz en
+    monoespaciada y el verde de un monitor viejo) y **Tinta** (blanco y negro de alto contraste, líneas gruesas).
+    Cada uno tiene su versión clara y oscura. Sin elección guardada, el tema es el del sistema, y quien pida alto
+    contraste al sistema parte con Tinta.
   - *Disposición*: **Lienzo** (libre, ver abajo), **Cuadrícula** (tarjetas iguales en orden de llegada) y
     **Foco** (un agente grande y los demás en una lista con su pantalla en vivo; toca uno, o pulsa Enter sobre él,
     para pasarlo al frente). En una columna (celular) las tres se apilan.
-  - *Terminal*: colores (Noche, Papel, Solarized) y ajuste de la terminal en la tarjeta (más abajo).
-  - *Aspecto*: tema Claro/Oscuro, densidad (Cómoda o Compacta, que quita la línea del proyecto) y esquinas
-    (Rectas, Suaves o Redondas).
+  - *Terminal*: colores (Noche, Papel, Solarized, Fósforo, Tinta) y ajuste de la terminal en la tarjeta.
+  - *Aspecto*: tema Claro/Oscuro, densidad (Cómoda o Compacta, que quita la línea del proyecto), esquinas (Rectas,
+    Suaves o Redondas), idioma (español, inglés o el del navegador; recarga la página) y si se muestra el consumo.
+  - *Accesibilidad*: movimiento reducido (sin el latido de los ojos, el parpadeo de la marca ni transiciones; también
+    se respeta el del sistema).
   - *Avisos y voz*: notificaciones, sonido e idioma del dictado.
-  - *Presets*: guardan la disposición, el tema, la terminal, la densidad y las esquinas con un nombre; se aplican
-    desde la lista, se borran, y se pueden compartir como texto (*Compartir como texto*: copiar o pegar el JSON).
+  - *Presets*: guardan estilo, disposición, tema, terminal, densidad, esquinas y consumo con un nombre. Vienen cuatro
+    **de fábrica** que sirven de alternativa al estilo base (*Guardia nocturna*, *Estudio*, *Consola* y
+    *Alto contraste*); los tuyos se guardan aparte, se aplican desde la lista, se borran y se pueden compartir como
+    texto (*Compartir como texto*: copiar o pegar el JSON).
 - **Lienzo**: arrastra la cabecera de una tarjeta para moverla y su borde derecho, inferior o la esquina para
   redimensionarla. Las tarjetas se empujan entre sí y nunca se superponen; las actualizaciones en vivo no las
   mueven. Al agrandar una tarjeta se ve más de la pantalla del agente. Con el teclado, sobre una tarjeta:
@@ -228,8 +259,11 @@ Notas:
 
 ## Tests de la página
 
-La lógica del dictado por voz (el motor, el procesador de audio del micrófono) tiene pruebas de Node, sin
-navegador: `node --test tests/web/*.test.mjs`. El CI de GitHub solo corre las de Rust.
+La lógica de la página que no necesita navegador (dictado por voz, rejilla y tamaño de la terminal, ajustes y
+presets, consumo, marca, idiomas y el contraste de los colores de cada estilo) tiene pruebas de Node:
+`node --test tests/web/*.test.mjs`. El CI de GitHub solo corre las de Rust. La accesibilidad de la interfaz se
+revisó con axe-core (WCAG 2.1 AA) en los ocho estilos×temas, el panel de ajustes, los diálogos, la Oficina, las tres
+disposiciones, en español, en inglés y a 360 px.
 
 ## Seguridad
 
@@ -248,9 +282,13 @@ navegador: `node --test tests/web/*.test.mjs`. El CI de GitHub solo corre las de
 - **Lanzar agentes** usa los mismos tokens. Solo se lanzan los tipos conocidos (`claude`, `opencode`, `agy`, `copilot`) con
   los argumentos de `config.toml`, nunca un comando que venga del navegador, y solo en carpetas dentro de
   `launch_roots`. *Detener* solo toca sesiones de tmux `argos-…` o procesos que lanzó ese mismo `serve`.
-- Nada se escribe a disco salvo el token (y los dumps si los pides). Las últimas líneas se redactan
-  (`sk-...`, `Bearer ...`, `*_KEY=`, `*_TOKEN=`, `*_SECRET=`, `*_PASSWORD=`) antes de salir del wrapper.
-- Sin llamadas de red salientes.
+- La salida de los agentes no se escribe a disco. Se guardan los tokens y los dispositivos emparejados (en
+  `~/.config/argos-board/`), los archivos que adjuntas (en `<proyecto>/.argos/uploads/`) y los dumps o el log solo
+  si los pides. Las últimas líneas se redactan (`sk-...`, `Bearer ...`, `*_KEY=`, `*_TOKEN=`, `*_SECRET=`,
+  `*_PASSWORD=`) antes de salir del wrapper.
+- Argos Board no hace llamadas de red salientes por su cuenta: el consumo lo consultan los propios CLI de los
+  agentes y el dictado por voz usa el servicio del navegador o el de `agy`. El detalle de qué guarda y qué envía
+  está en la [política de privacidad](PRIVACY.md).
 
 ## WSL2
 
@@ -270,6 +308,22 @@ ARGOS_BOARD_LOG=/tmp/argos-wrapper.log argos-board run -- claude
 ```
 
 `argos-board --version` muestra la versión y el commit del binario instalado.
+
+## Variables de entorno
+
+| Variable | Efecto |
+|---|---|
+| `ARGOS_BOARD_CONFIG_DIR` | Otra carpeta de configuración (por defecto `~/.config/argos-board`) |
+| `ARGOS_BOARD_NO_VOICE=1` | El servidor no ofrece dictado por voz (no mantiene un `agy` oculto) |
+| `ARGOS_BOARD_NO_USAGE=1` | El servidor no consulta el consumo de los agentes |
+| `ARGOS_BOARD_NO_TMUX=1` | Los agentes lanzados desde la página no usan tmux |
+| `ARGOS_BOARD_LOG=<ruta>` | El wrapper escribe un registro (estados y códigos de salida, nunca lo que escribes) |
+
+## Desinstalar
+
+`cargo uninstall argos-board`. Para quitar también lo que guardó: `~/.config/argos-board/` (tokens, dispositivos
+emparejados) y las carpetas `.argos/` de los proyectos donde adjuntaste archivos; en el navegador, «Borrar datos del
+sitio». La [política de privacidad](PRIVACY.md) dice qué es cada cosa.
 
 ## Comportamiento del wrapper
 
@@ -298,8 +352,10 @@ Estructura:
 - `src/model.rs` — snapshot de agente y mensajes (contrato estable, ver spec §4).
 - `web/` — página embebida en el binario. `data.js` (datos/WebSocket) está separado de `render.js` (DOM) y de
   `office.js` (la Oficina en canvas; sus sprites, dibujados como texto, están en `sprites.js`);
-  `prefs.js` guarda las preferencias locales y `settings.js` (sin DOM) define los ajustes, sus valores y los presets;
-  `settings-panel.js` es la hoja de ajustes. `web/fonts/` incluye Montserrat (licencia OFL, `OFL.txt`) y
+  `prefs.js` guarda las preferencias locales y `settings.js` (sin DOM) define los ajustes, sus valores y los presets
+  (también los de fábrica); `settings-panel.js` es la hoja de ajustes. `skins.css` tiene los colores de los cuatro
+  estilos, `brand.js` la marca (el ojo y el icono de la pestaña), `usage.js` la barra de consumo, `term.js` y
+  `termgrid.js` la terminal, y `i18n.js` con `lang/es.js` y `lang/en.js` los textos en cada idioma. `web/fonts/` incluye Montserrat (licencia OFL, `OFL.txt`) y
   `web/vendor/gridstack/` incluye gridstack.js 14.0.0 (MIT) para el lienzo y `web/vendor/xterm/` xterm.js 6.0.0 (MIT,
   con su addon WebGL) para dibujar la terminal de cada agente; `web/fonts/` suma JetBrains Mono (OFL).
   `term.js` monta la terminal, `termgrid.js` (sin DOM) prepara lo que se le escribe y el tamaño de la letra, y
