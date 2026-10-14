@@ -797,6 +797,7 @@ main { padding: 16px; }
     width: 100%;
     justify-content: space-between;
   }
+  .select-wrap { display: none; } /* provisional: pasarán al panel de ajustes */
   .top-actions #relayout {
     display: none; /* En vista de 1 columna vertical no aplica reorganizar mosaico */
   }

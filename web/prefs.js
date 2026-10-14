@@ -71,6 +71,15 @@ export const prefs = {
     save("argos-term-theme", name);
   },
 
+  // Cómo se ajusta la terminal a su tarjeta: auto | fit | width.
+  termMode() {
+    const v = load("argos-term-mode", null);
+    return typeof v === "string" ? v : null;
+  },
+  setTermMode(mode) {
+    save("argos-term-mode", mode);
+  },
+
   theme() {
     return load("argos-theme", "light") === "dark" ? "dark" : "light";
   },

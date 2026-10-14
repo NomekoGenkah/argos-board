@@ -4,6 +4,7 @@
 
 import { createTermView } from "./term.js";
 import { DEFAULT_TERM_THEME } from "./termthemes.js";
+import { cardSizeFor, DEFAULT_TERM_MODE, gridOf } from "./termgrid.js";
 import { createConsole } from "./console.js";
 import { launchText, wireStopButton } from "./launcher.js";
 
@@ -68,13 +69,14 @@ export function sortAgents(list) {
   });
 }
 
-/** Posiciones en mosaico para `n` tarjetas del tamaño por defecto. */
-export function tileLayout(n) {
-  const perRow = Math.floor(COLUMNS / DEFAULT_CARD.w);
+/** Posiciones en mosaico para `n` tarjetas de un mismo tamaño (por defecto, el básico). */
+export function tileLayout(n, size = DEFAULT_CARD) {
+  const perRow = Math.max(1, Math.floor(COLUMNS / size.w));
   return Array.from({ length: n }, (_, i) => ({
-    x: (i % perRow) * DEFAULT_CARD.w,
-    y: Math.floor(i / perRow) * DEFAULT_CARD.h,
-    ...DEFAULT_CARD,
+    x: (i % perRow) * size.w,
+    y: Math.floor(i / perRow) * size.h,
+    w: size.w,
+    h: size.h,
   }));
 }
 
@@ -224,13 +226,13 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     item.querySelector(".term")?.addEventListener("dblclick", () => {
       onOpenAgent?.(a.id);
     });
-    views.set(a.id, createTermView(item.querySelector(".term"), { theme: prefs.termTheme() ?? DEFAULT_TERM_THEME }));
+    views.set(a.id, createTermView(item.querySelector(".term"), { theme: prefs.termTheme() ?? DEFAULT_TERM_THEME, mode: prefs.termMode() ?? DEFAULT_TERM_MODE }));
     const con = createConsole({ sendInput, voice, uploadFile });
     item.querySelector(".console-slot").append(con.el);
     consoles.set(a.id, con);
     cards.append(item);
     const saved = prefs.layout(a.name);
-    grid.makeWidget(item, { id: a.id, ...MIN_CARD, ...(saved ?? { ...DEFAULT_CARD, autoPosition: true }) });
+    grid.makeWidget(item, { id: a.id, ...MIN_CARD, ...(saved ?? { ...sizeFor([a]), autoPosition: true }) });
     // Una tarjeta nueva (sin tamaño guardado) toma, una sola vez, el alto que
     // necesita su contenido (p. ej. un agente lanzado: botones, tmux y consola),
     // cuando gridstack ya la acomodó (es idempotente).
@@ -271,7 +273,7 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
   /** Ordena por estado y restablece tamaños (botón "Reordenar"). */
   function relayout() {
     const visible = sortAgents([...current.values()].filter((a) => els.has(a.id)));
-    const slots = tileLayout(visible.length);
+    const slots = tileLayout(visible.length, sizeFor(visible));
     prefs.clearLayouts();
     grid.batchUpdate();
     visible.forEach((a, i) => grid.update(els.get(a.id), slots[i]));
@@ -366,11 +368,32 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     card.focus({ preventScroll: true });
   }
 
+  /**
+   * Tamaño de una tarjeta nueva: el que deja la letra de su terminal legible (unos 9 px) con el ancho
+   * disponible. En una columna (móvil) vale el básico: ahí cada tarjeta toma el alto que necesita.
+   */
+  function sizeFor(agents) {
+    if (grid.getColumn() !== COLUMNS || cards.clientWidth < STACK_BELOW_PX) return DEFAULT_CARD;
+    const grids = agents.map(gridOf);
+    return cardSizeFor({
+      containerPx: cards.clientWidth,
+      columns: COLUMNS,
+      cellPx: grid.getCellHeight(),
+      cols: Math.max(80, ...grids.map((g) => g.cols)),
+      rows: Math.max(24, ...grids.map((g) => g.rows)),
+    });
+  }
+
+  /** Cambia el modo de ajuste de la terminal de todas las tarjetas. */
+  function setTermMode(mode) {
+    for (const view of views.values()) view.setMode(mode);
+  }
+
   /** Cambia el tema de la terminal de todas las tarjetas. */
   function setTermTheme(name) {
     for (const view of views.values()) view.setTheme(name);
   }
 
   setInterval(tickTimes, 1000);
-  return { render, relayout, focusAgent, setTermTheme };
+  return { render, relayout, focusAgent, setTermTheme, setTermMode };
 }

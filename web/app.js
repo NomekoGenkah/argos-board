@@ -9,6 +9,7 @@ import { createPairDialog } from "./pairing.js";
 import { languageChoices, voiceAvailable } from "./voice.js";
 import { prefs } from "./prefs.js";
 import { DEFAULT_TERM_THEME, TERM_THEMES } from "./termthemes.js";
+import { DEFAULT_TERM_MODE, TERM_MODES } from "./termgrid.js";
 
 // Tema: selector Claro | Oscuro (actúa como switch: cualquier clic alterna el tema).
 const themeBtns = { light: document.getElementById("theme-light"), dark: document.getElementById("theme-dark") };
@@ -38,7 +39,7 @@ const agentDialog = createAgentDialog({
   prefs,
 });
 
-const { render, relayout, focusAgent, setTermTheme } = createDomRenderer({
+const { render, relayout, focusAgent, setTermTheme, setTermMode } = createDomRenderer({
   cards: document.getElementById("cards"),
   empty: document.getElementById("empty"),
   conn: document.getElementById("conn"),
@@ -62,6 +63,15 @@ termThemeSelect.addEventListener("change", () => {
   prefs.setTermTheme(termThemeSelect.value);
   setTermTheme(termThemeSelect.value);
   agentDialog.setTermTheme(termThemeSelect.value);
+});
+
+// Cómo se ajusta la terminal a su tarjeta (el panel completo siempre usa «automática»).
+const termModeSelect = document.getElementById("term-mode");
+for (const [key, label] of Object.entries(TERM_MODES)) termModeSelect.add(new Option(label, key));
+termModeSelect.value = prefs.termMode() in TERM_MODES ? prefs.termMode() : DEFAULT_TERM_MODE;
+termModeSelect.addEventListener("change", () => {
+  prefs.setTermMode(termModeSelect.value);
+  setTermMode(termModeSelect.value);
 });
 
 // Dos vistas de los mismos datos: el Tablero (tarjetas) y la Oficina (pixel-art).

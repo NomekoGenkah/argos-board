@@ -12,6 +12,10 @@ export const ROW_RATIO = 1.32 * LINE_HEIGHT;
 /** Por debajo de este tamaño la terminal ya no se lee: la caja hace scroll en vez de achicarla más. */
 export const MIN_FONT = 5;
 export const MAX_FONT = 18;
+/** Con la terminal entera por debajo de esto no se lee: `auto` pasa a ajustar al ancho. */
+export const READABLE_FONT = 7;
+/** Letra con la que se dimensiona una tarjeta nueva. */
+export const TARGET_FONT = 9;
 
 const SEAL = "\x1b[0m";
 const FALLBACK_MAX_COLS = 240;
@@ -59,18 +63,60 @@ export function historyKey(grid) {
   return grid.history.join("\n");
 }
 
+/** Pasos (en px) con los que se prueban tamaños de letra. */
+const FONT_STEP = 0.25;
+
 /**
- * Tamaño de letra para que `cols` × `rows` celdas entren en `width` × `height` píxeles.
- * Las celdas miden píxeles de pantalla enteros (si no, la letra sale borrosa y la terminal más
- * ancha de lo calculado), así que se parte de cuántos píxeles le tocan a cada celda.
- * Devuelve también si hace falta scroll (la letra llegó al mínimo legible).
+ * La letra más grande con la que `cols` × `rows` celdas entran en `width` × `height` píxeles.
+ * `measure(size)` dice cuánto mide de verdad una celda con esa letra ({ cw, ch }): xterm la
+ * redondea a píxeles de pantalla enteros a su manera, así que se mide en vez de calcularla.
+ *
+ * Modos: `fit` (la terminal entera), `width` (ajustada al ancho; lo que sobra de alto se
+ * recorre) y `auto` (entera si así se lee; si no, al ancho y sin bajar de READABLE_FONT).
+ * `slack` son los píxeles que se le perdonan a la caja (el relleno que la rodea los absorbe): con celdas
+ * enteras, ganar una columna de píxeles suele pedir unos pocos más de los que hay.
+ * Devuelve también si hace falta scroll (la terminal no entra al tamaño elegido).
  */
-export function fitFont({ cols, rows, width, height, mode = "fit", dpr = 1 }) {
+export function pickFont({ cols, rows, width, height, mode = "fit", measure, slack = 0 }) {
   if (!(width > 0) || !(height > 0)) return { size: MIN_FONT, scroll: true };
-  const snap = (px, cells) => Math.floor((px * dpr) / cells) / dpr; // píxeles de pantalla por celda
-  const byWidth = snap(width, cols) / CELL_RATIO - 0.02;
-  const byHeight = snap(height, rows) / ROW_RATIO - 0.02;
-  const ideal = mode === "width" ? byWidth : Math.min(byWidth, byHeight);
-  const size = Math.max(MIN_FONT, Math.min(MAX_FONT, ideal));
-  return { size, scroll: ideal < MIN_FONT };
+  const steps = Math.round((MAX_FONT - MIN_FONT) / FONT_STEP);
+  const at = (i) => MIN_FONT + i * FONT_STEP;
+  const fits = (size, withHeight) => {
+    const { cw, ch } = measure(size);
+    return cw * cols <= width + slack + 0.5 && (!withHeight || ch * rows <= height + slack + 0.5);
+  };
+  // Búsqueda binaria del paso más grande que entra (el tamaño de celda solo crece con la letra).
+  const biggest = (withHeight) => {
+    if (!fits(at(0), withHeight)) return { size: at(0), ok: false };
+    let lo = 0;
+    let hi = steps;
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      if (fits(at(mid), withHeight)) lo = mid;
+      else hi = mid - 1;
+    }
+    return { size: at(lo), ok: true };
+  };
+  const whole = biggest(true);
+  const overflows = (size) => measure(size).ch * rows > height + slack + 0.5;
+  if (mode === "fit") return { size: whole.size, scroll: !whole.ok };
+  if (mode === "auto" && whole.ok && whole.size >= READABLE_FONT) return { size: whole.size, scroll: false };
+  const byWidth = biggest(false);
+  const size = mode === "auto" ? Math.max(byWidth.size, READABLE_FONT) : byWidth.size;
+  return { size, scroll: !byWidth.ok || size > byWidth.size || overflows(size) };
+}
+
+/** Los modos que se ofrecen en la página. */
+export const TERM_MODES = { auto: "Automática", fit: "Terminal entera", width: "Ajustar al ancho" };
+export const DEFAULT_TERM_MODE = "auto";
+
+/**
+ * Tamaño inicial de una tarjeta (en columnas y filas del lienzo) para que la letra de la terminal
+ * salga de TARGET_FONT. `chrome` es lo que ocupa la tarjeta fuera de la terminal (cabecera, datos, consola).
+ */
+export function cardSizeFor({ containerPx, columns, cellPx, cols = 120, rows = 40, chrome = 210, minW = 4, maxH = 34 }) {
+  const wantW = cols * CELL_RATIO * TARGET_FONT + 40;
+  const w = Math.min(columns, Math.max(minW, Math.ceil(wantW / (containerPx / columns))));
+  const wantH = Math.min(rows, 40) * ROW_RATIO * TARGET_FONT + chrome;
+  return { w, h: Math.min(maxH, Math.ceil(wantH / cellPx)) };
 }

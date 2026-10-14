@@ -53,10 +53,15 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
 - Una tarjeta por agente, con el color del agente en el borde: Claude Code naranja, Antigravity (`agy`) azul,
   GitHub Copilot (`copilot`) violeta, OpenCode blanco y cualquier otro comando marrón. El estado se muestra con texto, icono y color.
 - **La terminal de cada tarjeta** se dibuja celda por celda con xterm.js, con las mismas columnas y filas que la
-  terminal del agente (la letra se ajusta para que entre completa; si bajaría de 5 px, la caja hace scroll y muestra
-  el final), su cursor y los caracteres de cuadro y bloque de OpenCode o Copilot sin costuras. Usa su propia paleta,
-  no la del tema de la página: el selector *Terminal* de la cabecera elige Noche, Papel o Solarized (se recuerda en
-  ese navegador). Las aplicaciones de pantalla completa pintan además su propio fondo, y los márgenes lo toman.
+  terminal del agente, su cursor y los caracteres de cuadro y bloque de OpenCode o Copilot sin costuras. Usa su
+  propia paleta, no la del tema de la página: el selector *Terminal* de la cabecera elige Noche, Papel o Solarized
+  (se recuerda en ese navegador). Las aplicaciones de pantalla completa pintan además su propio fondo, y los márgenes
+  lo toman.
+  - *Ajuste* decide cómo entra la terminal en su tarjeta: *Automática* (entera si así se lee; si no, ajustada al
+    ancho, con letra de 7 px como mínimo, y se ve el final, que es donde el agente espera), *Terminal entera* o
+    *Ajustar al ancho*. La letra mide píxeles de pantalla enteros por celda, así que se nota en saltos.
+  - Una tarjeta nueva (y *Reordenar*) toma el ancho que deja la letra en unos 9 px: dos por fila en una pantalla
+    ancha. Las tarjetas que ya tienen tamaño guardado lo conservan.
 - **Lienzo**: arrastra la cabecera de una tarjeta para moverla y su borde derecho, inferior o la esquina para
   redimensionarla. Las tarjetas se empujan entre sí y nunca se superponen; las actualizaciones en vivo no las
   mueven. Al agrandar una tarjeta se ve más de la pantalla del agente. Con el teclado, sobre una tarjeta:

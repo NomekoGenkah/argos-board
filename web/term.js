@@ -4,12 +4,13 @@
 import { Terminal } from "./vendor/xterm/xterm.mjs";
 import { WebglAddon } from "./vendor/xterm/addon-webgl.mjs";
 import { stripAnsi } from "./ansi.js";
-import { fitFont, fullFrame, gridOf, historyKey, LINE_HEIGHT, visibleFrame } from "./termgrid.js";
+import { fullFrame, gridOf, historyKey, LINE_HEIGHT, pickFont, visibleFrame } from "./termgrid.js";
 import { DEFAULT_TERM_THEME, termTheme } from "./termthemes.js";
 
 const FONT_FAMILY = '"JetBrains Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace';
 const SCROLLBACK = 1000;
 const SR_LINES = 60;
+const SLACK = 5; // px: menos que el relleno de la caja (.term), así que lo que sobra no se corta
 
 // La fuente se pide una vez: xterm mide la celda al abrirse y con otra letra saldría desalineada.
 let fontReady = null;
@@ -22,7 +23,7 @@ function whenFontReady() {
  * @param host elemento `.term` (la caja); dentro se monta la terminal.
  * @param opts.theme nombre del tema de terminal; opts.mode "fit" (entra completa) o "width" (ancho; alto con scroll).
  */
-export function createTermView(host, { theme = DEFAULT_TERM_THEME, mode = "fit" } = {}) {
+export function createTermView(host, { theme = DEFAULT_TERM_THEME, mode = "auto" } = {}) {
   host.classList.add("term");
   const screenEl = document.createElement("div");
   screenEl.className = "term-screen";
@@ -165,24 +166,29 @@ export function createTermView(host, { theme = DEFAULT_TERM_THEME, mode = "fit" 
     return { w: host.clientWidth - x, h: host.clientHeight - y };
   }
 
-  /** Letra del tamaño justo para que la terminal entre en su caja (y se mide lo real, que se redondea por celda). */
+  // Lo que mide una celda con cada tamaño de letra: se lo pregunta a xterm una vez por tamaño y pantalla.
+  const cells = new Map();
+  function measure(size) {
+    const key = `${window.devicePixelRatio}:${size}`;
+    let cell = cells.get(key);
+    if (!cell) {
+      term.options.fontSize = size;
+      const box = screenEl.getBoundingClientRect();
+      cell = { cw: box.width / term.cols, ch: box.height / term.rows };
+      cells.set(key, cell);
+    }
+    return cell;
+  }
+
+  /** Letra del tamaño justo para que la terminal entre en su caja. */
   function fit() {
     if (!term || !ready()) return;
     const { w, h } = inner();
-    const { size, scroll } = fitFont({ cols: term.cols, rows: term.rows, width: w, height: h, mode: fitMode, dpr: window.devicePixelRatio || 1 });
+    const { size, scroll } = pickFont({ cols: term.cols, rows: term.rows, width: w, height: h, mode: fitMode, measure, slack: SLACK });
+    if (term.options.fontSize !== size) term.options.fontSize = size;
     host.classList.toggle("term--scroll", scroll);
     // Si no entra, se ve el final (donde el agente espera): igual que una terminal.
     if (scroll) requestAnimationFrame(() => (host.scrollTop = host.scrollHeight));
-    let fs = size;
-    if (Math.abs(term.options.fontSize - fs) > 0.01) term.options.fontSize = fs;
-    for (let i = 0; i < 3 && !scroll; i++) {
-      const rw = screenEl.offsetWidth;
-      const rh = screenEl.offsetHeight;
-      const over = Math.max(rw / w, fitMode === "fit" ? rh / h : 0);
-      if (over <= 1.002) break;
-      fs = Math.max(4, (fs / over) * 0.995);
-      term.options.fontSize = fs;
-    }
   }
 
   host.addEventListener("keydown", (ev) => {
@@ -194,7 +200,7 @@ export function createTermView(host, { theme = DEFAULT_TERM_THEME, mode = "fit" 
     }
   });
 
-  return {
+  const api = {
     update(agent) {
       latest = agent;
       if (source === (agent.grid ?? agent.last_lines) && term) return;
@@ -211,6 +217,7 @@ export function createTermView(host, { theme = DEFAULT_TERM_THEME, mode = "fit" 
       fit();
     },
     fit,
+    state: () => (term ? { fontSize: term.options.fontSize, cols: term.cols, rows: term.rows, mode: fitMode } : null),
     scrollToTop: () => term?.scrollToTop(),
     scrollToBottom: () => term?.scrollToBottom(),
     lineCount() {
@@ -224,4 +231,6 @@ export function createTermView(host, { theme = DEFAULT_TERM_THEME, mode = "fit" 
       term = null;
     },
   };
+  host.termView = api; // para depurar y probar desde la consola del navegador
+  return api;
 }
