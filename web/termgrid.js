@@ -2,6 +2,7 @@
 // xterm.js, y cuánto debe medir la letra para que la terminal entre en su caja.
 
 import { stripAnsi } from "./ansi.js";
+import { t } from "./i18n.js";
 
 /** Ancho de una celda respecto al tamaño de la letra (JetBrains Mono). */
 export const CELL_RATIO = 0.6;
@@ -113,7 +114,7 @@ export function pickFont({ cols, rows, width, height, mode = "fit", measure, sla
 }
 
 /** Los modos que se ofrecen en la página. */
-export const TERM_MODES = { auto: "Automática", fit: "Terminal entera", width: "Ajustar al ancho" };
+export const TERM_MODES = { auto: t("termMode.auto"), fit: t("termMode.fit"), width: t("termMode.width") };
 export const DEFAULT_TERM_MODE = "auto";
 
 /** Anchos de tarjeta que reparten bien el lienzo: de a 3, de a 2 o una sola por fila. */

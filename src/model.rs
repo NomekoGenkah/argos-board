@@ -261,6 +261,54 @@ pub enum FromBrowser {
     VoiceStop,
     /// Descarta el dictado en curso.
     VoiceCancel,
+    /// Pide el consumo de cada agente. Con `refresh` (solo desde una página con permiso
+    /// de escritura) se vuelve a consultar aunque lo último sea reciente.
+    Usage {
+        rid: u64,
+        #[serde(default)]
+        refresh: bool,
+    },
+}
+
+/// Un límite de uso de un agente (una cuota que se va gastando).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Meter {
+    /// `session`, `week` o `five_hour`.
+    pub id: String,
+    /// De qué es el límite, cuando el agente informa varios (p. ej. `Opus`, `Gemini Models`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    /// Porcentaje ya usado (0 a 100).
+    pub used_pct: f32,
+    /// Cuándo se reinicia, tal como lo informa el agente (a veces una fecha ISO, a veces un texto).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resets: Option<String>,
+}
+
+/// Un dato de consumo que no es un límite (p. ej. el costo acumulado).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Fact {
+    /// `cost` o `sessions`.
+    pub id: String,
+    pub value: String,
+}
+
+/// Lo que se supo del consumo de un agente.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AgentUsage {
+    pub kind: AgentKind,
+    pub meters: Vec<Meter>,
+    pub facts: Vec<Fact>,
+    /// `no_data`, `timeout` o `failed` si no se pudo consultar.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<&'static str>,
+}
+
+/// Consumo de todos los agentes consultables, con el momento de la consulta.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct UsageReport {
+    pub at: DateTime<Utc>,
+    pub agents: Vec<AgentUsage>,
 }
 
 /// Qué se puede lanzar desde esta página (se manda tras autorizarla).
@@ -350,6 +398,14 @@ pub enum BrowserMsg {
         name: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
+    },
+    /// Respuesta a `usage`: `available` es falso si el servidor no consulta consumo (desactivado
+    /// o sin ninguno de los agentes que lo informan); `report` es lo último que se supo.
+    Usage {
+        rid: u64,
+        available: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        report: Option<UsageReport>,
     },
     /// Respuesta a `input`.
     InputResult {

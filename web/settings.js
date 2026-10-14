@@ -2,22 +2,27 @@
 // como preset. Sin DOM: lo usan el panel de ajustes y las pruebas.
 
 import { DEFAULT_TERM_MODE, TERM_MODES } from "./termgrid.js";
+import { t } from "./i18n.js";
 import { DEFAULT_TERM_THEME, TERM_THEMES } from "./termthemes.js";
 
 /** Valores válidos de cada ajuste y cómo se llaman en la página. */
 export const CHOICES = {
-  layout: { canvas: "Lienzo", grid: "Cuadrícula", focus: "Foco" },
-  theme: { light: "Claro", dark: "Oscuro" },
-  density: { comfortable: "Cómoda", compact: "Compacta" },
-  radius: { sharp: "Rectas", soft: "Suaves", round: "Redondas" },
+  skin: { atalaya: t("skin.atalaya"), cuaderno: t("skin.cuaderno"), fosforo: t("skin.fosforo"), tinta: t("skin.tinta") },
+  layout: { canvas: t("choice.canvas"), grid: t("choice.grid"), focus: t("choice.focus") },
+  theme: { light: t("choice.light"), dark: t("choice.dark") },
+  density: { comfortable: t("choice.comfortable"), compact: t("choice.compact") },
+  usage: { on: t("choice.on"), off: t("choice.off") },
+  radius: { sharp: t("choice.sharp"), soft: t("choice.soft"), round: t("choice.round") },
   termTheme: Object.fromEntries(Object.entries(TERM_THEMES).map(([k, t]) => [k, t.label])),
   termMode: TERM_MODES,
 };
 
 export const DEFAULTS = {
+  skin: "atalaya",
   layout: "canvas",
-  theme: "light",
+  theme: "dark",
   density: "comfortable",
+  usage: "on",
   radius: "soft",
   termTheme: DEFAULT_TERM_THEME,
   termMode: DEFAULT_TERM_MODE,
@@ -46,12 +51,12 @@ export function parseShared(text) {
   try {
     raw = JSON.parse(text);
   } catch {
-    return { ok: false, error: "El texto no es un preset válido." };
+    return { ok: false, error: t("set.presetBadText") };
   }
   if (!raw || typeof raw !== "object" || raw.argos !== 1) {
-    return { ok: false, error: "El texto no es un preset de Argos Board." };
+    return { ok: false, error: t("set.presetNotArgos") };
   }
-  if (!KEYS.some((k) => Object.hasOwn(raw, k))) return { ok: false, error: "El preset no trae ningún ajuste." };
+  if (!KEYS.some((k) => Object.hasOwn(raw, k))) return { ok: false, error: t("set.presetEmpty") };
   return { ok: true, bundle: normalize(raw) };
 }
 
@@ -78,3 +83,19 @@ export function matchingPreset(presets, bundle) {
   const now = JSON.stringify(normalize(bundle));
   return Object.keys(presets).find((name) => JSON.stringify(presets[name]) === now) ?? null;
 }
+
+/** Presets que vienen con la página: cada uno es un estilo completo, y sirven de alternativa al de base. */
+export const BUILTIN_PRESETS = {
+  [t("preset.guardia")]: { skin: "atalaya", theme: "dark", layout: "grid", density: "comfortable", radius: "soft", termTheme: "night", termMode: "auto", usage: "on" },
+  [t("preset.estudio")]: { skin: "cuaderno", theme: "light", layout: "canvas", density: "comfortable", radius: "soft", termTheme: "paper", termMode: "auto", usage: "on" },
+  [t("preset.consola")]: { skin: "fosforo", theme: "dark", layout: "focus", density: "compact", radius: "sharp", termTheme: "fosforo", termMode: "auto", usage: "on" },
+  [t("preset.contraste")]: { skin: "tinta", theme: "dark", layout: "canvas", density: "comfortable", radius: "sharp", termTheme: "tinta", termMode: "auto", usage: "on" },
+};
+
+/** Los de fábrica y los del usuario juntos (si un nombre se repite, gana el del usuario). */
+export function allPresets(user = {}) {
+  return { ...normalizePresets(BUILTIN_PRESETS), ...user };
+}
+
+/** ¿Es un preset de fábrica y el usuario no lo reemplazó con uno suyo? */
+export const isBuiltin = (name, user = {}) => Object.hasOwn(BUILTIN_PRESETS, name) && !Object.hasOwn(user, name);

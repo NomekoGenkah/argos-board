@@ -1,6 +1,7 @@
 // Consola para escribir en un agente desde la página: caja de texto, dictado por
 // voz y teclas rápidas. La usan las tarjetas del tablero y el panel de la Oficina.
 
+import { t } from "./i18n.js";
 import { prefs } from "./prefs.js";
 import { micErrorText, openMic } from "./mic.js";
 import { createDictation, createServerDictation, languageChoices, voiceAvailable } from "./voice.js";
@@ -22,30 +23,30 @@ let stopActiveDictation = null;
 
 /** Teclas rápidas: [nombre en el protocolo, rótulo, nombre accesible]. */
 export const KEYS = [
-  ["up", "↑", "Flecha arriba"],
-  ["down", "↓", "Flecha abajo"],
-  ["enter", "Enter", "Enter"],
-  ["esc", "Esc", "Escape"],
-  ["tab", "Tab", "Tabulador"],
-  ["shift_tab", "⇧Tab", "Shift Tab: alternar modo o permisos"],
-  ["ctrl_c", "Ctrl+C", "Control C: interrumpe al agente"],
+  ["up", "↑", t("key.up")],
+  ["down", "↓", t("key.down")],
+  ["enter", "Enter", t("key.enter")],
+  ["esc", "Esc", t("key.esc")],
+  ["tab", "Tab", t("key.tab")],
+  ["shift_tab", "⇧Tab", t("key.shift_tab")],
+  ["ctrl_c", "Ctrl+C", t("key.ctrl_c")],
 ];
 
 /** Comandos rápidos de modo por tipo de agente. */
 const MODE_COMMANDS = {
   claude: [
-    { label: "/plan", text: "/plan", name: "Modo Plan (/plan)" },
+    { label: "/plan", text: "/plan", name: t("mode.plan") },
   ],
   copilot: [
-    { label: "/plan", text: "/plan", name: "Modo Plan (/plan)" },
-    { label: "/autopilot", text: "/autopilot", name: "Modo Autopilot (/autopilot)" },
+    { label: "/plan", text: "/plan", name: t("mode.plan") },
+    { label: "/autopilot", text: "/autopilot", name: t("mode.autopilot") },
   ],
   opencode: [
-    { label: "Plan", text: "/mode plan", name: "Modo Plan (/mode plan)" },
+    { label: "Plan", text: "/mode plan", name: t("mode.planMode") },
   ],
   agy: [
-    { label: "/plan", text: "/plan", name: "Modo Plan (/plan)" },
-    { label: "/auto", text: "/auto", name: "Modo Auto (/auto)" },
+    { label: "/plan", text: "/plan", name: t("mode.plan") },
+    { label: "/auto", text: "/auto", name: t("mode.auto") },
   ],
 };
 
@@ -72,9 +73,9 @@ export function currentVoiceLang() {
 }
 
 const PHASE_TEXT = {
-  preparing: "Preparando el micrófono… (la primera vez tarda unos segundos)",
-  listening: "Escuchando… habla y pulsa el micrófono para terminar",
-  finishing: "Terminando de transcribir…",
+  preparing: t("con.phasePreparing"),
+  listening: t("con.phaseListening"),
+  finishing: t("con.phaseFinishing"),
 };
 
 /** ¿Se puede dictar aquí? Con el servidor (cualquier navegador) o con el del navegador. */
@@ -88,22 +89,19 @@ export function createConsole({ sendInput, voice = null, voiceLang = currentVoic
     <form class="console-form" novalidate>
       <div class="console-row">
         <textarea class="console-input" rows="1" maxlength="131072" spellcheck="false" autocomplete="off"
-          placeholder="Escribe y pulsa Enter" aria-describedby="${id}-help"></textarea>
+          placeholder="${t("con.placeholder")}" aria-describedby="${id}-help"></textarea>
         <input type="file" class="console-file" accept=".md,.markdown,.txt,.json,.csv,.py,.rs,.js,.ts,.html,.css,.png,.jpg,.jpeg,.webp,.gif,text/*,image/*" hidden>
-        <button class="console-attach icon-btn" type="button" aria-label="Adjuntar archivo o imagen"
-          title="Adjuntar archivo o imagen (.md, imágenes, etc.)">${ATTACH_ICON}</button>
-        <button class="console-mic icon-btn" type="button" aria-pressed="false" aria-label="Dictar por voz"
-          title="Dictar por voz" hidden>${MIC_ICON}</button>
+        <button class="console-attach icon-btn" type="button" aria-label="${t("con.attach")}"
+          title="${t("con.attachTitle")}">${ATTACH_ICON}</button>
+        <button class="console-mic icon-btn" type="button" aria-pressed="false" aria-label="${t("con.mic")}"
+          title="${t("con.mic")}" hidden>${MIC_ICON}</button>
         <button class="console-keys-toggle icon-btn" type="button" aria-expanded="false" aria-controls="${id}-keys"
-          aria-label="Teclas rápidas" title="Teclas rápidas">${KEYS_ICON}</button>
-        <button class="console-send icon-btn" type="submit" aria-label="Enviar" title="Enviar (Enter)">${SEND_ICON}</button>
+          aria-label="${t("con.keys")}" title="${t("con.keys")}">${KEYS_ICON}</button>
+        <button class="console-send icon-btn" type="submit" aria-label="${t("con.send")}" title="${t("con.sendTitle")}">${SEND_ICON}</button>
       </div>
-      <div id="${id}-keys" class="console-keys" role="group" aria-label="Teclas" hidden></div>
+      <div id="${id}-keys" class="console-keys" role="group" aria-label="${t("con.keysGroup")}" hidden></div>
       <p class="console-status" role="status"></p>
-      <p id="${id}-help" class="sr-only">
-        Enter envía el texto; Mayúsculas y Enter agregan una línea. Con la caja vacía, las flechas
-        arriba y abajo y Escape van directo al agente. Puedes arrastrar o adjuntar archivos (.md, imágenes).
-      </p>
+      <p id="${id}-help" class="sr-only">${t("con.help")}</p>
     </form>
     <p class="console-note" hidden></p>`;
   const form = el.querySelector(".console-form");
@@ -165,7 +163,7 @@ export function createConsole({ sendInput, voice = null, voiceLang = currentVoic
     if (!agent) return false;
     const res = await sendInput(agent.id, inputMsg);
     if (res.ok) show(`${what} ✓`, "ok");
-    else show(res.error || "No se pudo enviar", "error");
+    else show(res.error || t("con.failed"), "error");
     return res.ok;
   }
 
@@ -183,13 +181,13 @@ export function createConsole({ sendInput, voice = null, voiceLang = currentVoic
     },
     onState: (on) => {
       mic.setAttribute("aria-pressed", String(on));
-      mic.title = on ? "Dejar de dictar" : "Dictar por voz";
+      mic.title = on ? t("con.micStop") : t("con.mic");
       if (on) {
         dictationFailed = false;
         show(PHASE_TEXT.listening, "info");
       } else {
         if (stopActiveDictation === current?.stop) stopActiveDictation = null;
-        if (!dictationFailed) show(input.value ? "Dictado listo: revisa y envía" : "", input.value ? "ok" : "info");
+        if (!dictationFailed) show(input.value ? t("con.dictated") : "", input.value ? "ok" : "info");
         input.focus();
       }
     },
@@ -218,13 +216,13 @@ export function createConsole({ sendInput, voice = null, voiceLang = currentVoic
   async function handleFile(file) {
     if (!agent) return;
     if (!uploadFile) {
-      show("Subida de archivos no disponible", "error");
+      show(t("con.noUpload"), "error");
       return;
     }
-    show(`Subiendo ${file.name}…`, "info");
+    show(t("con.uploading", file.name), "info");
     const res = await uploadFile(agent.id, file);
     if (!res.ok) {
-      show(res.error || "No se pudo subir el archivo", "error");
+      show(res.error || t("con.uploadFailed"), "error");
       return;
     }
     const ref = `@${res.relative_path}`;
@@ -233,9 +231,9 @@ export function createConsole({ sendInput, voice = null, voiceLang = currentVoic
     grow();
     input.focus();
     if (res.is_image) {
-      show(`Imagen adjuntada: ${ref} (comprueba si el modelo soporta visión)`, "info");
+      show(t("con.imageAttached", ref), "info");
     } else {
-      show(`Adjuntado: ${ref} ✓`, "ok");
+      show(t("con.attached", ref), "ok");
     }
   }
 
@@ -286,7 +284,7 @@ export function createConsole({ sendInput, voice = null, voiceLang = currentVoic
     ev.preventDefault();
     await current?.stop(); // lo ya dicho queda en la caja antes de leerla
     const text = input.value;
-    if (await send({ type: "text", text, submit: true }, text ? "Enviado" : "Enter")) {
+    if (await send({ type: "text", text, submit: true }, text ? t("con.sent") : t("con.enter"))) {
       input.value = "";
       grow();
     }
@@ -310,7 +308,7 @@ export function createConsole({ sendInput, voice = null, voiceLang = currentVoic
   /** Muestra la consola o, si no se puede escribir, por qué. */
   function update(next, auth) {
     agent = next;
-    input.setAttribute("aria-label", `Escribir a ${next.name}`);
+    input.setAttribute("aria-label", t("con.writeTo", next.name));
     const blocker = inputBlocker(next, auth);
     form.hidden = blocker !== null;
     if (blocker !== null) {
@@ -323,7 +321,7 @@ export function createConsole({ sendInput, voice = null, voiceLang = currentVoic
     // Sin permiso de la página, el aviso está en la cabecera (no en cada tarjeta).
     const text =
       blocker === "agent"
-        ? "No acepta entrada desde la página (--no-input o versión anterior)."
+        ? t("con.noAgentInput")
         : "";
     note.hidden = !text;
     note.textContent = text;

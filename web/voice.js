@@ -8,6 +8,8 @@
 // `localhost` o por HTTPS. El motor está aislado en `createDictation` para poder
 // cambiarlo (p. ej. por una transcripción en el servidor) sin tocar la consola.
 
+import { t } from "./i18n.js";
+
 /** Tope de la caja de la consola (su `maxlength`). */
 export const MAX_CHARS = 4000;
 
@@ -47,11 +49,11 @@ export function mergeDictation(base, spoken) {
 
 /** Mensaje para cada error del reconocedor; `null` = se ignora (no es un fallo). */
 export const ERROR_TEXT = {
-  "not-allowed": "El navegador bloqueó el micrófono: dale permiso a esta página.",
-  "service-not-allowed": "El navegador no permite el reconocimiento de voz aquí.",
-  "audio-capture": "No se encontró un micrófono.",
-  network: "El servicio de voz del navegador no responde (¿sin conexión?).",
-  "language-not-supported": "El navegador no soporta ese idioma de dictado.",
+  "not-allowed": t("voice.notAllowed"),
+  "service-not-allowed": t("voice.serviceNotAllowed"),
+  "audio-capture": t("voice.noMic"),
+  network: t("voice.network"),
+  "language-not-supported": t("voice.langNotSupported"),
   "no-speech": null,
   aborted: null,
 };
@@ -101,7 +103,7 @@ export function createDictation({ lang, onText, onState, onError, win = globalTh
         quickEnds = Date.now() - startedAt < QUICK_END_MS ? quickEnds + 1 : 0;
         if (quickEnds >= MAX_QUICK_ENDS) {
           wanted = false;
-          onError("El reconocimiento de voz se detiene solo; revisa el micrófono.");
+          onError(t("voice.stops"));
         } else {
           begin();
           return;

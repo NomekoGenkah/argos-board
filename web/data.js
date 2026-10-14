@@ -1,6 +1,8 @@
 // Capa de DATOS: WebSocket + estado de agentes. No toca el DOM.
 // Los renderizadores (tablero, oficina) y las alertas se suscriben con onChange.
 
+import { serverMessage, t } from "./i18n.js";
+
 const TOKEN_KEY = "argos-control-token";
 const DEVICE_KEY = "argos-device-token";
 const INPUT_TIMEOUT_MS = 5000;
@@ -97,6 +99,7 @@ export function createStore() {
     if (!p) return;
     clearTimeout(p.timer);
     pending.delete(rid);
+    if (typeof result?.error === "string") result = { ...result, error: serverMessage(result.error) };
     p.resolve(result);
   }
 
@@ -159,6 +162,7 @@ export function createStore() {
         break;
       case "input_result":
       case "action_result":
+      case "usage":
       case "dirs":
         settle(msg.rid, msg);
         break;
@@ -201,7 +205,7 @@ export function createStore() {
       ws.onclose = () => {
         socket = null;
         voiceReady = false;
-        for (const rid of [...pending.keys()]) settle(rid, { ok: false, error: "Se cortó la conexión con el servidor" });
+        for (const rid of [...pending.keys()]) settle(rid, { ok: false, error: t("err.cut") });
         conn = "closed";
         emit({ kind: "conn" });
         setTimeout(open, delay);
@@ -235,10 +239,10 @@ export function createStore() {
         body: JSON.stringify({ code, name: deviceLabel() }),
       });
     } catch {
-      return { ok: false, error: "No se pudo contactar al servidor" };
+      return { ok: false, error: t("err.unreachable") };
     }
     const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.token) return { ok: false, error: data.error ?? `Error ${res.status}` };
+    if (!res.ok || !data.token) return { ok: false, error: serverMessage(data.error) ?? t("err.status", res.status) };
     deviceToken = data.token;
     try {
       localStorage.setItem(DEVICE_KEY, data.token);
@@ -253,15 +257,18 @@ export function createStore() {
   /** Petición al servidor que espera respuesta (por `rid`). Resuelve con el mensaje. */
   function request(payload, timeoutMs = INPUT_TIMEOUT_MS) {
     if (!socket || socket.readyState !== WebSocket.OPEN) {
-      return Promise.resolve({ ok: false, error: "Sin conexión con el servidor" });
+      return Promise.resolve({ ok: false, error: t("err.offline") });
     }
     const rid = nextRid++;
     return new Promise((resolve) => {
-      const timer = setTimeout(() => settle(rid, { ok: false, error: "El servidor no respondió" }), timeoutMs);
+      const timer = setTimeout(() => settle(rid, { ok: false, error: t("err.timeout") }), timeoutMs);
       pending.set(rid, { resolve, timer });
       socket.send(JSON.stringify({ ...payload, rid }));
     });
   }
+
+  /** El consumo de cada agente (lo consulta el servidor a los CLI). Resuelve con { available, report }. */
+  const usage = (refresh = false) => request({ type: "usage", refresh }, 60000);
 
   /** Manda entrada a un agente. Resuelve con { ok, error }. */
   const sendInput = (id, input) => request({ type: "input", id, input });
@@ -292,7 +299,7 @@ export function createStore() {
   /** Sube un archivo al proyecto de un agente. Resuelve con { ok, filename, relative_path, is_image, error }. */
   async function uploadFile(agentId, file) {
     const cred = credential();
-    if (!cred) return { ok: false, error: "Esta página no tiene permiso de escritura" };
+    if (!cred) return { ok: false, error: t("err.noWrite") };
     try {
       const url = `api/agents/${agentId}/upload?name=${encodeURIComponent(file.name || "archivo")}`;
       const res = await fetch(url, {
@@ -305,11 +312,11 @@ export function createStore() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
-        return { ok: false, error: data.error || `Error al subir (${res.status})` };
+        return { ok: false, error: serverMessage(data.error) || t("err.uploadStatus", res.status) };
       }
       return data;
     } catch {
-      return { ok: false, error: "No se pudo contactar al servidor" };
+      return { ok: false, error: t("err.unreachable") };
     }
   }
 
@@ -322,6 +329,8 @@ export function createStore() {
     listDirs,
     launch,
     stop,
+    usage,
+    connected: () => socket?.readyState === WebSocket.OPEN,
     onChange(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);

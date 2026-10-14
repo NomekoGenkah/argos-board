@@ -10,6 +10,7 @@
 import * as S from "./sprites.js";
 import { LABELS, KINDS, formatDuration, sortAgents } from "./render.js";
 import { stripAnsi } from "./ansi.js";
+import { t } from "./i18n.js";
 
 export const ZONE_OF = {
   working: "office",
@@ -20,7 +21,7 @@ export const ZONE_OF = {
   idle: "kitchen",
   exited: "exit",
 };
-const ZONE_TITLE = { queue: "TE ESPERAN", office: "OFICINA", kitchen: "COCINA", exit: "SALIDA" };
+const ZONE_TITLE = { queue: t("office.queue"), office: t("office.office"), kitchen: t("office.kitchen"), exit: t("office.exit") };
 
 const POD_W = 56; // escritorio
 const POD_H = 42;
@@ -37,7 +38,7 @@ const PLATE_PX = 40; // alto de la placa HTML, en px de pantalla
 const FRAME_MS = 120;
 const SPEED = 75; // px de escena por segundo al caminar
 // En las placas, una etiqueta corta (la completa va en el aria-label y el tooltip).
-const SHORT = { waiting_input: "Pregunta", waiting_approval: "Permiso" };
+const SHORT = { waiting_input: t("office.shortInput"), waiting_approval: t("office.shortApproval") };
 
 const SCENE = {
   light: {
@@ -382,7 +383,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     return b;
   }
 
-  const WHERE = { office: "en la oficina", queue: "te espera", kitchen: "en la cocina", exit: "en la salida" };
+  const WHERE = { office: t("office.whereOffice"), queue: t("office.whereQueue"), kitchen: t("office.whereKitchen"), exit: t("office.whereExit") };
 
   function fillButton(b, a) {
     b.dataset.id = a.id;
@@ -391,7 +392,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     b.querySelector(".plate-name").textContent = a.name;
     b.setAttribute(
       "aria-label",
-      `${a.name} (${KINDS[a.kind] ?? a.kind}): ${LABELS[a.state] ?? a.state}, ${WHERE[ZONE_OF[a.state] ?? "office"]}. Abrir su panel para ver su pantalla y escribirle`,
+      t("office.aria", a.name, KINDS[a.kind] ?? a.kind, LABELS[a.state] ?? a.state, WHERE[ZONE_OF[a.state] ?? "office"]),
     );
   }
 
@@ -454,7 +455,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       const text = `${SHORT[a.state] ?? LABELS[a.state] ?? a.state} · ${since}`;
       const el = b.querySelector(".plate-text");
       if (el.textContent !== text) el.textContent = text;
-      b.title = `${a.name} — ${LABELS[a.state] ?? a.state} desde hace ${since}\n${a.project}`;
+      b.title = t("office.tip", a.name, LABELS[a.state] ?? a.state, since, a.project);
     }
   }
 

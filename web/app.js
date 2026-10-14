@@ -10,11 +10,22 @@ import { languageChoices, voiceAvailable } from "./voice.js";
 import { prefs } from "./prefs.js";
 import { NEEDS_YOU } from "./alerts.js";
 import { createSettingsPanel } from "./settings-panel.js";
+import { createUsageBar } from "./usage.js";
+import { createBrand, gazeOf } from "./brand.js";
+import { applyDom, t } from "./i18n.js";
+
+applyDom();
 
 // Aspecto: el tema, la densidad y las esquinas son atributos de <html>; los pone el panel de ajustes.
 const root = document.documentElement;
+const brand = createBrand({
+  mark: document.querySelector(".mark"),
+  icon: document.getElementById("icon"),
+  themeColor: document.getElementById("theme-color"),
+});
 function applyTheme(t) {
   root.dataset.theme = t;
+  brand.refresh();
   window.dispatchEvent(new CustomEvent("argos:theme-change"));
 }
 
@@ -61,9 +72,8 @@ function setView(v, { save = true } = {}) {
   cardsEl.hidden = v !== "board";
   officeEl.hidden = v !== "office";
   for (const [k, b] of Object.entries(viewBtns)) b.setAttribute("aria-pressed", String(k === v));
-  relayoutBtn.textContent = v === "board" ? "Reordenar tarjetas" : "Reordenar escritorios";
-  relayoutBtn.title =
-    v === "board" ? "Ordena las tarjetas por estado y restablece su tamaño" : "Ordena los escritorios por estado";
+  relayoutBtn.textContent = v === "board" ? t("set.relayout") : t("set.relayoutOffice");
+  relayoutBtn.title = v === "board" ? t("set.relayoutTitle") : t("set.relayoutOfficeTitle");
   office.setActive(v === "office");
 }
 function openInBoard(id) {
@@ -76,6 +86,9 @@ function toggleView() {
 viewBtns.board?.closest(".seg")?.addEventListener("click", toggleView);
 setView(view, { save: false });
 
+const usageBar = createUsageBar({ root: document.getElementById("usage"), store });
+store.onChange((e) => usageBar.onChange(e));
+
 // Ajustes: disposición, tema, terminal, densidad, esquinas y presets (hoja a la derecha).
 const settings = createSettingsPanel({
   dialog: document.getElementById("settings-dialog"),
@@ -84,7 +97,16 @@ const settings = createSettingsPanel({
   apply: {
     layout: setLayout,
     theme: applyTheme,
+    skin: (v) => {
+      root.dataset.skin = v;
+      brand.refresh();
+    },
+    motion: (v) => {
+      if (v === "reduced") root.dataset.motion = "reduced";
+      else delete root.dataset.motion;
+    },
     density: (v) => (root.dataset.density = v),
+    usage: (v) => usageBar.setEnabled(v === "on"),
     radius: (v) => (root.dataset.radius = v),
     termTheme: (v) => {
       setTermTheme(v);
@@ -110,9 +132,9 @@ function showNotifyState() {
   notifyBtn.hidden = false;
   const p = Notification.permission;
   notifyBtn.disabled = p !== "default";
-  notifyBtn.textContent = { granted: "Avisos activos", denied: "Avisos bloqueados", default: "Activar avisos" }[p];
+  notifyBtn.textContent = { granted: t("notify.on"), denied: t("notify.denied"), default: t("notify.enable") }[p];
   notifyBtn.title =
-    p === "denied" ? "El navegador bloqueó las notificaciones de esta página; actívalas en su configuración." : "";
+    p === "denied" ? t("notify.deniedTitle") : "";
 }
 notifyBtn.addEventListener("click", async () => {
   try {
@@ -127,7 +149,7 @@ const soundBtn = document.getElementById("sound");
 function showSound() {
   const on = prefs.sound();
   soundBtn.setAttribute("aria-pressed", String(on));
-  soundBtn.textContent = on ? "Sonido: sí" : "Sonido: no";
+  soundBtn.textContent = on ? t("sound.on") : t("sound.off");
 }
 soundBtn.addEventListener("click", () => {
   const on = !prefs.sound();
@@ -147,7 +169,7 @@ showSound();
 const voiceLangBtn = document.getElementById("voice-lang");
 const showVoiceLang = () => {
   voiceLangBtn.hidden = store.voice.available() || !voiceAvailable();
-  voiceLangBtn.textContent = `Voz: ${currentVoiceLang()}`;
+  voiceLangBtn.textContent = t("voice.lang", currentVoiceLang());
 };
 voiceLangBtn.addEventListener("click", () => {
   const choices = languageChoices(navigator.language);
@@ -158,13 +180,9 @@ voiceLangBtn.addEventListener("click", () => {
 // Permiso para escribir: aviso en la cabecera (no en cada tarjeta).
 const writeBtn = document.getElementById("write");
 const writeDialog = document.getElementById("write-dialog");
-const WRITE_TEXT = {
-  none: ["Solo lectura", "Esta página todavía no tiene permiso para escribir en los agentes."],
-  bad: ["Token inválido", "El token guardado ya no es válido (¿se renovó?). Abre el enlace nuevo."],
-  pair: ["Sin emparejar", "Este dispositivo no está emparejado: ingresa un código de `argos-board pair` para ver y controlar los agentes."],
-  pending: ["Solo lectura", "Comprobando el permiso para escribir…"],
-  ok: ["Escritura activa", "Esta página puede escribir en los agentes que lo permiten."],
-};
+const WRITE_TEXT = Object.fromEntries(
+  ["none", "bad", "pair", "pending", "ok"].map((k) => [k, [t(`write.${k}`), t(`write.${k}Text`)]]),
+);
 let lastAuth = null;
 function showWrite({ auth }) {
   if (auth === lastAuth) return;
@@ -205,22 +223,22 @@ function afterLaunch(event) {
 // Lo que te espera, siempre a la vista: al pulsarlo se va al agente que lleva más tiempo esperando.
 const attentionBtn = document.getElementById("attention");
 let attentionTarget = null;
-const plural = (n, one, many) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
 function showAttention({ agents }) {
   const list = [...agents.values()];
   const waiting = list.filter((a) => NEEDS_YOU.has(a.state)).sort((a, b) => Date.parse(a.state_since) - Date.parse(b.state_since));
   const errors = list.filter((a) => a.state === "error").length;
   const working = list.filter((a) => a.state === "working").length;
   let level = "calm";
-  let text = list.length ? "Todo en calma" : "Sin agentes";
-  if (waiting.length) [level, text] = ["wait", plural(waiting.length, "te espera", "te esperan")];
-  else if (errors) [level, text] = ["error", plural(errors, "con error", "con error")];
-  else if (working) [level, text] = ["work", plural(working, "trabajando", "trabajando")];
+  let text = list.length ? t("attention.calm") : t("attention.none");
+  if (waiting.length) [level, text] = ["wait", t("attention.wait", waiting.length)];
+  else if (errors) [level, text] = ["error", t("attention.error", errors)];
+  else if (working) [level, text] = ["work", t("attention.work", working)];
   attentionTarget = waiting[0]?.id ?? null;
   attentionBtn.dataset.level = level;
+  brand.gaze(gazeOf(level, list.length));
   attentionBtn.textContent = text;
   attentionBtn.disabled = !attentionTarget;
-  attentionBtn.title = attentionTarget ? `Ir a ${waiting[0].name}, que lleva más tiempo esperando` : "";
+  attentionBtn.title = attentionTarget ? t("attention.go", waiting[0].name) : "";
 }
 attentionBtn.addEventListener("click", () => {
   if (attentionTarget) view === "board" ? focusAgent(attentionTarget) : office.focusAgent(attentionTarget);

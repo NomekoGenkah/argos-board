@@ -2,6 +2,7 @@
 
 pub mod launch;
 pub mod state;
+pub mod usage;
 pub mod voice;
 
 use crate::VERSION;
@@ -42,6 +43,7 @@ struct AppState {
     hosts: Arc<Vec<String>>,
     pairing: Arc<Pairing>,
     voice: Arc<VoiceHub>,
+    usage: Arc<usage::UsageHub>,
 }
 
 /// Sin dictados, el `agy` que transcribe se cierra pasado este tiempo.
@@ -195,6 +197,9 @@ pub async fn serve(
         hosts: Arc::new(hosts),
         pairing,
         voice,
+        usage: Arc::new(usage::UsageHub::new(
+            crate::config::config_dir()?.join("usage-probe"),
+        )),
     });
     eprintln!("argos-board {VERSION} escuchando en http://localhost:{port}");
     // El enlace con el token y el código van al usuario por la terminal, nunca a un log.
@@ -517,8 +522,9 @@ async fn browser_ws(
         control: st.control,
         devices: st.pairing.store().clone(),
     };
-    ws.max_message_size(512 * 1024)
-        .on_upgrade(move |socket| browser_session(socket, st.board, access, st.launcher, st.voice))
+    ws.max_message_size(512 * 1024).on_upgrade(move |socket| {
+        browser_session(socket, st.board, access, st.launcher, st.voice, st.usage)
+    })
 }
 
 /// Ventana de un segundo para limitar el ritmo de entradas.
@@ -542,15 +548,26 @@ const NO_PERMISSION: &str =
     "esta página no tiene permiso para escribir (abre el enlace que imprime `argos-board serve`)";
 
 /// Atiende un mensaje del navegador. Devuelve las respuestas.
+/// Lo que el servidor le presta a cada sesión de página.
+struct Hubs<'a> {
+    board: &'a Arc<Board>,
+    launcher: &'a Arc<Launcher>,
+    usage: &'a Arc<usage::UsageHub>,
+}
+
 async fn handle_browser_msg(
-    board: &Arc<Board>,
-    launcher: &Arc<Launcher>,
+    hubs: Hubs<'_>,
     access: &Access,
     session: &mut Session,
     rate: &mut RateLimit,
     voice: &VoiceCtx,
     text: &str,
 ) -> Vec<BrowserMsg> {
+    let Hubs {
+        board,
+        launcher,
+        usage,
+    } = hubs;
     let authorized = &mut session.authorized;
     let msg = match serde_json::from_str::<FromBrowser>(text) {
         Ok(m) => m,
@@ -585,6 +602,18 @@ async fn handle_browser_msg(
                     available: voice.hub.available(),
                 },
             ]
+        }
+        FromBrowser::Usage { rid, refresh } => {
+            // Lo ve quien ve los agentes; actualizar a la fuerza, solo quien puede escribir en ellos.
+            if !session.can_read {
+                return Vec::new();
+            }
+            let report = usage.report(refresh && *authorized).await;
+            vec![BrowserMsg::Usage {
+                rid,
+                available: usage.available(),
+                report,
+            }]
         }
         FromBrowser::ListDirs { rid, path } => {
             let result = if *authorized {
@@ -753,6 +782,7 @@ async fn browser_session(
     access: Access,
     launcher: Arc<Launcher>,
     voice_hub: Arc<VoiceHub>,
+    usage: Arc<usage::UsageHub>,
 ) {
     let (voice_tx, mut voice_rx) = tokio::sync::mpsc::unbounded_channel::<BrowserMsg>();
     let voice = VoiceCtx {
@@ -811,7 +841,7 @@ async fn browser_session(
             incoming = socket.recv() => match incoming {
                 Some(Ok(Message::Close(_))) | None | Some(Err(_)) => return,
                 Some(Ok(Message::Text(text))) => {
-                    let replies = handle_browser_msg(&board, &launcher, &access, &mut session, &mut rate, &voice, &text).await;
+                    let replies = handle_browser_msg(Hubs { board: &board, launcher: &launcher, usage: &usage }, &access, &mut session, &mut rate, &voice, &text).await;
                     for reply in replies {
                         if send_json(&mut socket, &reply).await.is_err() {
                             return;

@@ -1,0 +1,300 @@
+/* Estilos de la página: cada uno define los mismos tokens, en claro y en oscuro.
+   El color de la interfaz es neutro a propósito: el verde y el rojo son de los estados (trabajando,
+   te espera) y de nada más. La marca (--brand) es solo la del ojo.
+
+   - Atalaya (el de base): una atalaya de noche; el día es su versión de niebla.
+   - Cuaderno: la paleta cálida de siempre, de papel y tinta marrón.
+   - Fósforo: la fosforescencia de un monitor viejo, con la interfaz en monoespaciada.
+   - Tinta: blanco y negro de alto contraste, con líneas gruesas. */
+
+:root {
+  --radius: 10px;    /* tarjetas, paneles */
+  --radius-sm: 6px;  /* botones, entradas */
+  --pad: 12px;       /* relleno interior de las tarjetas */
+  --line: 1px;       /* grosor de las líneas de la interfaz */
+  --sans: "Montserrat", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", "Cascadia Code", ui-monospace, Menlo, Consolas, monospace;
+  --ui: var(--sans);
+}
+
+/* Esquinas y densidad (Ajustes). */
+:root[data-radius="sharp"] { --radius: 3px; --radius-sm: 2px; }
+:root[data-radius="round"] { --radius: 16px; --radius-sm: 9px; }
+:root[data-density="compact"] { --pad: 8px; }
+
+/* ---------- Atalaya, de noche (el de base) ---------- */
+:root,
+:root[data-skin="atalaya"][data-theme="dark"] {
+  --bg: #0e1318;
+  --panel: #151c23;
+  --panel-2: #1b242d;
+  --border: #2a3744;
+  --text: #e4ebf1;
+  --heading: #f4f8fb;
+  --muted: #93a5b3;
+  --term-bg: #0a0f13;
+  --term-text: #e4ebf1;
+  --focus: #7fb2ff;
+  --accent: #e4ebf1;
+  --on-accent: #0e1318;
+  --accent-strong: #ff7a66;
+  --brand: #f2b84b;
+
+  --st-working: #35d08e;
+  --st-working-dot: #35d08e;
+  --st-waiting: #ff5a45;
+  --st-idle: #93a5b3;
+  --st-error: #e58a6b;
+  --st-ended: #8696a3;
+
+  --k-claude: #f08a48;
+  --k-agy: #5b93ec;
+  --k-copilot: #b392f0;
+  --k-opencode: #f4f1f0;
+  --k-generic: #b0bcc6;
+
+  --shadow: 0 1px 0 rgb(255 255 255 / .03) inset, 0 10px 28px rgb(0 0 0 / .32);
+  color-scheme: dark;
+}
+
+/* ---------- Atalaya, de día ---------- */
+:root[data-skin="atalaya"][data-theme="light"] {
+  --bg: #eef2f5;
+  --panel: #ffffff;
+  --panel-2: #e6ecf0;
+  --border: #d0dae2;
+  --text: #16212b;
+  --heading: #0e1820;
+  --muted: #4f606c;
+  --term-bg: #f4f7f9;
+  --term-text: #16212b;
+  --focus: #2160d4;
+  --accent: #16212b;
+  --on-accent: #f4f8fb;
+  --accent-strong: #b52a14;
+  --brand: #b87908;
+
+  --st-working: #187a50;
+  --st-working-dot: #1fb072;
+  --st-waiting: #bf2f16;
+  --st-idle: #4f606c;
+  --st-error: #99482f;
+  --st-ended: #5b6a75;
+
+  --k-claude: #e07a39;
+  --k-agy: #2f6fd0;
+  --k-copilot: #7048c6;
+  --k-opencode: #8a96a0;
+  --k-generic: #3d4b57;
+
+  --shadow: 0 1px 2px rgb(22 33 43 / .06), 0 6px 18px rgb(22 33 43 / .07);
+  color-scheme: light;
+}
+
+/* ---------- Cuaderno, de día (la paleta de siempre) ---------- */
+:root[data-skin="cuaderno"][data-theme="light"] {
+  --bg: #f7f3f1;
+  --panel: #ffffff;
+  --panel-2: #f4eeec;
+  --border: #e5dcd9;
+  --text: #2b1f1d;
+  --heading: #593c37;
+  --muted: #74625e;
+  --term-bg: #f8f4f2;
+  --term-text: #2b1f1d;
+  --focus: #2f6fd0;
+  --accent: #2b1f1d;
+  --on-accent: #fffaf8;
+  --accent-strong: #c8300f;
+  --brand: #994739;
+
+  --st-working: #318561;
+  --st-working-dot: #1ad988;
+  --st-waiting: #c8300f;
+  --st-idle: #74625e;
+  --st-error: #994739;
+  --st-ended: #6e625f;
+
+  --k-claude: #e07a39;
+  --k-agy: #2f6fd0;
+  --k-copilot: #7048c6;
+  --k-opencode: #cdc5c2;
+  --k-generic: #593c37;
+
+  --shadow: 0 1px 2px rgb(89 60 55 / .06), 0 4px 14px rgb(89 60 55 / .06);
+  color-scheme: light;
+}
+
+/* ---------- Cuaderno, de noche ---------- */
+:root[data-skin="cuaderno"][data-theme="dark"] {
+  --bg: #191312;
+  --panel: #231b1a;
+  --panel-2: #2c2321;
+  --border: #3a2f2d;
+  --text: #f1e9e7;
+  --heading: #f6eeec;
+  --muted: #b4a5a1;
+  --term-bg: #140f0e;
+  --term-text: #e6dcd9;
+  --focus: #7aa7ff;
+  --accent: #f1e9e7;
+  --on-accent: #15110f;
+  --accent-strong: #ff6a4d;
+  --brand: #e0806c;
+
+  --st-working: #1ad988;
+  --st-working-dot: #1ad988;
+  --st-waiting: #ff6a4d;
+  --st-idle: #b4a5a1;
+  --st-error: #e0806c;
+  --st-ended: #a99a96;
+
+  --k-claude: #f08a48;
+  --k-agy: #5b93ec;
+  --k-copilot: #b392f0;
+  --k-opencode: #f4f1f0;
+  --k-generic: #b39893;
+
+  --shadow: none;
+  color-scheme: dark;
+}
+
+/* ---------- Fósforo, de noche ---------- */
+:root[data-skin="fosforo"][data-theme="dark"] {
+  --bg: #060b07;
+  --panel: #0b130c;
+  --panel-2: #111c12;
+  --border: #1f3a23;
+  --text: #b9f5c4;
+  --heading: #d7ffe0;
+  --muted: #72ad7e;
+  --term-bg: #040804;
+  --term-text: #b9f5c4;
+  --focus: #9dffb4;
+  --accent: #5ee08a;
+  --on-accent: #04100a;
+  --accent-strong: #ff8160;
+  --brand: #5ee08a;
+
+  --st-working: #a8ffb0;
+  --st-working-dot: #a8ffb0;
+  --st-waiting: #ff7a45;
+  --st-idle: #72ad7e;
+  --st-error: #ffb454;
+  --st-ended: #5f8f69;
+
+  --k-claude: #ffb86b;
+  --k-agy: #6cc3ff;
+  --k-copilot: #d2a3ff;
+  --k-opencode: #e6f7e9;
+  --k-generic: #8fc99a;
+
+  --shadow: 0 0 0 1px rgb(94 224 138 / .06), 0 0 24px rgb(94 224 138 / .06);
+  --ui: var(--mono);
+  color-scheme: dark;
+}
+
+/* ---------- Fósforo, de día ---------- */
+:root[data-skin="fosforo"][data-theme="light"] {
+  --bg: #e9f3ea;
+  --panel: #f6fbf6;
+  --panel-2: #dceadc;
+  --border: #b5d0b8;
+  --text: #0f2e19;
+  --heading: #082013;
+  --muted: #3c6748;
+  --term-bg: #eef7ef;
+  --term-text: #0f2e19;
+  --focus: #0b6b2d;
+  --accent: #0f2e19;
+  --on-accent: #eaf6ec;
+  --accent-strong: #b8350f;
+  --brand: #0b8a3a;
+
+  --st-working: #0b7a33;
+  --st-working-dot: #16b152;
+  --st-waiting: #c0390f;
+  --st-idle: #3c6748;
+  --st-error: #8a5a00;
+  --st-ended: #455f4d;
+
+  --k-claude: #d9702a;
+  --k-agy: #1f66c9;
+  --k-copilot: #6a3fc0;
+  --k-opencode: #7d9684;
+  --k-generic: #2f5a3b;
+
+  --shadow: 0 1px 2px rgb(15 46 25 / .08);
+  --ui: var(--mono);
+  color-scheme: light;
+}
+
+/* ---------- Tinta, de día ---------- */
+:root[data-skin="tinta"][data-theme="light"] {
+  --bg: #ffffff;
+  --panel: #ffffff;
+  --panel-2: #efefef;
+  --border: #1a1a1a;
+  --text: #000000;
+  --heading: #000000;
+  --muted: #3a3a3a;
+  --term-bg: #ffffff;
+  --term-text: #000000;
+  --focus: #0a4fff;
+  --accent: #000000;
+  --on-accent: #ffffff;
+  --accent-strong: #b00000;
+  --brand: #000000;
+
+  --st-working: #006b2e;
+  --st-working-dot: #00963f;
+  --st-waiting: #c00000;
+  --st-idle: #3a3a3a;
+  --st-error: #7a2e00;
+  --st-ended: #4a4a4a;
+
+  --k-claude: #b85a10;
+  --k-agy: #0a4fff;
+  --k-copilot: #5a28b8;
+  --k-opencode: #6a6a6a;
+  --k-generic: #000000;
+
+  --line: 2px;
+  --shadow: none;
+  color-scheme: light;
+}
+
+/* ---------- Tinta, de noche ---------- */
+:root[data-skin="tinta"][data-theme="dark"] {
+  --bg: #000000;
+  --panel: #000000;
+  --panel-2: #151515;
+  --border: #e6e6e6;
+  --text: #ffffff;
+  --heading: #ffffff;
+  --muted: #c9c9c9;
+  --term-bg: #000000;
+  --term-text: #ffffff;
+  --focus: #6fa0ff;
+  --accent: #ffffff;
+  --on-accent: #000000;
+  --accent-strong: #ff7360;
+  --brand: #ffffff;
+
+  --st-working: #4dffa0;
+  --st-working-dot: #4dffa0;
+  --st-waiting: #ff6b5a;
+  --st-idle: #c9c9c9;
+  --st-error: #ffb08a;
+  --st-ended: #b0b0b0;
+
+  --k-claude: #ffa75a;
+  --k-agy: #7aa7ff;
+  --k-copilot: #c9a8ff;
+  --k-opencode: #ffffff;
+  --k-generic: #d6d6d6;
+
+  --line: 2px;
+  --shadow: none;
+  color-scheme: dark;
+}

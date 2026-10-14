@@ -95,6 +95,12 @@ export const prefs = {
   setDensity(v) {
     save("argos-density", v);
   },
+  usage() {
+    return load("argos-usage", null);
+  },
+  setUsage(v) {
+    save("argos-usage", v);
+  },
   radius() {
     return load("argos-radius", null);
   },
@@ -117,8 +123,28 @@ export const prefs = {
     save("argos-presets", presets);
   },
 
+  // Estilo de la página (atalaya, cuaderno, fosforo, tinta).
+  skin() {
+    const v = load("argos-skin", null);
+    if (v) return v;
+    return globalThis.matchMedia?.("(prefers-contrast: more)").matches ? "tinta" : null;
+  },
+  // Movimiento: «reduced» o nada (el del sistema).
+  motion() {
+    return load("argos-motion", null) === "reduced" ? "reduced" : "auto";
+  },
+  setMotion(v) {
+    save("argos-motion", v);
+  },
+  setSkin(v) {
+    save("argos-skin", v);
+  },
+
+  // Sin elección guardada, el tema es el del sistema (y de noche si el navegador no lo dice).
   theme() {
-    return load("argos-theme", "light") === "dark" ? "dark" : "light";
+    const v = load("argos-theme", null);
+    if (v === "light" || v === "dark") return v;
+    return globalThis.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark";
   },
   setTheme(t) {
     save("argos-theme", t);
