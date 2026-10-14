@@ -22,6 +22,7 @@ export function createSettingsPanel({ dialog, prefs, apply, canRelayout = (bundl
     termTheme: $("#term-theme"),
     termMode: $("#term-mode"),
     density: $("#set-density"),
+    usage: $("#set-usage"),
     radius: $("#set-radius"),
   };
   const themeBtns = { light: $("#theme-light"), dark: $("#theme-dark") };
@@ -41,6 +42,7 @@ export function createSettingsPanel({ dialog, prefs, apply, canRelayout = (bundl
     layout: () => prefs.layoutMode(),
     theme: () => prefs.theme(),
     density: () => prefs.density(),
+    usage: () => prefs.usage(),
     radius: () => prefs.radius(),
     termTheme: () => prefs.termTheme(),
     termMode: () => prefs.termMode(),
@@ -49,6 +51,7 @@ export function createSettingsPanel({ dialog, prefs, apply, canRelayout = (bundl
     layout: (v) => prefs.setLayoutMode(v),
     theme: (v) => prefs.setTheme(v),
     density: (v) => prefs.setDensity(v),
+    usage: (v) => prefs.setUsage(v),
     radius: (v) => prefs.setRadius(v),
     termTheme: (v) => prefs.setTermTheme(v),
     termMode: (v) => prefs.setTermMode(v),

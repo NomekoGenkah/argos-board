@@ -637,6 +637,60 @@ main { padding: 16px; }
 .console-status[data-kind="error"] { color: var(--accent-strong); }
 .console-note { margin: 4px 2px 0; font-size: 12.5px; color: var(--muted); }
 
+/* Consumo de cada agente: una barra al pie, siempre a la vista (se desactiva en Ajustes). */
+.usage {
+  position: fixed;
+  z-index: 8;
+  inset: auto 0 0 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 16px max(6px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 12.5px;
+}
+.usage[hidden] { display: none; }
+body[data-usage="on"] main { padding-bottom: 64px; }
+.usage-title { flex: none; font-weight: 700; color: var(--heading); }
+.usage-chips { display: flex; flex: 1 1 auto; align-items: center; gap: 8px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.usage-chips::-webkit-scrollbar { display: none; }
+.usage-at { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+.usage-refresh { width: 28px; height: 28px; flex: none; }
+.usage-refresh.spinning svg { animation: spin .9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .usage-refresh.spinning svg { animation: none; } }
+
+.uchip {
+  --kind: var(--k-generic);
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  padding: 3px 12px 3px 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--kind);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  white-space: nowrap;
+}
+.uchip[data-kind="claude"] { --kind: var(--k-claude); }
+.uchip[data-kind="agy"] { --kind: var(--k-agy); }
+.uchip[data-kind="opencode"] { --kind: var(--k-opencode); }
+.uchip[data-kind="copilot"] { --kind: var(--k-copilot); }
+.uchip-name { font-weight: 700; color: var(--heading); }
+.umeter, .ufact { display: inline-flex; align-items: center; gap: 6px; }
+.ulabel { color: var(--muted); }
+.unum { font-variant-numeric: tabular-nums; font-weight: 700; }
+.uerr { color: var(--muted); font-style: italic; }
+/* El nivel se ve también sin color: a partir del 75 % la barra va rayada y el número en negrita grande. */
+.ubar { position: relative; width: 56px; height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
+.ubar i { position: absolute; inset: 0 auto 0 0; width: var(--pct); border-radius: 3px; background: var(--text); }
+.umeter[data-level="warn"] .ubar i { background: repeating-linear-gradient(135deg, var(--text) 0 3px, transparent 3px 5px); }
+.umeter[data-level="high"] .ubar i { background: var(--st-error); }
+.umeter[data-level="high"] .unum { color: var(--st-error); }
+.umeter[data-level="warn"] .unum { text-decoration: underline dotted; text-underline-offset: 3px; }
+
 /* Aviso de permiso para escribir (cabecera): solo habla cuando falta el permiso. */
 .btn.write { color: var(--muted); }
 .btn.write[data-auth="ok"] .write-text { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -895,6 +949,9 @@ main { padding: 16px; }
   .console-input { min-height: 38px; }
 
   .drawer { width: 100vw; border-left: 0; border-radius: 0; }
+  .usage { gap: 8px; padding-left: 10px; padding-right: 8px; }
+  .usage-title, .usage-at { display: none; }
+  body[data-usage="on"] main { padding-bottom: 60px; }
 
   /* Bottom Sheet: Panel de terminal a pantalla completa / deslizable */
   .agent-dialog {

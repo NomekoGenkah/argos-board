@@ -95,6 +95,12 @@ export const prefs = {
   setDensity(v) {
     save("argos-density", v);
   },
+  usage() {
+    return load("argos-usage", null);
+  },
+  setUsage(v) {
+    save("argos-usage", v);
+  },
   radius() {
     return load("argos-radius", null);
   },

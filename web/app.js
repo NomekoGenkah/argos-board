@@ -10,6 +10,7 @@ import { languageChoices, voiceAvailable } from "./voice.js";
 import { prefs } from "./prefs.js";
 import { NEEDS_YOU } from "./alerts.js";
 import { createSettingsPanel } from "./settings-panel.js";
+import { createUsageBar } from "./usage.js";
 import { applyDom, t } from "./i18n.js";
 
 applyDom();
@@ -78,6 +79,9 @@ function toggleView() {
 viewBtns.board?.closest(".seg")?.addEventListener("click", toggleView);
 setView(view, { save: false });
 
+const usageBar = createUsageBar({ root: document.getElementById("usage"), store });
+store.onChange((e) => usageBar.onChange(e));
+
 // Ajustes: disposición, tema, terminal, densidad, esquinas y presets (hoja a la derecha).
 const settings = createSettingsPanel({
   dialog: document.getElementById("settings-dialog"),
@@ -87,6 +91,7 @@ const settings = createSettingsPanel({
     layout: setLayout,
     theme: applyTheme,
     density: (v) => (root.dataset.density = v),
+    usage: (v) => usageBar.setEnabled(v === "on"),
     radius: (v) => (root.dataset.radius = v),
     termTheme: (v) => {
       setTermTheme(v);

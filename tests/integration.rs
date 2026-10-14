@@ -1431,3 +1431,113 @@ fn upload_file_to_agent_project() {
     let _ = wrapper.kill();
     let _ = wrapper.wait();
 }
+
+/// PATH con `claude`, `agy` y `opencode` falsos que contestan como los verdaderos (y cuentan cuántas veces se les preguntó).
+fn path_with_fake_usage_clis(dir: &Path, counter: &Path) -> String {
+    use std::os::unix::fs::PermissionsExt;
+    let script = |name: &str, body: &str| {
+        let p = dir.join(name);
+        std::fs::write(
+            &p,
+            format!("#!/bin/sh\necho x >> '{}'\n{body}", counter.display()),
+        )
+        .unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+    };
+    script(
+        "claude",
+        "printf 'Current session: 34%% used · resets Oct 14, 11:49pm (America/Santiago)\\nCurrent week (all models): 25%% used\\n'\n",
+    );
+    script(
+        "agy",
+        "printf 'Gemini Models\\tWeekly Limit Remaining\\t61%%\\t2026-10-18T01:12:18Z\\n'\n",
+    );
+    script(
+        "opencode",
+        "printf '│Total Cost                 $1.33 │\\n│Sessions                      26 │\\n'\n",
+    );
+    format!(
+        "{}:{}",
+        dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    )
+}
+
+#[test]
+fn usage_is_asked_to_the_agents_own_clis_and_reused_for_a_few_minutes() {
+    let cfg = tempfile::tempdir().unwrap();
+    let bin = tempfile::tempdir().unwrap();
+    let counter = bin.path().join("calls");
+    let port = free_port();
+    let path = path_with_fake_usage_clis(bin.path(), &counter);
+    let _server = start_server_with(cfg.path(), port, &path, &[]);
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let mut ws = ws_local(port).await;
+        assert_eq!(ws_next(&mut ws).await.unwrap()["type"], "snapshot");
+        // Sin credencial también se ve (como los agentes), pero no se fuerza una consulta nueva.
+        ws_send_json(&mut ws, serde_json::json!({"type": "usage", "rid": 1})).await;
+        let first = ws_until(&mut ws, "usage", |m| is_type(m, "usage"))
+            .await
+            .pop()
+            .unwrap();
+        assert_eq!(first["rid"], 1);
+        assert_eq!(first["available"], true);
+        let agents = first["report"]["agents"].as_array().unwrap();
+        let of = |kind: &str| {
+            agents
+                .iter()
+                .find(|a| a["kind"] == kind)
+                .unwrap_or_else(|| panic!("{kind}: {first}"))
+        };
+        assert_eq!(of("claude")["meters"][0]["id"], "session");
+        assert_eq!(of("claude")["meters"][0]["used_pct"], 34.0);
+        assert_eq!(of("agy")["meters"][0]["used_pct"], 39.0);
+        assert_eq!(of("opencode")["facts"][0]["value"], "$1.33");
+        assert!(first["report"]["at"].is_string());
+
+        // Otra pregunta, aun pidiendo actualizar sin permiso, reutiliza lo último: nadie vuelve a ejecutar los CLI.
+        let calls = std::fs::read_to_string(&counter).unwrap().lines().count();
+        assert_eq!(calls, 3, "una consulta por CLI");
+        ws_send_json(
+            &mut ws,
+            serde_json::json!({"type": "usage", "rid": 2, "refresh": true}),
+        )
+        .await;
+        let second = ws_until(&mut ws, "usage 2", |m| is_type(m, "usage"))
+            .await
+            .pop()
+            .unwrap();
+        assert_eq!(second["rid"], 2);
+        assert_eq!(second["report"]["at"], first["report"]["at"]);
+        assert_eq!(
+            std::fs::read_to_string(&counter).unwrap().lines().count(),
+            3
+        );
+    });
+}
+
+#[test]
+fn usage_can_be_turned_off_from_the_environment() {
+    let cfg = tempfile::tempdir().unwrap();
+    let bin = tempfile::tempdir().unwrap();
+    let counter = bin.path().join("calls");
+    let port = free_port();
+    let path = path_with_fake_usage_clis(bin.path(), &counter);
+    let _server = start_server_with(cfg.path(), port, &path, &[("ARGOS_BOARD_NO_USAGE", "1")]);
+
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let mut ws = ws_local(port).await;
+        assert_eq!(ws_next(&mut ws).await.unwrap()["type"], "snapshot");
+        ws_send_json(&mut ws, serde_json::json!({"type": "usage", "rid": 7})).await;
+        let reply = ws_until(&mut ws, "usage", |m| is_type(m, "usage"))
+            .await
+            .pop()
+            .unwrap();
+        assert_eq!(reply["available"], false);
+        assert!(reply.get("report").is_none(), "{reply}");
+        assert!(!counter.exists(), "no se ejecutó ningún CLI");
+    });
+}

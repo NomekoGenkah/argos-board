@@ -162,6 +162,7 @@ export function createStore() {
         break;
       case "input_result":
       case "action_result":
+      case "usage":
       case "dirs":
         settle(msg.rid, msg);
         break;
@@ -266,6 +267,9 @@ export function createStore() {
     });
   }
 
+  /** El consumo de cada agente (lo consulta el servidor a los CLI). Resuelve con { available, report }. */
+  const usage = (refresh = false) => request({ type: "usage", refresh }, 60000);
+
   /** Manda entrada a un agente. Resuelve con { ok, error }. */
   const sendInput = (id, input) => request({ type: "input", id, input });
   /** Subcarpetas de `path` (o de la primera carpeta permitida). */
@@ -325,6 +329,8 @@ export function createStore() {
     listDirs,
     launch,
     stop,
+    usage,
+    connected: () => socket?.readyState === WebSocket.OPEN,
     onChange(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);

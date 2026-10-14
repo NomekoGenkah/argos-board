@@ -64,6 +64,13 @@
     <p id="cards-help" class="sr-only" data-i18n="cards.help">Arrastra la cabecera de una tarjeta para moverla y su borde o esquina para redimensionarla. Con el teclado, sobre una tarjeta: Mayúsculas y flechas cambian el tamaño; Control y flechas la mueven.</p>
   </main>
 
+  <aside id="usage" class="usage" aria-label="Consumo de cada agente" data-i18n-aria="usage.titleBar" hidden>
+    <span class="usage-title" data-i18n="usage.label">Consumo</span>
+    <div class="usage-chips" role="list"></div>
+    <span class="usage-at"></span>
+    <button class="usage-refresh icon-btn" type="button" title="Actualizar el consumo" aria-label="Actualizar el consumo" data-i18n-title="usage.refresh" data-i18n-aria="usage.refresh"></button>
+  </aside>
+
   <div id="live" class="sr-only" aria-live="polite" aria-atomic="false"></div>
 
   <dialog id="pair-dialog" class="panel-dialog pair-dialog" aria-labelledby="pair-dialog-title">
@@ -139,6 +146,8 @@
           </div>
         </div>
         <label class="set-field"><span data-i18n="set.language">Idioma</span><select id="set-lang" class="select"></select></label>
+        <label class="set-field"><span data-i18n="set.usageShow">Mostrar el consumo de cada agente</span><select id="set-usage" class="select"></select></label>
+        <p class="set-note" data-i18n="set.usageNote"></p>
         <label class="set-field"><span data-i18n="set.density">Densidad</span><select id="set-density" class="select"></select></label>
         <label class="set-field"><span data-i18n="set.radius">Esquinas</span><select id="set-radius" class="select"></select></label>
       </section>

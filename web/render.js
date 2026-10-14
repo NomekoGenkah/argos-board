@@ -20,13 +20,8 @@ export const LABELS = {
   disconnected: t("state.disconnected"),
 };
 
-export const KINDS = {
-  claude: "Claude Code",
-  opencode: "OpenCode",
-  agy: "Antigravity",
-  copilot: "GitHub Copilot",
-  generic: t("kind.generic"),
-};
+export { KINDS } from "./kinds.js";
+import { KINDS } from "./kinds.js";
 
 // Solo estos cambios se anuncian a lectores de pantalla: working ↔ idle cambia
 // cada pocos segundos y saturaría los anuncios.

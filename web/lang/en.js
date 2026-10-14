@@ -303,7 +303,15 @@ export default {
   "usage.used": "used",
   "usage.left": "left",
   "usage.cost": "cost",
-  "usage.error": "no data",
+  "usage.errNoData": "no data",
+  "usage.errTimeout": "did not respond",
+  "usage.errFailed": "could not be checked",
+  "usage.sessions": "sessions",
+  "usage.resetsIn": (d) => `resets in ${d}`,
+  "usage.resetsAt": (when) => `resets ${when}`,
+  "usage.aria": (name, what, pct) => `${name}${what ? ` ${what}` : ""}: ${pct}% used`,
+  "usage.updated": (h) => `Updated at ${h}`,
+  "usage.hide": "Hide usage",
   "usage.titleBar": "Usage of each agent",
 };
 
