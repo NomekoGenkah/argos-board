@@ -123,8 +123,19 @@ export const prefs = {
     save("argos-presets", presets);
   },
 
+  // Estilo de la página (atalaya, cuaderno, fosforo, tinta).
+  skin() {
+    return load("argos-skin", null);
+  },
+  setSkin(v) {
+    save("argos-skin", v);
+  },
+
+  // Sin elección guardada, el tema es el del sistema (y de noche si el navegador no lo dice).
   theme() {
-    return load("argos-theme", "light") === "dark" ? "dark" : "light";
+    const v = load("argos-theme", null);
+    if (v === "light" || v === "dark") return v;
+    return globalThis.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark";
   },
   setTheme(t) {
     save("argos-theme", t);

@@ -1,36 +1,41 @@
 <!doctype html>
-<html lang="es" data-theme="light">
+<html lang="es" data-theme="dark" data-skin="atalaya">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Argos Board</title>
-  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link id="icon" rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="apple-touch-icon" href="favicon.svg">
   <link rel="manifest" href="manifest.webmanifest">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="theme-color" content="#318561">
+  <meta id="theme-color" name="theme-color" content="#0e1318">
   <script>
-    // Tema antes del primer pintado (evita el parpadeo). Claro por defecto.
+    // Estilo y tema antes del primer pintado (evita el parpadeo). Sin elección, el tema es el del sistema.
     try {
-      if (JSON.parse(localStorage.getItem("argos-theme")) === "dark") document.documentElement.dataset.theme = "dark";
+      const root = document.documentElement;
+      const theme = JSON.parse(localStorage.getItem("argos-theme"));
+      root.dataset.theme = theme === "light" || theme === "dark" ? theme : matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      const skin = JSON.parse(localStorage.getItem("argos-skin"));
+      root.dataset.skin = ["atalaya", "cuaderno", "fosforo", "tinta"].includes(skin) ? skin : "atalaya";
       const d = JSON.parse(localStorage.getItem("argos-density"));
-      if (d === "compact") document.documentElement.dataset.density = d;
+      if (d === "compact") root.dataset.density = d;
       const r = JSON.parse(localStorage.getItem("argos-radius"));
-      if (r === "sharp" || r === "round") document.documentElement.dataset.radius = r;
+      if (r === "sharp" || r === "round") root.dataset.radius = r;
     } catch (e) {}
   </script>
   <link rel="preload" href="fonts/montserrat-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="fonts/jetbrains-mono-latin-wght.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="vendor/gridstack/gridstack.min.css">
   <link rel="stylesheet" href="vendor/xterm/xterm.css">
+  <link rel="stylesheet" href="skins.css">
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
   <header class="top">
     <div class="brand">
-      <h1><span class="mark" aria-hidden="true"></span>Argos</h1>
+      <h1><svg class="mark" viewBox="0 0 32 20" width="30" height="19" aria-hidden="true"><path class="mark-lid" d="M1.5 10C6 3 11 1 16 1s10 2 14.5 9C26 17 21 19 16 19S6 17 1.5 10Z"/><circle class="mark-pupil" cx="16" cy="10" r="4.8"/><circle class="mark-glint" cx="14.3" cy="8.3" r="1.3"/></svg>Argos</h1>
       <p id="conn" class="conn" data-conn="connecting" role="status">
         <span class="conn-dot" aria-hidden="true"></span><span class="conn-text" data-i18n="conn.connecting">Conectando…</span>
       </p>
@@ -145,6 +150,7 @@
             <button id="theme-dark" class="seg-btn" type="button" aria-pressed="false" data-i18n="choice.dark">Oscuro</button>
           </div>
         </div>
+        <label class="set-field"><span data-i18n="set.skin">Estilo</span><select id="set-skin" class="select"></select></label>
         <label class="set-field"><span data-i18n="set.language">Idioma</span><select id="set-lang" class="select"></select></label>
         <label class="set-field"><span data-i18n="set.usageShow">Mostrar el consumo de cada agente</span><select id="set-usage" class="select"></select></label>
         <p class="set-note" data-i18n="set.usageNote"></p>
@@ -198,7 +204,7 @@
 
   <dialog id="agent-dialog" class="panel-dialog agent-dialog" aria-labelledby="agent-dialog-title">
     <header class="dialog-head card-head">
-      <span class="lamp" aria-hidden="true"></span>
+      <svg class="lamp" viewBox="0 0 24 14" width="22" height="13" aria-hidden="true"><path class="lid" d="M1 7C4.5 2 8 1 12 1s7.5 1 11 6c-3.5 5-7 6-11 6S4.5 12 1 7Z"/><path class="lid-shut" d="M1.5 6c4 4.6 8 6 10.5 6s6.5-1.4 10.5-6"/><circle class="pupil" cx="12" cy="7" r="3"/><path class="cross" d="M10 5l4 4M14 5l-4 4"/></svg>
       <div class="title">
         <h2 id="agent-dialog-title" class="name"></h2>
         <span class="kind"></span>
@@ -230,7 +236,7 @@
     <div class="grid-stack-item">
     <article class="card grid-stack-item-content" tabindex="0" aria-describedby="cards-help">
       <header class="card-head">
-        <span class="lamp" aria-hidden="true"></span>
+        <svg class="lamp" viewBox="0 0 24 14" width="22" height="13" aria-hidden="true"><path class="lid" d="M1 7C4.5 2 8 1 12 1s7.5 1 11 6c-3.5 5-7 6-11 6S4.5 12 1 7Z"/><path class="lid-shut" d="M1.5 6c4 4.6 8 6 10.5 6s6.5-1.4 10.5-6"/><circle class="pupil" cx="12" cy="7" r="3"/><path class="cross" d="M10 5l4 4M14 5l-4 4"/></svg>
         <div class="title">
           <h2 class="name"></h2>
           <span class="kind"></span>

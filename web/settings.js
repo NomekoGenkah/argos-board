@@ -7,6 +7,7 @@ import { DEFAULT_TERM_THEME, TERM_THEMES } from "./termthemes.js";
 
 /** Valores válidos de cada ajuste y cómo se llaman en la página. */
 export const CHOICES = {
+  skin: { atalaya: t("skin.atalaya"), cuaderno: t("skin.cuaderno"), fosforo: t("skin.fosforo"), tinta: t("skin.tinta") },
   layout: { canvas: t("choice.canvas"), grid: t("choice.grid"), focus: t("choice.focus") },
   theme: { light: t("choice.light"), dark: t("choice.dark") },
   density: { comfortable: t("choice.comfortable"), compact: t("choice.compact") },
@@ -17,8 +18,9 @@ export const CHOICES = {
 };
 
 export const DEFAULTS = {
+  skin: "atalaya",
   layout: "canvas",
-  theme: "light",
+  theme: "dark",
   density: "comfortable",
   usage: "on",
   radius: "soft",
@@ -81,3 +83,19 @@ export function matchingPreset(presets, bundle) {
   const now = JSON.stringify(normalize(bundle));
   return Object.keys(presets).find((name) => JSON.stringify(presets[name]) === now) ?? null;
 }
+
+/** Presets que vienen con la página: cada uno es un estilo completo, y sirven de alternativa al de base. */
+export const BUILTIN_PRESETS = {
+  [t("preset.guardia")]: { skin: "atalaya", theme: "dark", layout: "grid", density: "comfortable", radius: "soft", termTheme: "night", termMode: "auto", usage: "on" },
+  [t("preset.estudio")]: { skin: "cuaderno", theme: "light", layout: "canvas", density: "comfortable", radius: "soft", termTheme: "paper", termMode: "auto", usage: "on" },
+  [t("preset.consola")]: { skin: "fosforo", theme: "dark", layout: "focus", density: "compact", radius: "sharp", termTheme: "fosforo", termMode: "auto", usage: "on" },
+  [t("preset.contraste")]: { skin: "tinta", theme: "dark", layout: "canvas", density: "comfortable", radius: "sharp", termTheme: "tinta", termMode: "auto", usage: "on" },
+};
+
+/** Los de fábrica y los del usuario juntos (si un nombre se repite, gana el del usuario). */
+export function allPresets(user = {}) {
+  return { ...normalizePresets(BUILTIN_PRESETS), ...user };
+}
+
+/** ¿Es un preset de fábrica y el usuario no lo reemplazó con uno suyo? */
+export const isBuiltin = (name, user = {}) => Object.hasOwn(BUILTIN_PRESETS, name) && !Object.hasOwn(user, name);

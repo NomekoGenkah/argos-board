@@ -11,14 +11,21 @@ import { prefs } from "./prefs.js";
 import { NEEDS_YOU } from "./alerts.js";
 import { createSettingsPanel } from "./settings-panel.js";
 import { createUsageBar } from "./usage.js";
+import { createBrand, gazeOf } from "./brand.js";
 import { applyDom, t } from "./i18n.js";
 
 applyDom();
 
 // Aspecto: el tema, la densidad y las esquinas son atributos de <html>; los pone el panel de ajustes.
 const root = document.documentElement;
+const brand = createBrand({
+  mark: document.querySelector(".mark"),
+  icon: document.getElementById("icon"),
+  themeColor: document.getElementById("theme-color"),
+});
 function applyTheme(t) {
   root.dataset.theme = t;
+  brand.refresh();
   window.dispatchEvent(new CustomEvent("argos:theme-change"));
 }
 
@@ -90,6 +97,10 @@ const settings = createSettingsPanel({
   apply: {
     layout: setLayout,
     theme: applyTheme,
+    skin: (v) => {
+      root.dataset.skin = v;
+      brand.refresh();
+    },
     density: (v) => (root.dataset.density = v),
     usage: (v) => usageBar.setEnabled(v === "on"),
     radius: (v) => (root.dataset.radius = v),
@@ -220,6 +231,7 @@ function showAttention({ agents }) {
   else if (working) [level, text] = ["work", t("attention.work", working)];
   attentionTarget = waiting[0]?.id ?? null;
   attentionBtn.dataset.level = level;
+  brand.gaze(gazeOf(level, list.length));
   attentionBtn.textContent = text;
   attentionBtn.disabled = !attentionTarget;
   attentionBtn.title = attentionTarget ? t("attention.go", waiting[0].name) : "";

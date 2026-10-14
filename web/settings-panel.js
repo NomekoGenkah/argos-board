@@ -1,7 +1,7 @@
 // Panel de ajustes: una hoja con la disposición, el tema, la terminal, la densidad y las esquinas,
 // y los presets que juntan todo eso. Guarda en `prefs` y avisa a la página con `apply`.
 
-import { CHOICES, DEFAULTS, KEYS, cleanName, matchingPreset, normalize, parseShared, serialize } from "./settings.js";
+import { CHOICES, DEFAULTS, KEYS, allPresets, cleanName, isBuiltin, matchingPreset, normalize, parseShared, serialize } from "./settings.js";
 import { LANGS, setLangPref, storedLangPref, t } from "./i18n.js";
 
 const LAYOUT_NOTES = {
@@ -19,6 +19,7 @@ export function createSettingsPanel({ dialog, prefs, apply, canRelayout = (bundl
   const $ = (sel) => dialog.querySelector(sel);
   const layoutSeg = $("#set-layout-seg");
   const selects = {
+    skin: $("#set-skin"),
     termTheme: $("#term-theme"),
     termMode: $("#term-mode"),
     density: $("#set-density"),
@@ -39,6 +40,7 @@ export function createSettingsPanel({ dialog, prefs, apply, canRelayout = (bundl
   const relayoutBtn = $("#relayout");
 
   const readers = {
+    skin: () => prefs.skin(),
     layout: () => prefs.layoutMode(),
     theme: () => prefs.theme(),
     density: () => prefs.density(),
@@ -48,6 +50,7 @@ export function createSettingsPanel({ dialog, prefs, apply, canRelayout = (bundl
     termMode: () => prefs.termMode(),
   };
   const writers = {
+    skin: (v) => prefs.setSkin(v),
     layout: (v) => prefs.setLayoutMode(v),
     theme: (v) => prefs.setTheme(v),
     density: (v) => prefs.setDensity(v),
@@ -101,16 +104,30 @@ export function createSettingsPanel({ dialog, prefs, apply, canRelayout = (bundl
 
   // ---- presets
   function refreshPresets() {
-    const presets = prefs.presets();
-    const match = matchingPreset(presets, current());
-    presetSelect.replaceChildren(new Option(t("set.presetNone"), ""));
-    for (const name of Object.keys(presets)) presetSelect.add(new Option(name, name));
+    const user = prefs.presets();
+    const all = allPresets(user);
+    const match = matchingPreset(all, current());
+    const group = (label, names) => {
+      if (!names.length) return null;
+      const g = document.createElement("optgroup");
+      g.label = label;
+      for (const name of names) g.append(new Option(name, name));
+      return g;
+    };
+    presetSelect.replaceChildren(
+      new Option(t("set.presetNone"), ""),
+      ...[
+        group(t("set.presetBuiltin"), Object.keys(all).filter((n) => isBuiltin(n, user))),
+        group(t("set.presetMine"), Object.keys(user)),
+      ].filter(Boolean),
+    );
     presetSelect.value = match ?? "";
-    $("#preset-delete").disabled = !match;
+    // Los de fábrica no se borran (solo los que guardó la persona).
+    $("#preset-delete").disabled = !match || !Object.hasOwn(user, match);
   }
 
   presetSelect.addEventListener("change", () => {
-    const bundle = prefs.presets()[presetSelect.value];
+    const bundle = allPresets(prefs.presets())[presetSelect.value];
     if (!bundle) return;
     applyBundle(bundle);
     say(t("set.presetApplied", presetSelect.value));
@@ -127,7 +144,7 @@ export function createSettingsPanel({ dialog, prefs, apply, canRelayout = (bundl
   });
   $("#preset-delete").addEventListener("click", () => {
     const name = presetSelect.value;
-    if (!name) return;
+    if (!name || !Object.hasOwn(prefs.presets(), name)) return;
     const { [name]: _gone, ...rest } = prefs.presets();
     prefs.setPresets(rest);
     refresh();

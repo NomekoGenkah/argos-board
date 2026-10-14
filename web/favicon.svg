@@ -1,9 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
-  <defs>
-    <linearGradient id="split" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="50%" stop-color="#d93619" />
-      <stop offset="50%" stop-color="#1ad988" />
-    </linearGradient>
-  </defs>
-  <rect width="32" height="32" rx="9" fill="url(#split)" />
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><path d="M2 16C7 8 11 6 16 6s9 2 14 10c-5 8-9 10-14 10S7 24 2 16Z" fill="none" stroke="#f2b84b" stroke-width="2.6" stroke-linejoin="round"/><circle cx="16" cy="16" r="5.6" fill="#35d08e"/><circle cx="14" cy="14" r="1.6" fill="#fff" fill-opacity=".85"/></svg>
