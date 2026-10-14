@@ -18,7 +18,9 @@
       const theme = JSON.parse(localStorage.getItem("argos-theme"));
       root.dataset.theme = theme === "light" || theme === "dark" ? theme : matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
       const skin = JSON.parse(localStorage.getItem("argos-skin"));
-      root.dataset.skin = ["atalaya", "cuaderno", "fosforo", "tinta"].includes(skin) ? skin : "atalaya";
+      // Sin elección, quien pide alto contraste al sistema parte con Tinta.
+      root.dataset.skin = ["atalaya", "cuaderno", "fosforo", "tinta"].includes(skin) ? skin : matchMedia("(prefers-contrast: more)").matches ? "tinta" : "atalaya";
+      if (JSON.parse(localStorage.getItem("argos-motion")) === "reduced") root.dataset.motion = "reduced";
       const d = JSON.parse(localStorage.getItem("argos-density"));
       if (d === "compact") root.dataset.density = d;
       const r = JSON.parse(localStorage.getItem("argos-radius"));
@@ -33,6 +35,7 @@
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
+  <a class="skip" href="#main" data-i18n="skip">Saltar al contenido</a>
   <header class="top">
     <div class="brand">
       <h1><svg class="mark" viewBox="0 0 32 20" width="30" height="19" aria-hidden="true"><path class="mark-lid" d="M1.5 10C6 3 11 1 16 1s10 2 14.5 9C26 17 21 19 16 19S6 17 1.5 10Z"/><circle class="mark-pupil" cx="16" cy="10" r="4.8"/><circle class="mark-glint" cx="14.3" cy="8.3" r="1.3"/></svg>Argos</h1>
@@ -46,7 +49,7 @@
     </div>
     <button id="attention" class="attention" type="button" data-level="calm" disabled data-i18n="attention.none">Sin agentes</button>
     <div class="top-actions">
-      <button id="launch" class="btn primary" type="button" aria-haspopup="dialog" hidden>
+      <button id="launch" class="btn primary" type="button" aria-haspopup="dialog" aria-label="Nuevo agente" data-i18n-aria="nav.launch" hidden>
         <svg class="ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="nav.launch">Nuevo agente</span>
       </button>
       <button id="write" class="btn write" type="button" aria-haspopup="dialog" hidden>
@@ -58,7 +61,7 @@
     </div>
   </header>
 
-  <main>
+  <main id="main" tabindex="-1">
     <section id="empty" class="empty" hidden>
       <h2 data-i18n="empty.title">No hay agentes a la vista</h2>
       <p data-i18n="empty.text">En otra terminal, lanza un agente a través del wrapper:</p>
@@ -71,7 +74,7 @@
 
   <aside id="usage" class="usage" aria-label="Consumo de cada agente" data-i18n-aria="usage.titleBar" hidden>
     <span class="usage-title" data-i18n="usage.label">Consumo</span>
-    <div class="usage-chips" role="list"></div>
+    <div class="usage-chips" role="list" tabindex="0" aria-label="Consumo de cada agente" data-i18n-aria="usage.titleBar"></div>
     <span class="usage-at"></span>
     <button class="usage-refresh icon-btn" type="button" title="Actualizar el consumo" aria-label="Actualizar el consumo" data-i18n-title="usage.refresh" data-i18n-aria="usage.refresh"></button>
   </aside>
@@ -158,6 +161,12 @@
         <label class="set-field"><span data-i18n="set.radius">Esquinas</span><select id="set-radius" class="select"></select></label>
       </section>
 
+      <section class="set-group" aria-labelledby="set-access">
+        <h3 id="set-access" data-i18n="set.access">Accesibilidad</h3>
+        <label class="set-field"><span data-i18n="set.motion">Movimiento</span><select id="set-motion" class="select"></select></label>
+        <p class="set-note" data-i18n="set.motionNote"></p>
+      </section>
+
       <section class="set-group" aria-labelledby="set-alerts">
         <h3 id="set-alerts" data-i18n="set.alerts">Avisos y voz</h3>
         <div class="set-row wrap">
@@ -165,6 +174,18 @@
           <button id="sound" class="btn" type="button" aria-pressed="false" title="Suena cuando un agente te necesita" data-i18n-title="sound.title">Sonido</button>
           <button id="voice-lang" class="btn" type="button" title="Idioma del dictado por voz (clic para cambiar)" data-i18n-title="voice.langTitle" hidden></button>
         </div>
+      </section>
+
+      <section class="set-group" aria-labelledby="set-privacy">
+        <h3 id="set-privacy" data-i18n="set.privacy">Política de privacidad</h3>
+        <ul class="set-list">
+          <li data-i18n="privacy.1"></li>
+          <li data-i18n="privacy.2"></li>
+          <li data-i18n="privacy.3"></li>
+          <li data-i18n="privacy.4"></li>
+          <li data-i18n="privacy.5"></li>
+        </ul>
+        <a class="set-link" href="https://github.com/NomekoGenkah/argos-board/blob/main/PRIVACY.md" target="_blank" rel="noopener noreferrer" data-i18n="set.privacyLink">Leer la política completa</a>
       </section>
 
       <p class="set-about"><span id="version" class="version"></span></p>

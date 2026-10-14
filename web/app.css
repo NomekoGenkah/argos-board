@@ -627,6 +627,8 @@ body[data-usage="on"] main { padding-bottom: 64px; }
 .set-share summary { cursor: pointer; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
 .set-share textarea { width: 100%; margin-bottom: 8px; }
 .set-about { margin: 16px 0 0; }
+.set-list { margin: 0; padding-left: 18px; font-size: 12.5px; color: var(--muted); display: grid; gap: 4px; }
+.set-link { font-size: 13px; font-weight: 600; color: var(--text); text-underline-offset: 3px; }
 
 /* Paneles (diálogos) */
 .panel-dialog {
@@ -960,3 +962,27 @@ body[data-usage="on"] main { padding-bottom: 64px; }
   }
 }
 
+
+/* Salto al contenido: solo aparece al tabular. */
+.skip {
+  position: fixed;
+  z-index: 100;
+  top: 8px;
+  left: 8px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+  transform: translateY(-200%);
+}
+.skip:focus { transform: none; }
+main:focus { outline: none; }
+
+/* Movimiento reducido, por el sistema o por Ajustes: sin latidos, parpadeos ni transiciones. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+:root[data-motion="reduced"] *, :root[data-motion="reduced"] *::before, :root[data-motion="reduced"] *::after {
+  animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important;
+}

@@ -125,7 +125,16 @@ export const prefs = {
 
   // Estilo de la página (atalaya, cuaderno, fosforo, tinta).
   skin() {
-    return load("argos-skin", null);
+    const v = load("argos-skin", null);
+    if (v) return v;
+    return globalThis.matchMedia?.("(prefers-contrast: more)").matches ? "tinta" : null;
+  },
+  // Movimiento: «reduced» o nada (el del sistema).
+  motion() {
+    return load("argos-motion", null) === "reduced" ? "reduced" : "auto";
+  },
+  setMotion(v) {
+    save("argos-motion", v);
   },
   setSkin(v) {
     save("argos-skin", v);

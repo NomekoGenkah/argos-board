@@ -101,6 +101,10 @@ const settings = createSettingsPanel({
       root.dataset.skin = v;
       brand.refresh();
     },
+    motion: (v) => {
+      if (v === "reduced") root.dataset.motion = "reduced";
+      else delete root.dataset.motion;
+    },
     density: (v) => (root.dataset.density = v),
     usage: (v) => usageBar.setEnabled(v === "on"),
     radius: (v) => (root.dataset.radius = v),

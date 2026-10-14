@@ -71,12 +71,12 @@
   --focus: #2160d4;
   --accent: #16212b;
   --on-accent: #f4f8fb;
-  --accent-strong: #c8321a;
+  --accent-strong: #b52a14;
   --brand: #b87908;
 
   --st-working: #187a50;
   --st-working-dot: #1fb072;
-  --st-waiting: #cf3a1f;
+  --st-waiting: #bf2f16;
   --st-idle: #4f606c;
   --st-error: #99482f;
   --st-ended: #5b6a75;
@@ -105,12 +105,12 @@
   --focus: #2f6fd0;
   --accent: #2b1f1d;
   --on-accent: #fffaf8;
-  --accent-strong: #d93619;
+  --accent-strong: #c8300f;
   --brand: #994739;
 
   --st-working: #318561;
   --st-working-dot: #1ad988;
-  --st-waiting: #d93619;
+  --st-waiting: #c8300f;
   --st-idle: #74625e;
   --st-error: #994739;
   --st-ended: #6e625f;
@@ -144,7 +144,7 @@
 
   --st-working: #1ad988;
   --st-working-dot: #1ad988;
-  --st-waiting: #d93619;
+  --st-waiting: #ff6a4d;
   --st-idle: #b4a5a1;
   --st-error: #e0806c;
   --st-ended: #a99a96;
@@ -216,7 +216,7 @@
   --st-waiting: #c0390f;
   --st-idle: #3c6748;
   --st-error: #8a5a00;
-  --st-ended: #52705a;
+  --st-ended: #455f4d;
 
   --k-claude: #d9702a;
   --k-agy: #1f66c9;

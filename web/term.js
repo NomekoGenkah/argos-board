@@ -28,7 +28,8 @@ export function createTermView(host, { theme = DEFAULT_TERM_THEME, mode = "auto"
   host.classList.add("term");
   const screenEl = document.createElement("div");
   screenEl.className = "term-screen";
-  const sr = document.createElement("pre");
+  const sr = document.createElement("div"); // no <pre>: los diálogos le darían scroll a todo <pre>
+  sr.style.whiteSpace = "pre-wrap";
   sr.className = "sr-only";
   host.append(screenEl, sr);
 

@@ -191,6 +191,7 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     project.textContent = shortPath(a.project) || "—";
     project.title = a.project;
     el.querySelector(".branch").textContent = a.git_branch || "—";
+    el.querySelector(".term").setAttribute("aria-label", t("card.terminalOf", a.name));
     views.get(a.id)?.update(a);
     const warn = el.querySelector(".version-warn");
     const message = ENDED.has(a.state) ? null : versionWarning(a.version, serverVersion);

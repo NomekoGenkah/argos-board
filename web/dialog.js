@@ -56,6 +56,7 @@ export function createAgentDialog({ dialog, sendInput, voice, uploadFile, stop, 
     kind.hidden = a.name.toLowerCase().includes(a.kind);
     dialog.querySelector(".name").textContent = a.name;
     dialog.querySelector(".badge-text").textContent = LABELS[a.state] ?? a.state;
+    dialog.querySelector(".term").setAttribute("aria-label", t("card.terminalOf", a.name));
     view.update(a);
     if (linesCount) linesCount.textContent = t("dlg.lines", view.lineCount());
     con.update(a, last.auth);

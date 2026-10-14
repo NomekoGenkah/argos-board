@@ -27,6 +27,16 @@ export function createSettingsPanel({ dialog, prefs, apply, canRelayout = (bundl
     radius: $("#set-radius"),
   };
   const themeBtns = { light: $("#theme-light"), dark: $("#theme-dark") };
+  // El movimiento es una preferencia de accesibilidad, no de aspecto: tampoco forma parte de un preset.
+  const motionSelect = $("#set-motion");
+  motionSelect.add(new Option(t("set.motionAuto"), "auto"));
+  motionSelect.add(new Option(t("set.motionReduced"), "reduced"));
+  motionSelect.value = prefs.motion();
+  motionSelect.addEventListener("change", () => {
+    prefs.setMotion(motionSelect.value);
+    apply.motion?.(motionSelect.value);
+  });
+
   // El idioma no forma parte de un preset (no es del aspecto): cambiarlo recarga la página.
   const langSelect = $("#set-lang");
   langSelect.add(new Option(t("set.langAuto"), "auto"));
@@ -188,6 +198,7 @@ export function createSettingsPanel({ dialog, prefs, apply, canRelayout = (bundl
     applyStored() {
       const now = current();
       for (const key of KEYS) apply[key]?.(now[key]);
+      apply.motion?.(prefs.motion());
       refresh();
     },
     open() {
