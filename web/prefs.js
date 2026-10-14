@@ -1,6 +1,8 @@
 // Preferencias de ESTE navegador (localStorage). Todo es prescindible: si el
 // almacenamiento falla (modo privado, bloqueado), la página funciona igual.
 
+import { normalizePresets } from "./settings.js";
+
 function load(key, fallback) {
   try {
     const v = localStorage.getItem(key);
@@ -60,6 +62,59 @@ export const prefs = {
     if (JSON.stringify(merged) === JSON.stringify(seats)) return;
     seats = merged;
     save("argos-seats", seats);
+  },
+
+  // Tema de la terminal de los agentes (independiente del tema de la página).
+  termTheme() {
+    const v = load("argos-term-theme", null);
+    return typeof v === "string" ? v : null;
+  },
+  setTermTheme(name) {
+    save("argos-term-theme", name);
+  },
+
+  // Cómo se ajusta la terminal a su tarjeta: auto | fit | width.
+  termMode() {
+    const v = load("argos-term-mode", null);
+    return typeof v === "string" ? v : null;
+  },
+  setTermMode(mode) {
+    save("argos-term-mode", mode);
+  },
+
+  // Disposición del tablero (lienzo | cuadrícula | foco), densidad y esquinas.
+  layoutMode() {
+    return load("argos-layout-mode", null);
+  },
+  setLayoutMode(v) {
+    save("argos-layout-mode", v);
+  },
+  density() {
+    return load("argos-density", null);
+  },
+  setDensity(v) {
+    save("argos-density", v);
+  },
+  radius() {
+    return load("argos-radius", null);
+  },
+  setRadius(v) {
+    save("argos-radius", v);
+  },
+  // Agente en primer plano de la disposición «foco», por nombre.
+  focusName() {
+    const v = load("argos-focus", null);
+    return typeof v === "string" ? v : null;
+  },
+  setFocusName(name) {
+    save("argos-focus", name);
+  },
+  // Presets de aspecto guardados en este navegador: nombre -> ajustes.
+  presets() {
+    return normalizePresets(load("argos-presets", {}));
+  },
+  setPresets(presets) {
+    save("argos-presets", presets);
   },
 
   theme() {

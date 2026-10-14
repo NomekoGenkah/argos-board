@@ -8,6 +8,15 @@ import { createDictation, createServerDictation, languageChoices, voiceAvailable
 const MIC_ICON =
   '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>';
 
+const KEYS_ICON =
+  '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>';
+
+const SEND_ICON =
+  '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 5v6a3 3 0 0 1-3 3H5M9 10l-4 4 4 4"/></svg>';
+
+const ATTACH_ICON =
+  '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5a2.5 2.5 0 0 1 5 0v10.5c0 .83-.67 1.5-1.5 1.5s-1.5-.67-1.5-1.5V6H9v9.5a3.5 3.5 0 0 0 7 0V5a4.5 4.5 0 0 0-9 0v12.5c0 3.31 2.69 6 6 6s6-2.69 6-6V6h-1.5z"/></svg>';
+
 // Solo se dicta en una consola a la vez.
 let stopActiveDictation = null;
 
@@ -18,8 +27,27 @@ export const KEYS = [
   ["enter", "Enter", "Enter"],
   ["esc", "Esc", "Escape"],
   ["tab", "Tab", "Tabulador"],
+  ["shift_tab", "⇧Tab", "Shift Tab: alternar modo o permisos"],
   ["ctrl_c", "Ctrl+C", "Control C: interrumpe al agente"],
 ];
+
+/** Comandos rápidos de modo por tipo de agente. */
+const MODE_COMMANDS = {
+  claude: [
+    { label: "/plan", text: "/plan", name: "Modo Plan (/plan)" },
+  ],
+  copilot: [
+    { label: "/plan", text: "/plan", name: "Modo Plan (/plan)" },
+    { label: "/autopilot", text: "/autopilot", name: "Modo Autopilot (/autopilot)" },
+  ],
+  opencode: [
+    { label: "Plan", text: "/mode plan", name: "Modo Plan (/mode plan)" },
+  ],
+  agy: [
+    { label: "/plan", text: "/plan", name: "Modo Plan (/plan)" },
+    { label: "/auto", text: "/auto", name: "Modo Auto (/auto)" },
+  ],
+};
 
 // Con la caja vacía, estas teclas van directo al agente (para moverse en sus menús).
 const PASS_THROUGH = { ArrowUp: "up", ArrowDown: "down", Escape: "esc" };
@@ -52,38 +80,51 @@ const PHASE_TEXT = {
 /** ¿Se puede dictar aquí? Con el servidor (cualquier navegador) o con el del navegador. */
 export const voiceUsable = (voice) => Boolean(voice?.available()) || voiceAvailable();
 
-export function createConsole({ sendInput, voice = null, voiceLang = currentVoiceLang }) {
+export function createConsole({ sendInput, voice = null, voiceLang = currentVoiceLang, uploadFile = null }) {
   const id = `console-${++uid}`;
   const el = document.createElement("div");
   el.className = "console";
   el.innerHTML = `
     <form class="console-form" novalidate>
       <div class="console-row">
-        <textarea class="console-input" rows="1" maxlength="4000" spellcheck="false" autocomplete="off"
+        <textarea class="console-input" rows="1" maxlength="131072" spellcheck="false" autocomplete="off"
           placeholder="Escribe y pulsa Enter" aria-describedby="${id}-help"></textarea>
-        <button class="console-mic" type="button" aria-pressed="false" aria-label="Dictar por voz"
+        <input type="file" class="console-file" accept=".md,.markdown,.txt,.json,.csv,.py,.rs,.js,.ts,.html,.css,.png,.jpg,.jpeg,.webp,.gif,text/*,image/*" hidden>
+        <button class="console-attach icon-btn" type="button" aria-label="Adjuntar archivo o imagen"
+          title="Adjuntar archivo o imagen (.md, imágenes, etc.)">${ATTACH_ICON}</button>
+        <button class="console-mic icon-btn" type="button" aria-pressed="false" aria-label="Dictar por voz"
           title="Dictar por voz" hidden>${MIC_ICON}</button>
-        <button class="console-send" type="submit">Enviar</button>
+        <button class="console-keys-toggle icon-btn" type="button" aria-expanded="false" aria-controls="${id}-keys"
+          aria-label="Teclas rápidas" title="Teclas rápidas">${KEYS_ICON}</button>
+        <button class="console-send icon-btn" type="submit" aria-label="Enviar" title="Enviar (Enter)">${SEND_ICON}</button>
       </div>
-      <div class="console-keys" role="group" aria-label="Teclas"></div>
+      <div id="${id}-keys" class="console-keys" role="group" aria-label="Teclas" hidden></div>
       <p class="console-status" role="status"></p>
       <p id="${id}-help" class="sr-only">
         Enter envía el texto; Mayúsculas y Enter agregan una línea. Con la caja vacía, las flechas
-        arriba y abajo y Escape van directo al agente.
+        arriba y abajo y Escape van directo al agente. Puedes arrastrar o adjuntar archivos (.md, imágenes).
       </p>
     </form>
     <p class="console-note" hidden></p>`;
   const form = el.querySelector(".console-form");
   const input = el.querySelector(".console-input");
+  const fileInput = el.querySelector(".console-file");
+  const attachBtn = el.querySelector(".console-attach");
   const keys = el.querySelector(".console-keys");
+  const keysToggle = el.querySelector(".console-keys-toggle");
   const status = el.querySelector(".console-status");
   const mic = el.querySelector(".console-mic");
   const note = el.querySelector(".console-note");
   let agent = null;
   let statusTimer = null;
   let dictationFailed = false; // un error de voz no se tapa con el aviso de «listo»
+  const modesWrap = document.createElement("span");
+  modesWrap.className = "console-modes";
 
   for (const [key, label, name] of KEYS) {
+    if (key === "ctrl_c") {
+      keys.append(modesWrap);
+    }
     const b = document.createElement("button");
     b.type = "button";
     b.className = "key";
@@ -93,6 +134,25 @@ export function createConsole({ sendInput, voice = null, voiceLang = currentVoic
     b.addEventListener("click", () => send({ type: "key", key }, name));
     keys.append(b);
   }
+
+  // Las teclas rápidas viven en un panel que se abre con su botón y se cierra al pulsar fuera o con Esc.
+  function setKeysOpen(open) {
+    keys.hidden = !open;
+    keysToggle.setAttribute("aria-expanded", String(open));
+    if (open) document.addEventListener("pointerdown", closeKeysOutside, true);
+    else document.removeEventListener("pointerdown", closeKeysOutside, true);
+  }
+  function closeKeysOutside(ev) {
+    if (!keys.contains(ev.target) && !keysToggle.contains(ev.target)) setKeysOpen(false);
+  }
+  keysToggle.addEventListener("click", () => setKeysOpen(keys.hidden));
+  keys.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") {
+      ev.stopPropagation();
+      setKeysOpen(false);
+      keysToggle.focus();
+    }
+  });
 
   function show(text, kind) {
     clearTimeout(statusTimer);
@@ -155,6 +215,73 @@ export function createConsole({ sendInput, voice = null, voiceLang = currentVoic
     current.start(input.value);
   });
 
+  async function handleFile(file) {
+    if (!agent) return;
+    if (!uploadFile) {
+      show("Subida de archivos no disponible", "error");
+      return;
+    }
+    show(`Subiendo ${file.name}…`, "info");
+    const res = await uploadFile(agent.id, file);
+    if (!res.ok) {
+      show(res.error || "No se pudo subir el archivo", "error");
+      return;
+    }
+    const ref = `@${res.relative_path}`;
+    const cur = input.value;
+    input.value = cur ? `${cur.trimEnd()} ${ref} ` : `${ref} `;
+    grow();
+    input.focus();
+    if (res.is_image) {
+      show(`Imagen adjuntada: ${ref} (comprueba si el modelo soporta visión)`, "info");
+    } else {
+      show(`Adjuntado: ${ref} ✓`, "ok");
+    }
+  }
+
+  attachBtn.addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files.length) handleFile(fileInput.files[0]);
+    fileInput.value = "";
+  });
+
+  el.addEventListener("dragover", (ev) => {
+    ev.preventDefault();
+    el.classList.add("dragover");
+  });
+  el.addEventListener("dragleave", (ev) => {
+    if (!el.contains(ev.relatedTarget)) el.classList.remove("dragover");
+  });
+  el.addEventListener("drop", (ev) => {
+    ev.preventDefault();
+    el.classList.remove("dragover");
+    const file = ev.dataTransfer?.files?.[0];
+    if (file) handleFile(file);
+  });
+
+  input.addEventListener("paste", (ev) => {
+    const files = ev.clipboardData?.files;
+    if (files && files.length > 0) {
+      ev.preventDefault();
+      handleFile(files[0]);
+    }
+  });
+
+  function updateModes(kind) {
+    modesWrap.replaceChildren();
+    const cmds = MODE_COMMANDS[kind] || [];
+    for (const item of cmds) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "key key-mode";
+      b.textContent = item.label;
+      b.setAttribute("aria-label", item.name);
+      b.title = item.name;
+      b.addEventListener("click", () => send({ type: "text", text: item.text, submit: true }, item.name));
+      modesWrap.append(b);
+    }
+  }
+
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     await current?.stop(); // lo ya dicho queda en la caja antes de leerla
@@ -186,8 +313,13 @@ export function createConsole({ sendInput, voice = null, voiceLang = currentVoic
     input.setAttribute("aria-label", `Escribir a ${next.name}`);
     const blocker = inputBlocker(next, auth);
     form.hidden = blocker !== null;
-    if (blocker !== null) current?.stop();
+    if (blocker !== null) {
+      current?.stop();
+      setKeysOpen(false);
+    }
     mic.hidden = !voiceUsable(voice);
+    attachBtn.hidden = !uploadFile;
+    updateModes(next.kind);
     // Sin permiso de la página, el aviso está en la cabecera (no en cada tarjeta).
     const text =
       blocker === "agent"

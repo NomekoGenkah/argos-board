@@ -1,15 +1,16 @@
 // Panel de un agente (desde la Oficina): su pantalla en vivo y la consola
 // para escribirle, sin salir de la vista.
 
-import { ansiToHtml } from "./ansi.js";
+import { createTermView } from "./term.js";
+import { DEFAULT_TERM_THEME } from "./termthemes.js";
 import { createConsole, inputBlocker } from "./console.js";
 import { LABELS, KINDS, fillLaunch } from "./render.js";
 import { wireStopButton } from "./launcher.js";
 
-export function createAgentDialog({ dialog, sendInput, voice, stop, onBoard }) {
-  const con = createConsole({ sendInput, voice });
+export function createAgentDialog({ dialog, sendInput, voice, uploadFile, stop, onBoard, prefs }) {
+  const con = createConsole({ sendInput, voice, uploadFile });
   dialog.querySelector(".console-slot").append(con.el);
-  const pre = dialog.querySelector(".lines");
+  const view = createTermView(dialog.querySelector(".term"), { theme: prefs?.termTheme() ?? DEFAULT_TERM_THEME });
   const readonly = dialog.querySelector(".dialog-readonly");
   let agentId = null;
   let last = null; // último evento de la capa de datos
@@ -37,8 +38,8 @@ export function createAgentDialog({ dialog, sendInput, voice, stop, onBoard }) {
   const jumpTop = dialog.querySelector('[data-jump="top"]');
   const jumpBottom = dialog.querySelector('[data-jump="bottom"]');
   const linesCount = dialog.querySelector(".lines-count");
-  jumpTop?.addEventListener("click", () => { pre.scrollTop = 0; });
-  jumpBottom?.addEventListener("click", () => { pre.scrollTop = pre.scrollHeight; });
+  jumpTop?.addEventListener("click", () => view.scrollToTop());
+  jumpBottom?.addEventListener("click", () => view.scrollToBottom());
 
   function fill() {
     const a = last?.agents.get(agentId);
@@ -48,17 +49,13 @@ export function createAgentDialog({ dialog, sendInput, voice, stop, onBoard }) {
     }
     dialog.dataset.state = a.state;
     dialog.dataset.kind = a.kind;
-    dialog.querySelector(".kind").textContent = KINDS[a.kind] ?? a.kind;
+    const kind = dialog.querySelector(".kind");
+    kind.textContent = KINDS[a.kind] ?? a.kind;
+    kind.hidden = a.name.toLowerCase().includes(a.kind);
     dialog.querySelector(".name").textContent = a.name;
     dialog.querySelector(".badge-text").textContent = LABELS[a.state] ?? a.state;
-    if (linesCount) linesCount.textContent = `${a.last_lines.length} líneas`;
-    const text = a.last_lines.join("\n");
-    if (pre.dataset.raw !== text) {
-      pre.dataset.raw = text;
-      const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 8;
-      pre.innerHTML = ansiToHtml(text);
-      if (atBottom) pre.scrollTop = pre.scrollHeight;
-    }
+    view.update(a);
+    if (linesCount) linesCount.textContent = `${view.lineCount()} líneas`;
     con.update(a, last.auth);
     fillLaunch(dialog, a, last.auth);
     const why = inputBlocker(a, last.auth);
@@ -69,14 +66,8 @@ export function createAgentDialog({ dialog, sendInput, voice, stop, onBoard }) {
         : "Solo lectura: abre el enlace con token que imprime argos-board serve para poder escribir.";
   }
 
-  window.addEventListener("argos:theme-change", () => {
-    if (agentId && dialog.open) {
-      delete pre.dataset.raw;
-      fill();
-    }
-  });
-
   return {
+    setTermTheme: (name) => view.setTheme(name),
     render(event) {
       last = event;
       if (agentId) fill();
@@ -86,7 +77,8 @@ export function createAgentDialog({ dialog, sendInput, voice, stop, onBoard }) {
       fill();
       if (!agentId) return;
       if (!dialog.open) dialog.showModal();
-      pre.scrollTop = pre.scrollHeight;
+      view.fit();
+      view.scrollToBottom();
       const a = last.agents.get(id);
       if (inputBlocker(a, last.auth) === null) con.focus();
     },

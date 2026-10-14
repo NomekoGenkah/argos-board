@@ -62,6 +62,25 @@ impl AgentState {
     }
 }
 
+/// La pantalla del agente tal como la ve su terminal, para que la página la dibuje
+/// celda por celda (con xterm.js) en vez de reconstruirla desde líneas sueltas.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScreenGrid {
+    /// Columnas de la terminal del agente: todas las filas caben en este ancho.
+    pub cols: u16,
+    /// Alto de la terminal del agente.
+    pub rows: u16,
+    /// Aplicación de pantalla completa (OpenCode, vim…): `lines` son las `rows` filas, sin recortes.
+    /// Si no, las filas en blanco del final se omiten.
+    pub alt: bool,
+    /// Posición del cursor (fila, columna) dentro de `lines`, si se ve.
+    pub cursor: Option<(u16, u16)>,
+    /// Filas que ya salieron por arriba de la pantalla (más antiguas primero). Vacío con `alt`.
+    pub history: Vec<String>,
+    /// Filas visibles, con secuencias SGR; cada una empieza con los estilos en su valor por defecto.
+    pub lines: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentSnapshot {
     pub id: Uuid,
@@ -73,6 +92,9 @@ pub struct AgentSnapshot {
     pub project: String,
     pub git_branch: String,
     pub last_lines: Vec<String>,
+    /// La pantalla tal cual (filas y columnas exactas, cursor). `None` si el wrapper es anterior.
+    #[serde(default)]
+    pub grid: Option<ScreenGrid>,
     pub last_output_at: Option<DateTime<Utc>>,
     /// Versión del wrapper que reporta (`None` si es anterior a este campo).
     pub version: Option<String>,
@@ -118,6 +140,8 @@ pub enum IngestMsg {
     },
     Screen {
         last_lines: Vec<String>,
+        #[serde(default)]
+        grid: Option<ScreenGrid>,
         last_output_at: Option<DateTime<Utc>>,
     },
     State {
@@ -150,8 +174,8 @@ pub enum Key {
     CtrlD,
 }
 
-/// Tope de texto por mensaje de entrada.
-pub const MAX_INPUT_TEXT: usize = 4096;
+/// Tope de texto por mensaje de entrada (128 KB).
+pub const MAX_INPUT_TEXT: usize = 128 * 1024;
 
 /// Entrada desde la web para un agente: texto (y, si `submit`, Enter después)
 /// o una tecla.

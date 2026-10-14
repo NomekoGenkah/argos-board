@@ -1,6 +1,6 @@
 //! Emulación de pantalla (`vt100`) y detección de estado por actividad.
 
-use crate::model::AgentState;
+use crate::model::{AgentState, ScreenGrid};
 use crate::redact::redact;
 use chrono::{DateTime, Utc};
 use regex::Regex;
@@ -282,18 +282,24 @@ impl Screen {
     }
 
     /// Líneas acumuladas (scrollback + pantalla visible), redactadas.
+    #[cfg(test)]
     pub fn last_lines(&mut self) -> Vec<String> {
+        self.capture().last_lines
+    }
+
+    /// Lo que se ve y lo que se guarda de la pantalla: las líneas compactadas (texto y vista
+    /// resumida) y la rejilla exacta para dibujarla igual que la terminal.
+    pub fn capture(&mut self) -> Capture {
         let (rows, cols) = self.size();
         let rows_len = usize::from(rows);
         let screen = self.parser.screen_mut();
         screen.set_scrollback(0);
         let canvas = canvas_bg(screen);
-        let tidy = |row: Vec<u8>| {
-            let s = expand_cuf(&String::from_utf8_lossy(&row));
-            match canvas {
-                Some(bg) => drop_canvas_bg(&s, bg),
-                None => s,
-            }
+        let alt = screen.alternate_screen();
+        let cursor = (!screen.hide_cursor()).then(|| screen.cursor_position());
+        let drop_canvas = |raw: &str| match canvas {
+            Some(bg) => drop_canvas_bg(raw, bg),
+            None => raw.to_string(),
         };
 
         // Determina cuántas filas hay en el búfer de scrollback.
@@ -305,7 +311,7 @@ impl Screen {
             screen.set_scrollback(offset);
             let chunk_size = offset.min(rows_len);
             for row in screen.rows_formatted(0, cols).take(chunk_size) {
-                lines.push(tidy(row));
+                lines.push(drop_canvas(&expand_cuf(&String::from_utf8_lossy(&row))));
             }
             offset -= chunk_size;
         }
@@ -313,13 +319,16 @@ impl Screen {
         // Filas visibles actuales (offset = 0).
         screen.set_scrollback(0);
         let mut curr_visible = Vec::new();
+        let mut raw_visible = Vec::new();
         for row in screen.rows_formatted(0, cols) {
-            curr_visible.push(tidy(row));
+            let raw = expand_cuf(&String::from_utf8_lossy(&row));
+            curr_visible.push(drop_canvas(&raw));
+            raw_visible.push(raw);
         }
 
         let cleaned_curr = clean_lines(curr_visible.iter().map(String::as_str), MAX_LINES);
 
-        if lines.is_empty() {
+        let (last_lines, history) = if lines.is_empty() {
             // Sin scrollback nativo de vt100 (p. ej. Claude usando TUI in-place con \x1b[H),
             // detectamos qué líneas salieron por arriba y las conservamos en history.
             update_tui_history(
@@ -332,15 +341,61 @@ impl Screen {
 
             let mut combined = Vec::with_capacity(self.history.len() + cleaned_curr.len());
             combined.extend(self.history.iter().cloned());
+            let history: Vec<String> = self.history.iter().cloned().collect();
             combined.extend(cleaned_curr);
-            clean_lines(combined.iter().map(String::as_str), MAX_LINES)
+            (clean_lines(combined.iter().map(String::as_str), MAX_LINES), history)
         } else {
             // Con scrollback nativo de vt100 (p. ej. agy o CLI estándar).
             self.history.clear();
             self.prev_visible = cleaned_curr;
+            let history = lines.clone();
             lines.extend(curr_visible);
-            clean_lines(lines.iter().map(String::as_str), MAX_LINES)
+            (clean_lines(lines.iter().map(String::as_str), MAX_LINES), history)
+        };
+
+        let grid = build_grid(rows, cols, alt, cursor, history, raw_visible);
+        Capture { last_lines, grid }
+    }
+}
+
+/// Resultado de [`Screen::capture`].
+pub struct Capture {
+    pub last_lines: Vec<String>,
+    pub grid: ScreenGrid,
+}
+
+/// Arma la rejilla que ve la página. Una aplicación de pantalla completa (`alt`) conserva sus
+/// filas tal cual; el resto omite las filas en blanco del final (la terminal las tiene, pero
+/// en una tarjeta solo ocuparían espacio) y deja el historial que salió por arriba.
+fn build_grid(
+    rows: u16,
+    cols: u16,
+    alt: bool,
+    cursor: Option<(u16, u16)>,
+    history: Vec<String>,
+    mut visible: Vec<String>,
+) -> ScreenGrid {
+    let is_blank = |l: &str| strip_ansi(l).trim().is_empty() && !paints_background(l);
+    if !alt {
+        let used = visible.iter().rposition(|l| !is_blank(l)).map_or(0, |i| i + 1);
+        let cursor_row = cursor.map_or(0, |(r, _)| usize::from(r) + 1);
+        visible.truncate(used.max(cursor_row).max(1));
+    }
+    let seal = |l: String| {
+        let mut line = redact(&l);
+        if line.contains('\x1b') && !line.ends_with(RESET) {
+            line.push_str(RESET);
         }
+        line
+    };
+    let skip = history.len().saturating_sub(MAX_LINES);
+    ScreenGrid {
+        cols,
+        rows,
+        alt,
+        cursor: cursor.filter(|(r, _)| usize::from(*r) < visible.len()),
+        history: if alt { Vec::new() } else { history.into_iter().skip(skip).map(seal).collect() },
+        lines: visible.into_iter().map(seal).collect(),
     }
 }
 
@@ -761,5 +816,51 @@ mod tests {
         let l3 = s.last_lines();
         assert_eq!(l3.len(), 4);
         assert_eq!(l3[2], "linea 3");
+    }
+
+    #[test]
+    fn grid_keeps_full_screen_rows_and_cursor() {
+        // Como OpenCode: pantalla alterna, contenido centrado y filas en blanco que cuentan.
+        let mut s = Screen::new(10, 40);
+        s.process(
+            b"\x1b[?1049h\x1b[2J\x1b[4;5Hhola\x1b[8;5H\x1b[48;2;30;30;30m caja \x1b[m\x1b[4;9H",
+            Instant::now(),
+        );
+        let g = s.capture().grid;
+        assert!(g.alt);
+        assert_eq!((g.cols, g.rows), (40, 10));
+        assert_eq!(g.lines.len(), 10, "{:?}", g.lines);
+        assert!(g.history.is_empty());
+        assert_eq!(strip_ansi(&g.lines[3]).trim(), "hola");
+        assert!(strip_ansi(&g.lines[0]).trim().is_empty(), "las filas de arriba siguen ahí");
+        assert!(g.lines[7].contains("48;2;30;30;30"), "el fondo propio se conserva");
+        assert_eq!(g.cursor, Some((3, 8)));
+    }
+
+    #[test]
+    fn grid_of_inline_app_drops_trailing_blank_rows_and_keeps_history() {
+        let mut s = Screen::new(3, 20);
+        s.process(b"uno\r\ndos\r\ntres\r\ncuatro\r\n\x1b[?25l", Instant::now());
+        let g = s.capture().grid;
+        assert!(!g.alt);
+        assert_eq!(g.cursor, None, "cursor oculto");
+        let text = |v: &[String]| v.iter().map(|l| strip_ansi(l).trim().to_string()).collect::<Vec<_>>();
+        assert_eq!(text(&g.history), vec!["uno", "dos"]);
+        assert_eq!(text(&g.lines), vec!["tres", "cuatro"]);
+
+        let mut s = Screen::new(10, 20);
+        s.process(b"hola", Instant::now());
+        let g = s.capture().grid;
+        assert_eq!(g.lines.len(), 1);
+        assert_eq!(g.cursor, Some((0, 4)));
+    }
+
+    #[test]
+    fn grid_rows_are_redacted_and_sealed() {
+        let mut s = Screen::new(4, 40);
+        s.process(b"\x1b[31mAPI_KEY=secreto", Instant::now());
+        let g = s.capture().grid;
+        assert!(g.lines[0].contains("API_KEY=[REDACTED]"), "{:?}", g.lines);
+        assert!(g.lines[0].ends_with("\x1b[m"), "cada fila cierra sus estilos");
     }
 }

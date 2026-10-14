@@ -50,12 +50,28 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
 
 ### La página
 
-- Una tarjeta por agente, con el color del agente en el borde: Claude Code naranja, Antigravity (`agy`) azul,
-  GitHub Copilot (`copilot`) violeta, OpenCode blanco y cualquier otro comando marrón. El estado se muestra con texto, icono y color.
+- **Cabecera**: la marca con un punto de conexión, el selector *Tablero / Oficina*, un resumen de lo que te
+  espera (`3 te esperan`; al pulsarlo va al agente que lleva más tiempo esperando; si nada espera, dice cuántos
+  trabajan o hay error), *Nuevo agente*, el permiso para escribir (solo habla cuando falta) y *Ajustes*.
+- Una tarjeta por agente, con el color del agente en el borde izquierdo: Claude Code naranja, Antigravity (`agy`) azul,
+  GitHub Copilot (`copilot`) violeta, OpenCode blanco y cualquier otro comando marrón. La cabecera de la tarjeta es
+  una línea: lámpara de estado, nombre, estado con el tiempo que lleva así y acciones. El color solo lo tiene el
+  estado (verde trabajando, rojo te espera); la forma de la lámpara lo dice también sin color: llena, anillo que
+  late, anillo quieto, cuadrada. Debajo, el proyecto y la rama.
+- **Ajustes** (botón de la cabecera): una hoja con todo lo que se personaliza. Se guarda en ese navegador.
+  - *Disposición*: **Lienzo** (libre, ver abajo), **Cuadrícula** (tarjetas iguales en orden de llegada) y
+    **Foco** (un agente grande y los demás en una lista con su pantalla en vivo; toca uno, o pulsa Enter sobre él,
+    para pasarlo al frente). En una columna (celular) las tres se apilan.
+  - *Terminal*: colores (Noche, Papel, Solarized) y ajuste de la terminal en la tarjeta (más abajo).
+  - *Aspecto*: tema Claro/Oscuro, densidad (Cómoda o Compacta, que quita la línea del proyecto) y esquinas
+    (Rectas, Suaves o Redondas).
+  - *Avisos y voz*: notificaciones, sonido e idioma del dictado.
+  - *Presets*: guardan la disposición, el tema, la terminal, la densidad y las esquinas con un nombre; se aplican
+    desde la lista, se borran, y se pueden compartir como texto (*Compartir como texto*: copiar o pegar el JSON).
 - **Lienzo**: arrastra la cabecera de una tarjeta para moverla y su borde derecho, inferior o la esquina para
   redimensionarla. Las tarjetas se empujan entre sí y nunca se superponen; las actualizaciones en vivo no las
   mueven. Al agrandar una tarjeta se ve más de la pantalla del agente. Con el teclado, sobre una tarjeta:
-  Mayús+flechas cambia el tamaño y Ctrl+flechas la mueve. *Reordenar* (cabecera) las acomoda por estado y
+  Mayús+flechas cambia el tamaño y Ctrl+flechas la mueve. *Reordenar tarjetas* (en *Ajustes*) las acomoda por estado y
   restablece los tamaños. La posición y el tamaño se recuerdan por nombre de agente. En pantallas estrechas
   (< 700 px) se apilan en una columna.
 - **Quitar**: las tarjetas terminadas o desconectadas tienen un botón *Quitar* que las oculta en ese navegador.
@@ -63,14 +79,17 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
   a los 10 minutos.
 - **Avisos**: cuando un agente pasa a *Esperando tu respuesta* o *Esperando aprobación*, la pestaña muestra un
   contador (`(1) Argos Board`) y, si activas *Activar avisos*, el navegador muestra una notificación (al hacer clic,
-  enfoca la tarjeta). *Sonido* agrega un pitido corto. Un aviso por cada vez que el agente se pone a esperar: no se
+  enfoca la tarjeta). *Sonido* (en *Ajustes*) agrega un pitido corto. Un aviso por cada vez que el agente se pone a esperar: no se
   repite por salida nueva ni al recargar la página.
-- **Escribir en un agente**: cada tarjeta tiene una caja de texto. Enter envía (el texto y luego Enter);
+- **Escribir en un agente**: cada tarjeta tiene una barra de una línea. Enter envía (el texto y luego Enter);
   Mayús+Enter agrega una línea; con la caja vacía, ↑, ↓ y Esc van directo al agente (para moverse en sus
-  menús). Debajo, teclas rápidas: ↑ ↓ Enter Esc Tab y Ctrl+C. Probado con `claude`, `opencode` y `agy`
-  (responder sus preguntas, escribir prompts, texto de varias líneas). La cabecera dice si la página tiene
-  permiso: *Escritura activa* o *Solo lectura* (al hacer clic, explica cómo conseguirlo).
-- **Dictado por voz**: junto a *Enviar*, cada consola tiene un botón de micrófono. Púlsalo, habla (lo que dices
+  menús). El botón del teclado abre las teclas rápidas: ↑ ↓ Enter Esc Tab ⇧Tab, comandos rápidos de modo
+  (/plan, /auto según el agente) y Ctrl+C (se cierra con Esc o pulsando fuera). Probado con `claude`, `opencode`, `agy` y `copilot`. El botón de clip 📎 o arrastrar
+  archivos (.md, imágenes, etc.) los guarda en `.argos/uploads/` en el proyecto del agente y agrega su referencia
+  (`@.argos/uploads/...`) a la consola. El lápiz de la cabecera dice si la página tiene
+  permiso (*Escritura activa*, con su descripción al pasar el cursor, o *Solo lectura*, que al hacer clic explica
+  cómo conseguirlo).
+- **Dictado por voz**: en la barra de cada consola hay un botón de micrófono. Púlsalo, habla (lo que dices
   aparece en la caja mientras hablas) y púlsalo de nuevo para terminar; revisas y envías como cualquier texto.
   Como el texto entra por la consola, sirve igual para `claude`, `opencode` y `agy`, y enviar con el dictado
   activo lo cierra y manda lo dicho. Hay dos motores y la página usa el primero que tenga:
@@ -81,7 +100,7 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
      (también `agy` permite un solo flujo de voz por cuenta). El idioma lo decide `agy`. Para desactivarlo:
      `ARGOS_BOARD_NO_VOICE=1`.
   2. **El del navegador** (Chrome o Edge; el audio lo procesa su propio servicio): si no hay `agy`. El botón
-     *Voz: es-CL* de la cabecera cambia su idioma.
+     *Voz: es-CL* de *Ajustes* cambia su idioma.
 
   En ambos el navegador solo da acceso al micrófono con la página en `localhost` o por HTTPS: por `http://<ip>`
   desde otro dispositivo el botón no aparece (en el celular, usa el micrófono del teclado). El audio no se guarda;
@@ -92,7 +111,7 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
   (`tmux -L argos-board attach -t argos-claude-api`); si no, solo existe en la página. *Detener* (con
   confirmación) lo cierra. La primera vez en una carpeta, Claude pregunta si confías en ella: responde desde la
   consola de la tarjeta.
-- Modo claro por defecto; el selector *Claro / Oscuro* de la cabecera cambia el tema (se recuerda en ese navegador).
+- Modo claro por defecto; *Ajustes* cambia el tema a Oscuro (se recuerda en ese navegador).
 - **Oficina** (botón *Tablero / Oficina* de la cabecera): la misma información en pixel-art, en un solo plano.
   Cada agente es una mascota (Claude, un bicho naranja de bloque; Antigravity, un domo azul que flota con
   antena; OpenCode, un robot blanco con cara de terminal; Copilot, una cabeza violeta con orejas) y **el lugar donde está dice su estado**:
@@ -279,5 +298,9 @@ Estructura:
 - `src/model.rs` — snapshot de agente y mensajes (contrato estable, ver spec §4).
 - `web/` — página embebida en el binario. `data.js` (datos/WebSocket) está separado de `render.js` (DOM) y de
   `office.js` (la Oficina en canvas; sus sprites, dibujados como texto, están en `sprites.js`);
-  `prefs.js` guarda las preferencias locales. `web/fonts/` incluye Montserrat (licencia OFL, `OFL.txt`) y
-  `web/vendor/gridstack/` incluye gridstack.js 14.0.0 (MIT) para el lienzo.
+  `prefs.js` guarda las preferencias locales y `settings.js` (sin DOM) define los ajustes, sus valores y los presets;
+  `settings-panel.js` es la hoja de ajustes. `web/fonts/` incluye Montserrat (licencia OFL, `OFL.txt`) y
+  `web/vendor/gridstack/` incluye gridstack.js 14.0.0 (MIT) para el lienzo y `web/vendor/xterm/` xterm.js 6.0.0 (MIT,
+  con su addon WebGL) para dibujar la terminal de cada agente; `web/fonts/` suma JetBrains Mono (OFL).
+  `term.js` monta la terminal, `termgrid.js` (sin DOM) prepara lo que se le escribe y el tamaño de la letra, y
+  `termthemes.js` tiene las paletas (Noche, Papel, Solarized), independientes del tema de la página.

@@ -2,7 +2,9 @@
 // datos y lo pinta. Las actualizaciones en vivo solo cambian el contenido de
 // las tarjetas; la posición y el tamaño los decide el usuario.
 
-import { ansiToHtml } from "./ansi.js";
+import { createTermView } from "./term.js";
+import { DEFAULT_TERM_THEME } from "./termthemes.js";
+import { cardSizeFor, DEFAULT_TERM_MODE, gridOf } from "./termgrid.js";
 import { createConsole } from "./console.js";
 import { launchText, wireStopButton } from "./launcher.js";
 
@@ -42,7 +44,9 @@ const CONN_TEXT = {
 export const COLUMNS = 12;
 export const DEFAULT_CARD = { w: 4, h: 17 };
 const MIN_CARD = { minW: 3, minH: 7 };
-const MAX_FIT_H = 28; // tope al agrandar una tarjeta nueva para que entre su contenido
+const MAX_FIT_H = 28;
+const RAIL_W = 4; // columnas de la lista lateral de la disposición «foco»
+const RAIL_H = 9; // filas de cada tarjeta de esa lista // tope al agrandar una tarjeta nueva para que entre su contenido
 const STACK_BELOW_PX = 700; // por debajo, una sola columna (móvil)
 
 export function shortPath(p) {
@@ -67,13 +71,14 @@ export function sortAgents(list) {
   });
 }
 
-/** Posiciones en mosaico para `n` tarjetas del tamaño por defecto. */
-export function tileLayout(n) {
-  const perRow = Math.floor(COLUMNS / DEFAULT_CARD.w);
+/** Posiciones en mosaico para `n` tarjetas de un mismo tamaño (por defecto, el básico). */
+export function tileLayout(n, size = DEFAULT_CARD) {
+  const perRow = Math.max(1, Math.floor(COLUMNS / size.w));
   return Array.from({ length: n }, (_, i) => ({
-    x: (i % perRow) * DEFAULT_CARD.w,
-    y: Math.floor(i / perRow) * DEFAULT_CARD.h,
-    ...DEFAULT_CARD,
+    x: (i % perRow) * size.w,
+    y: Math.floor(i / perRow) * size.h,
+    w: size.w,
+    h: size.h,
   }));
 }
 
@@ -99,9 +104,14 @@ export function versionWarning(agentVersion, serverVersion) {
   return `Wrapper de otra versión (${agentVersion}): reinícialo para actualizarlo.`;
 }
 
-export function createDomRenderer({ cards, empty, conn, live, template, prefs, GridStack, version, sendInput, voice, stop, onOpenAgent }) {
+export function createDomRenderer({ cards, empty, conn, live, template, prefs, GridStack, version, sendInput, voice, uploadFile, stop, onOpenAgent }) {
   const els = new Map(); // id -> .grid-stack-item
   const consoles = new Map(); // id -> consola de la tarjeta
+  const views = new Map(); // id -> vista de la terminal de la tarjeta
+  let layoutMode = "canvas"; // canvas | grid | focus
+  let focusName = prefs.focusName(); // agente en primer plano de la disposición «foco»
+  let arrangedKey = "";
+  let arrangeQueued = false;
   let auth = "none";
   let current = new Map();
   let lastEvent = null;
@@ -139,7 +149,7 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
 
   grid.on("change", () => {
     syncDomOrder();
-    if (grid.getColumn() !== COLUMNS) return;
+    if (grid.getColumn() !== COLUMNS || layoutMode !== "canvas") return; // solo el lienzo libre se recuerda
     // El fantasma de arrastre también es un nodo, pero sin tarjeta: se ignora.
     prefs.setLayouts(grid.engine.nodes.filter((n) => n.el?.dataset.name).map((n) => [n.el.dataset.name, n]));
   });
@@ -148,7 +158,11 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     // Después del cambio de columnas de gridstack (que va con throttle).
     setTimeout(() => {
       const column = grid.getColumn();
-      if (column === COLUMNS && lastColumn !== COLUMNS) restoreSaved();
+      if (column === COLUMNS && lastColumn !== COLUMNS) {
+        if (layoutMode === "canvas") restoreSaved();
+        else arrange();
+      }
+      if (column !== lastColumn) decorate();
       // Apiladas en una columna, filas más altas: la pantalla del agente y la consola entran.
       const cell = column === 1 ? 30 : 24;
       if (grid.getCellHeight() !== cell) grid.cellHeight(cell);
@@ -166,33 +180,21 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     }
     grid.batchUpdate(false);
   }
-  grid.on("resizestop", (_, el) => stickToBottom(el.querySelector(".lines")));
-
-  function stickToBottom(pre) {
-    pre.scrollTop = pre.scrollHeight;
-  }
-
   function fill(item, a) {
     const el = item.querySelector(".card");
     item.dataset.name = a.name;
     el.dataset.state = a.state;
     el.dataset.kind = a.kind;
-    el.querySelector(".kind").textContent = KINDS[a.kind] ?? a.kind;
+    const kind = el.querySelector(".kind");
+    kind.textContent = KINDS[a.kind] ?? a.kind;
+    kind.hidden = a.name.toLowerCase().includes(a.kind); // «claude» ya dice Claude Code
     el.querySelector(".name").textContent = a.name;
     el.querySelector(".badge-text").textContent = LABELS[a.state] ?? a.state;
     const project = el.querySelector(".project");
     project.textContent = shortPath(a.project) || "—";
     project.title = a.project;
     el.querySelector(".branch").textContent = a.git_branch || "—";
-    const pre = el.querySelector(".lines");
-    const text = a.last_lines.join("\n");
-    if (pre.dataset.raw !== text) {
-      pre.dataset.raw = text;
-      // Solo se pega al final si el usuario no había subido a leer.
-      const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 8;
-      pre.innerHTML = ansiToHtml(text);
-      if (atBottom) stickToBottom(pre);
-    }
+    views.get(a.id)?.update(a);
     const warn = el.querySelector(".version-warn");
     const message = ENDED.has(a.state) ? null : versionWarning(a.version, serverVersion);
     warn.hidden = !message;
@@ -217,6 +219,9 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
       cards.querySelector(".card")?.focus();
     });
     item.querySelector(".card").addEventListener("keydown", (ev) => onCardKey(ev, item));
+    item.querySelector(".card").addEventListener("click", (ev) => {
+      if (isRail(item) && !ev.target.closest("button, a")) setFocus(item.dataset.name);
+    });
     wireStopButton(item.querySelector(".stop"), {
       getAgent: () => current.get(a.id),
       stop,
@@ -233,22 +238,20 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
         onOpenAgent?.(a.id);
       }
     });
-    item.querySelector(".lines")?.addEventListener("dblclick", () => {
+    item.querySelector(".term")?.addEventListener("dblclick", () => {
       onOpenAgent?.(a.id);
     });
-    const con = createConsole({ sendInput, voice });
+    views.set(a.id, createTermView(item.querySelector(".term"), { theme: prefs.termTheme() ?? DEFAULT_TERM_THEME, mode: prefs.termMode() ?? DEFAULT_TERM_MODE }));
+    const con = createConsole({ sendInput, voice, uploadFile });
     item.querySelector(".console-slot").append(con.el);
     consoles.set(a.id, con);
     cards.append(item);
     const saved = prefs.layout(a.name);
-    grid.makeWidget(item, { id: a.id, ...MIN_CARD, ...(saved ?? { ...DEFAULT_CARD, autoPosition: true }) });
-    requestAnimationFrame(() => {
-      // Una tarjeta nueva (sin tamaño guardado) toma, una sola vez, el alto que
-      // necesita su contenido (p. ej. un agente lanzado: botones, tmux y consola).
-      stickToBottom(item.querySelector(".lines"));
-    });
-    // Otra vez cuando gridstack ya la acomodó (es idempotente).
-    if (!saved) for (const ms of [50, 450]) setTimeout(() => fitHeight(item), ms);
+    grid.makeWidget(item, { id: a.id, ...MIN_CARD, ...(saved ?? { ...sizeFor([a]), autoPosition: true }) });
+    // Una tarjeta nueva (sin tamaño guardado) toma, una sola vez, el alto que
+    // necesita su contenido (p. ej. un agente lanzado: botones, tmux y consola),
+    // cuando gridstack ya la acomodó (es idempotente).
+    if (!saved) for (const ms of [50, 450]) setTimeout(() => layoutMode === "canvas" && fitHeight(item), ms);
     return item;
   }
 
@@ -256,7 +259,15 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
   function fitHeight(item) {
     const card = item.querySelector(".card");
     const node = item.gridstackNode;
-    if (!node || !item.isConnected || card.scrollHeight <= card.clientHeight + 1) return;
+    if (!node || !item.isConnected) return;
+    if (stacked()) {
+      // Apiladas en una columna cada tarjeta mide lo que su contenido: ni cortada ni con un hueco al final.
+      const need = [...card.children].reduce((n, c) => n + c.offsetHeight, 0) + 2;
+      const h = Math.ceil((need + item.offsetHeight - card.clientHeight) / grid.getCellHeight());
+      if (h !== node.h) grid.update(item, { h });
+      return;
+    }
+    if (card.scrollHeight <= card.clientHeight + 1) return;
     // Lo que ocupa el contenido + el margen de la celda, en filas.
     const chrome = item.offsetHeight - card.clientHeight;
     const h = Math.min(MAX_FIT_H, Math.ceil((card.scrollHeight + chrome) / grid.getCellHeight()));
@@ -266,6 +277,12 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
   // Mayúsculas + flechas: tamaño. Control + flechas: posición.
   function onCardKey(ev, item) {
     if (ev.target !== ev.currentTarget) return; // no robar teclas a la consola ni a los botones
+    if (ev.key === "Enter" && isRail(item)) {
+      ev.preventDefault();
+      setFocus(item.dataset.name);
+      return;
+    }
+    if (layoutMode !== "canvas") return; // en cuadrícula y foco las tarjetas no se mueven
     if (!ev.shiftKey && !ev.ctrlKey) return;
     const delta = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[ev.key];
     if (!delta) return;
@@ -284,8 +301,9 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
 
   /** Ordena por estado y restablece tamaños (botón "Reordenar"). */
   function relayout() {
+    if (layoutMode !== "canvas") return;
     const visible = sortAgents([...current.values()].filter((a) => els.has(a.id)));
-    const slots = tileLayout(visible.length);
+    const slots = tileLayout(visible.length, sizeFor(visible));
     prefs.clearLayouts();
     grid.batchUpdate();
     visible.forEach((a, i) => grid.update(els.get(a.id), slots[i]));
@@ -294,13 +312,96 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     announce("Tarjetas reordenadas por estado");
   }
 
+  // ---- Disposiciones: lienzo (libre), cuadrícula (iguales) y foco (uno grande y una lista).
+  const stacked = () => grid.getColumn() !== COLUMNS;
+  /** ¿Es una tarjeta de la lista lateral del «foco» (y no el agente en primer plano)? */
+  const isRail = (item) => layoutMode === "focus" && !stacked() && item.dataset.name !== focusName;
+
+  function visibleAgents() {
+    return [...current.values()].filter((a) => els.has(a.id));
+  }
+
+  /** Agente en primer plano: el elegido o, si ya no está, el que más urge. */
+  function pickFocus(list) {
+    if (list.some((a) => a.name === focusName)) return focusName;
+    return (sortAgents(list)[0] ?? list[0])?.name ?? null;
+  }
+
+  function decorate() {
+    for (const item of els.values()) item.querySelector(".card").classList.toggle("card--compact", isRail(item));
+  }
+
+  /** Coloca las tarjetas según la disposición (en una columna no hace falta: se apilan). */
+  function arrange() {
+    arrangeQueued = false;
+    if (layoutMode === "canvas" || stacked()) {
+      arrangedKey = layoutKey();
+      return decorate();
+    }
+    const list = visibleAgents().sort((a, b) => Date.parse(a.started_at) - Date.parse(b.started_at));
+    if (!list.length) return;
+    grid.batchUpdate();
+    if (layoutMode === "grid") {
+      const slots = tileLayout(list.length, sizeFor(list));
+      list.forEach((a, i) => grid.update(els.get(a.id), slots[i]));
+    } else {
+      focusName = pickFocus(list);
+      const main = list.find((a) => a.name === focusName);
+      const rail = sortAgents(list.filter((a) => a !== main));
+      const mainW = rail.length ? COLUMNS - RAIL_W : COLUMNS;
+      const size = sizeFor([main], { widths: [mainW], maxH: 34 });
+      grid.update(els.get(main.id), { x: 0, y: 0, w: mainW, h: Math.max(size.h, rail.length * RAIL_H) });
+      rail.forEach((a, i) => grid.update(els.get(a.id), { x: mainW, y: i * RAIL_H, w: RAIL_W, h: RAIL_H }));
+    }
+    grid.batchUpdate(false);
+    arrangedKey = layoutKey();
+    decorate();
+  }
+
+  /** Qué tiene que estar acomodado: la disposición, quién está al frente y qué tarjetas hay. */
+  function layoutKey() {
+    const list = visibleAgents();
+    const front = layoutMode === "focus" ? pickFocus(list) : "";
+    return `${layoutMode}|${front}|${list.map((a) => a.id).sort().join()}`;
+  }
+
+  /** Reacomoda solo si cambió algo de eso (no con cada actualización en vivo). */
+  function queueArrange() {
+    if (arrangeQueued || layoutKey() === arrangedKey) return;
+    arrangeQueued = true;
+    requestAnimationFrame(arrange);
+  }
+
+  /** Cambia el agente en primer plano (disposición «foco»). */
+  function setFocus(name) {
+    if (!name || name === focusName) return;
+    focusName = name;
+    prefs.setFocusName(name);
+    announce(`En primer plano: ${name}`);
+    arrange();
+    els.get([...current.values()].find((a) => a.name === name)?.id)?.querySelector(".card")?.focus({ preventScroll: true });
+  }
+
+  /** Cambia la disposición del tablero. */
+  function setLayout(mode) {
+    layoutMode = mode;
+    cards.dataset.layout = mode;
+    grid.setStatic(mode !== "canvas");
+    if (mode === "canvas") {
+      restoreSaved();
+      decorate();
+    } else {
+      arrange();
+    }
+  }
+
   function tickTimes() {
     const now = Date.now();
     for (const [id, item] of els) {
       const a = current.get(id);
       if (!a) continue;
       item.querySelector(".since").textContent = formatDuration(now - Date.parse(a.state_since));
-      item.querySelector(".session").textContent = formatDuration(now - Date.parse(a.started_at));
+      item.querySelector(".name").title = `Sesión: ${formatDuration(now - Date.parse(a.started_at))}`;
     }
   }
 
@@ -355,6 +456,8 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
         grid.removeWidget(item);
         els.delete(id);
         consoles.delete(id);
+        views.get(id)?.dispose();
+        views.delete(id);
       }
     }
     for (const a of visible) {
@@ -368,27 +471,46 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     }
     empty.hidden = visible.length > 0 || connState !== "open";
     tickTimes();
+    if (layoutMode !== "canvas") queueArrange();
   }
 
   /** Enfoca la tarjeta de un agente (p. ej. al hacer clic en una notificación). */
   function focusAgent(id) {
+    const name = current.get(id)?.name;
+    if (layoutMode === "focus" && name) setFocus(name);
     const card = els.get(id)?.querySelector(".card");
     if (!card) return;
     card.scrollIntoView({ block: "nearest", behavior: "smooth" });
     card.focus({ preventScroll: true });
   }
 
-  window.addEventListener("argos:theme-change", () => {
-    for (const [id, item] of els) {
-      const a = current.get(id);
-      if (a) {
-        const pre = item.querySelector(".lines");
-        if (pre) delete pre.dataset.raw;
-        fill(item, a);
-      }
-    }
-  });
+  /**
+   * Tamaño de una tarjeta nueva: el que deja la letra de su terminal legible (unos 9 px) con el ancho
+   * disponible. En una columna (móvil) vale el básico: ahí cada tarjeta toma el alto que necesita.
+   */
+  function sizeFor(agents, options = {}) {
+    if (grid.getColumn() !== COLUMNS || cards.clientWidth < STACK_BELOW_PX) return DEFAULT_CARD;
+    const grids = agents.map(gridOf);
+    return cardSizeFor({
+      containerPx: cards.clientWidth,
+      columns: COLUMNS,
+      cellPx: grid.getCellHeight(),
+      cols: Math.max(80, ...grids.map((g) => g.cols)),
+      rows: Math.max(24, ...grids.map((g) => g.rows)),
+      ...options,
+    });
+  }
+
+  /** Cambia el modo de ajuste de la terminal de todas las tarjetas. */
+  function setTermMode(mode) {
+    for (const view of views.values()) view.setMode(mode);
+  }
+
+  /** Cambia el tema de la terminal de todas las tarjetas. */
+  function setTermTheme(name) {
+    for (const view of views.values()) view.setTheme(name);
+  }
 
   setInterval(tickTimes, 1000);
-  return { render, relayout, focusAgent };
+  return { render, relayout, focusAgent, setTermTheme, setTermMode, setLayout };
 }

@@ -289,11 +289,36 @@ export function createStore() {
     },
   };
 
+  /** Sube un archivo al proyecto de un agente. Resuelve con { ok, filename, relative_path, is_image, error }. */
+  async function uploadFile(agentId, file) {
+    const cred = credential();
+    if (!cred) return { ok: false, error: "Esta página no tiene permiso de escritura" };
+    try {
+      const url = `api/agents/${agentId}/upload?name=${encodeURIComponent(file.name || "archivo")}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${cred}`,
+          "content-type": file.type || "application/octet-stream",
+        },
+        body: file,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) {
+        return { ok: false, error: data.error || `Error al subir (${res.status})` };
+      }
+      return data;
+    } catch {
+      return { ok: false, error: "No se pudo contactar al servidor" };
+    }
+  }
+
   return {
     connect,
     voice,
     pair,
     sendInput,
+    uploadFile,
     listDirs,
     launch,
     stop,
