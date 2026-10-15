@@ -688,10 +688,12 @@ async fn handle_browser_msg(
         FromBrowser::Input { id, rid, input } => {
             let result = if !*authorized {
                 Err(NO_PERMISSION)
-            } else if !rate.allow() {
-                Err("demasiadas entradas seguidas; espera un momento")
             } else {
+                // Se valida antes de contar: un mensaje inválido no gasta el cupo.
                 input.sanitized().and_then(|input| {
+                    if !rate.allow() {
+                        return Err("demasiadas entradas seguidas; espera un momento");
+                    }
                     let (kind, bytes) = input.describe();
                     // Nunca el contenido: puede tener secretos.
                     tracing::info!(agent = %id, kind, bytes, "entrada desde la web");

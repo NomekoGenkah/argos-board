@@ -32,14 +32,18 @@ const MAX_NAME_CHARS: usize = 40;
 const CODE_ALPHABET: &[u8; 32] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_LEN: usize = 8;
 
-/// Comparación en tiempo constante respecto al contenido.
+/// Comparación en tiempo constante respecto al contenido: se recorre la longitud
+/// mayor y la diferencia de longitudes entra en el acumulador, sin salida temprana.
 pub fn same_secret(given: &str, secret: &str) -> bool {
-    given.len() == secret.len()
-        && given
-            .bytes()
-            .zip(secret.bytes())
-            .fold(0u8, |acc, (a, b)| acc | (a ^ b))
-            == 0
+    let a = given.as_bytes();
+    let b = secret.as_bytes();
+    let mut diff = a.len() ^ b.len();
+    for i in 0..a.len().max(b.len()) {
+        let x = a.get(i).copied().unwrap_or(0);
+        let y = b.get(i).copied().unwrap_or(0);
+        diff |= usize::from(x ^ y);
+    }
+    diff == 0
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -227,19 +231,32 @@ impl Store {
         Ok(device)
     }
 
-    /// Revoca por id (o prefijo de id) o por nombre. Devuelve los revocados.
+    /// Revoca por id (o prefijo de id no ambiguo) o por nombre. Devuelve los revocados.
     pub fn revoke(&self, key: &str) -> Result<Vec<Device>> {
         let key_lower = key.to_lowercase();
-        self.update(|f| {
+        self.update(|f| -> Result<Vec<Device>> {
+            // Un id completo es único: se revoca solo ese, aunque el texto coincida
+            // además con el nombre de otro dispositivo.
+            if let Some(pos) = f.devices.iter().position(|d| d.id == key) {
+                return Ok(vec![f.devices.remove(pos)]);
+            }
+            // Un prefijo de id solo vale si no coincide con varios: si no, un
+            // prefijo corto borraría dispositivos que no se querían tocar.
+            if key.len() >= 3 {
+                let hits = f.devices.iter().filter(|d| d.id.starts_with(key)).count();
+                anyhow::ensure!(
+                    hits <= 1,
+                    "«{key}» es prefijo de {hits} dispositivos; usa el id completo"
+                );
+            }
             let (gone, kept): (Vec<_>, Vec<_>) =
                 std::mem::take(&mut f.devices).into_iter().partition(|d| {
-                    d.id == key
-                        || (key.len() >= 3 && d.id.starts_with(key))
-                        || d.name.to_lowercase() == key_lower
+                    (key.len() >= 3 && d.id.starts_with(key)) || d.name.to_lowercase() == key_lower
                 });
             f.devices = kept;
-            gone
+            Ok(gone)
         })
+        .and_then(|r| r)
     }
 
     pub fn revoke_all(&self) -> Result<Vec<Device>> {
@@ -514,6 +531,47 @@ mod tests {
         assert!(s.list().unwrap().is_empty());
         s.add("x", now).unwrap();
         assert_eq!(s.revoke_all().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn same_secret_compares_content() {
+        assert!(same_secret("abc", "abc"));
+        assert!(same_secret("", ""));
+        assert!(!same_secret("abc", "abd"));
+        assert!(!same_secret("abc", "abcd")); // distinta longitud
+        assert!(!same_secret("abcd", "abc"));
+        assert!(!same_secret("", "x"));
+    }
+
+    #[test]
+    fn revoke_refuses_an_ambiguous_id_prefix() {
+        let (dir, s) = store();
+        let now = Utc::now();
+        let device = |id: &str| Device {
+            id: id.to_string(),
+            name: format!("disp {id}"),
+            token: format!("token-{id}"),
+            created_at: now,
+            last_seen: now,
+        };
+        let file = DeviceFile {
+            devices: vec![device("abcdef01"), device("abcdef02")],
+        };
+        std::fs::write(
+            dir.path().join("devices.json"),
+            serde_json::to_string(&file).unwrap(),
+        )
+        .unwrap();
+        // «abcdef» casa con los dos: no se revoca nada y avisa.
+        let err = s.revoke("abcdef").unwrap_err();
+        assert!(err.to_string().contains("prefijo"), "{err}");
+        assert_eq!(s.list().unwrap().len(), 2);
+        // El id completo sí es único.
+        assert_eq!(s.revoke("abcdef01").unwrap().len(), 1);
+        assert_eq!(s.list().unwrap().len(), 1);
+        // Ya sin ambigüedad, el prefijo corto funciona.
+        assert_eq!(s.revoke("abcdef0").unwrap().len(), 1);
+        assert!(s.list().unwrap().is_empty());
     }
 
     #[test]

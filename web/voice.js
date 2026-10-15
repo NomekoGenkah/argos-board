@@ -9,9 +9,7 @@
 // cambiarlo (p. ej. por una transcripción en el servidor) sin tocar la consola.
 
 import { t } from "./i18n.js";
-
-/** Tope de la caja de la consola (su `maxlength`). */
-export const MAX_CHARS = 4000;
+import { clipToBytes } from "./limits.js";
 
 /** Un arranque que termina antes de esto cuenta como fallo de reinicio. */
 const QUICK_END_MS = 400;
@@ -42,9 +40,9 @@ function join(a, b) {
   return /\s$/.test(a) || /^\s/.test(b) ? a + b : `${a} ${b}`;
 }
 
-/** Texto de la caja: lo que había antes + lo dictado (recortado al tope). */
+/** Texto de la caja: lo que había antes + lo dictado (recortado al tope de la consola). */
 export function mergeDictation(base, spoken) {
-  return join(base, spoken.trimStart()).slice(0, MAX_CHARS);
+  return clipToBytes(join(base, spoken.trimStart()));
 }
 
 /** Mensaje para cada error del reconocedor; `null` = se ignora (no es un fallo). */

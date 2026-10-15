@@ -6,10 +6,10 @@ import { mock, test } from "node:test";
 import {
   createDictation,
   languageChoices,
-  MAX_CHARS,
   mergeDictation,
   voiceAvailable,
 } from "../../web/voice.js";
+import { MAX_INPUT_BYTES, byteLength } from "../../web/limits.js";
 
 /** Reconocedor falso que guarda sus instancias para dirigirlas desde la prueba. */
 function fakeWindow({ secure = true } = {}) {
@@ -61,7 +61,7 @@ test("mergeDictation une con un solo espacio y respeta el tope", () => {
   assert.equal(mergeDictation("ya hay", "hola"), "ya hay hola");
   assert.equal(mergeDictation("ya hay ", " hola"), "ya hay hola");
   assert.equal(mergeDictation("a\n", "b"), "a\nb");
-  assert.equal(mergeDictation("", "x".repeat(MAX_CHARS + 50)).length, MAX_CHARS);
+  assert.equal(byteLength(mergeDictation("", "x".repeat(MAX_INPUT_BYTES + 50))), MAX_INPUT_BYTES);
 });
 
 test("languageChoices pone el del navegador primero, sin repetir ni basura", () => {

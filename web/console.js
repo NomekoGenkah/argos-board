@@ -4,6 +4,7 @@
 import { t } from "./i18n.js";
 import { prefs } from "./prefs.js";
 import { micErrorText, openMic } from "./mic.js";
+import { MAX_INPUT_BYTES, byteLength, clipToBytes } from "./limits.js";
 import { createDictation, createServerDictation, languageChoices, voiceAvailable } from "./voice.js";
 
 const MIC_ICON =
@@ -88,7 +89,7 @@ export function createConsole({ sendInput, voice = null, voiceLang = currentVoic
   el.innerHTML = `
     <form class="console-form" novalidate>
       <div class="console-row">
-        <textarea class="console-input" rows="1" maxlength="131072" spellcheck="false" autocomplete="off"
+        <textarea class="console-input" rows="1" maxlength="${MAX_INPUT_BYTES}" spellcheck="false" autocomplete="off"
           placeholder="${t("con.placeholder")}" aria-describedby="${id}-help"></textarea>
         <input type="file" class="console-file" accept=".md,.markdown,.txt,.json,.csv,.py,.rs,.js,.ts,.html,.css,.png,.jpg,.jpeg,.webp,.gif,text/*,image/*" hidden>
         <button class="console-attach icon-btn" type="button" aria-label="${t("con.attach")}"
@@ -170,6 +171,17 @@ export function createConsole({ sendInput, voice = null, voiceLang = currentVoic
   function grow() {
     input.style.height = "auto";
     input.style.height = `${Math.min(input.scrollHeight, 96)}px`;
+  }
+
+  // El `maxlength` cuenta unidades UTF-16, no bytes: aquí se recorta a bytes
+  // para no dejar pasar texto que el servidor rechazaría ("demasiado largo").
+  function clipInput() {
+    const text = input.value;
+    if (byteLength(text) <= MAX_INPUT_BYTES) return;
+    const caret = input.selectionStart ?? text.length;
+    input.value = clipToBytes(text);
+    const kept = clipToBytes(text.slice(0, caret)).length;
+    input.setSelectionRange(kept, kept);
   }
 
   // Dictado por voz: lo dicho se escribe en la caja; se revisa y se envía como cualquier texto.
@@ -283,13 +295,17 @@ export function createConsole({ sendInput, voice = null, voiceLang = currentVoic
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     await current?.stop(); // lo ya dicho queda en la caja antes de leerla
+    clipInput();
     const text = input.value;
     if (await send({ type: "text", text, submit: true }, text ? t("con.sent") : t("con.enter"))) {
       input.value = "";
       grow();
     }
   });
-  input.addEventListener("input", grow);
+  input.addEventListener("input", () => {
+    clipInput();
+    grow();
+  });
   input.addEventListener("keydown", (ev) => {
     // Que el lienzo (atajos de la tarjeta) no reciba lo que se escribe aquí.
     ev.stopPropagation();
