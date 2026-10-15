@@ -323,15 +323,19 @@ fn exit_code(status: &portable_pty::ExitStatus) -> i32 {
 }
 
 /// portable-pty solo da el nombre de la señal (el texto de `strsignal`, que
-/// puede venir traducido): se busca el número que produce ese mismo texto.
+/// puede venir traducido): se busca el número cuya misma llamada produce ese
+/// texto. Como el nombre lo generó portable-pty con `strsignal` en este mismo
+/// proceso, la comparación coincide aunque el idioma no sea el inglés.
 #[cfg(unix)]
 fn signal_number(name: &str) -> Option<i32> {
+    /// Mayor señal a sondear (glibc usa 64; cubre las estándar y de tiempo real).
+    const MAX_SIGNAL: i32 = 64;
     if let Some(n) = name.strip_prefix("Signal ").and_then(|n| n.parse().ok()) {
         return Some(n);
     }
-    (1..65).find(|&n| {
+    (1..=MAX_SIGNAL).find(|&n| {
         // SAFETY: strsignal devuelve un puntero a una cadena estática (o NULL);
-        // se copia enseguida y solo se llama una vez, al terminar el agente.
+        // se lee enseguida y solo se llama al terminar el agente.
         let ptr = unsafe { libc::strsignal(n) };
         !ptr.is_null() && unsafe { std::ffi::CStr::from_ptr(ptr) }.to_string_lossy() == name
     })

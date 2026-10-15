@@ -435,7 +435,16 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     conn.querySelector(".conn-text").textContent = CONN_TEXT[connState];
     current = agents;
 
-    if (change.kind === "snapshot") prefs.pruneDismissed(new Set(agents.keys()));
+    if (change.kind === "snapshot") {
+      prefs.pruneDismissed(new Set(agents.keys()));
+      // Con el tablero vacío (servidor recién arrancado) no se poda por nombre:
+      // se perderían posiciones y escritorios de agentes que aún no reconectan.
+      if (agents.size > 0) {
+        const liveNames = new Set([...agents.values()].map((a) => a.name));
+        prefs.pruneLayouts(liveNames);
+        prefs.pruneSeats(liveNames);
+      }
+    }
     if (
       change.kind === "agent_updated" &&
       change.prev &&

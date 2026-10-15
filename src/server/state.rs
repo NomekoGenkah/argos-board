@@ -60,7 +60,8 @@ impl Board {
     pub fn subscribe(&self) -> (Vec<AgentSnapshot>, broadcast::Receiver<BrowserMsg>) {
         let agents = self.agents.lock().unwrap();
         let rx = self.tx.subscribe();
-        let snap = agents.values().map(|e| e.snap.clone()).collect();
+        let mut snap: Vec<_> = agents.values().map(|e| e.snap.clone()).collect();
+        snap.sort_by(|a, b| a.name.cmp(&b.name));
         (snap, rx)
     }
 

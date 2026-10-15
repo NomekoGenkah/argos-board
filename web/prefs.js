@@ -63,6 +63,18 @@ export const prefs = {
     seats = merged;
     save("argos-seats", seats);
   },
+  // Olvida escritorios de agentes que ya no existen (por nombre), para que
+  // `argos-seats` no crezca sin fin con nombres viejos.
+  pruneSeats(liveNames) {
+    let changed = false;
+    for (const name of Object.keys(seats)) {
+      if (!liveNames.has(name)) {
+        delete seats[name];
+        changed = true;
+      }
+    }
+    if (changed) save("argos-seats", seats);
+  },
 
   // Tema de la terminal de los agentes (independiente del tema de la página).
   termTheme() {
@@ -162,6 +174,18 @@ export const prefs = {
   clearLayouts() {
     for (const k of Object.keys(layouts)) delete layouts[k];
     save("argos-layout", layouts);
+  },
+  // Olvida posiciones de agentes que ya no existen (por nombre), para que
+  // `argos-layout` no crezca sin fin con nombres viejos.
+  pruneLayouts(liveNames) {
+    let changed = false;
+    for (const name of Object.keys(layouts)) {
+      if (!liveNames.has(name)) {
+        delete layouts[name];
+        changed = true;
+      }
+    }
+    if (changed) save("argos-layout", layouts);
   },
 
   // Una tarjeta quitada vuelve a aparecer si el agente cambia de estado
