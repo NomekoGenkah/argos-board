@@ -41,24 +41,34 @@ function makeEl(tag = "div") {
     _q: new Map(),
     classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
     _rect: { top: 0, left: 0, width: 1200, height: 800 },
-    setAttribute() {},
-    getAttribute: () => null,
-    removeAttribute() {},
+    _attrs: new Map(),
+    setAttribute(k, v) {
+      el._attrs.set(k, v);
+    },
+    getAttribute: (k) => (el._attrs.has(k) ? el._attrs.get(k) : null),
+    removeAttribute(k) {
+      el._attrs.delete(k);
+    },
     addEventListener() {},
     removeEventListener() {},
     appendChild(c) {
+      if (c.parentNode) c.parentNode.children = c.parentNode.children.filter((x) => x !== c);
       c.parentNode = el;
       el.children.push(c);
       return c;
     },
     append(...cs) {
       for (const c of cs) {
+        if (c.parentNode) c.parentNode.children = c.parentNode.children.filter((x) => x !== c);
         c.parentNode = el;
         el.children.push(c);
       }
     },
     remove() {
-      if (el.parentNode) el.parentNode.children = el.parentNode.children.filter((c) => c !== el);
+      if (el.parentNode) {
+        el.parentNode.children = el.parentNode.children.filter((c) => c !== el);
+        el.parentNode = null;
+      }
     },
     querySelector(sel) {
       if (!el._q.has(sel)) {
@@ -153,7 +163,7 @@ function makePrefs() {
 function makeRenderer() {
   const root = makeEl();
   const office = createOfficeRenderer({ root, prefs: makePrefs(), onOpen() {} });
-  return { office };
+  return { office, root };
 }
 
 function snapshot(...agents) {
@@ -199,4 +209,51 @@ test("no se rompe con agentes en todos los estados", () => {
   );
   office.setActive(true);
   assert.doesNotThrow(() => office.render(snapshot(...all)));
+});
+
+/** El contenedor `.desks` con sus grupos de zona. */
+function zoneGroups(root) {
+  const desks = root.children[0].children.find((c) => c.className === "desks");
+  const byZone = {};
+  for (const g of desks.children) byZone[g.className.replace("desk-zone desk-zone-", "")] = g;
+  return byZone;
+}
+
+test("cada escritorio vive en el grupo de su zona", () => {
+  const { office, root } = makeRenderer();
+  office.setActive(true);
+  office.render(
+    snapshot(agent("q1", "waiting_input"), agent("o1", "working"), agent("k1", "idle"), agent("e1", "exited")),
+  );
+
+  const zones = zoneGroups(root);
+  assert.deepEqual(Object.keys(zones).sort(), ["exit", "kitchen", "office", "queue"], "un grupo por zona");
+  for (const g of Object.values(zones)) {
+    assert.equal(g.getAttribute("role"), "group", "cada zona es un role=group");
+    assert.ok(g.getAttribute("aria-label"), "cada zona tiene nombre accesible");
+  }
+  const ids = (z) => zones[z].children.map((b) => b.dataset.id);
+  assert.deepEqual(ids("queue"), ["q1"]);
+  assert.deepEqual(ids("office"), ["o1"]);
+  assert.deepEqual(ids("kitchen"), ["k1"]);
+  assert.deepEqual(ids("exit"), ["e1"]);
+});
+
+test("un agente cambia de grupo solo al cambiar de zona", () => {
+  const { office, root } = makeRenderer();
+  office.setActive(true);
+  office.render(snapshot(agent("o1", "working"), agent("o2", "idle")));
+
+  office.render({
+    agents: new Map([
+      ["o1", agent("o1", "waiting_input")], // pasa a la cola
+      ["o2", agent("o2", "idle")], // se queda igual
+    ]),
+    change: { kind: "agent_updated", agent: { id: "o1" } },
+  });
+
+  const zones = zoneGroups(root);
+  assert.deepEqual(zones.queue.children.map((b) => b.dataset.id), ["o1"]);
+  assert.deepEqual(zones.kitchen.children.map((b) => b.dataset.id), ["o2"]);
+  assert.equal(zones.office.children.length, 0, "el grupo viejo queda vacío");
 });

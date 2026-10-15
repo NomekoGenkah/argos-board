@@ -37,7 +37,7 @@ Severidad: **Alta / Media / Baja**. Esfuerzo: **Bajo / Medio / Alto**.
   ✅ La referencia a `.plate-text` se cachea en el botón (`b.plateText`) al crearlo, en vez de `querySelector` cada segundo.
 
 - [x] **1.9 — No re-`append`ear todos los botones si el orden no cambió** (Baja · Medio) — `office.js:1345`
-  ✅ Resuelto del todo en 3.1: ya no se reinsertan botones en absoluto; el orden de prioridad se gestiona con `tabindex`.
+  ✅ Resuelto del todo en 3.1: no se reinsertan botones al cambiar el orden (el de prioridad se gestiona con `tabindex`); solo se mueve un botón cuando cambia de zona (3.2).
 
 - [x] **1.10 — Debounce del `ResizeObserver`** (Baja · Bajo) — `office.js:1306`
   ✅ El observer colapsa la ráfaga de redimensionados a un `requestAnimationFrame`.
@@ -75,10 +75,10 @@ Severidad: **Alta / Media / Baja**. Esfuerzo: **Bajo / Medio / Alto**.
 ## Accesibilidad
 
 - [x] **3.1 — No reescribir el orden del DOM en cada render** (Media · Medio) — `office.js:1345`
-  ✅ Ya no se reinsertan botones: el DOM queda en orden de creación y la prioridad (te esperan → oficina → cocina → salida) la gobierna un **tabindex móvil** (`deskOrder`/`tabStop`, un solo escritorio `tabindex=0`). Las flechas/Home/End recorren el grupo sin mover nodos (`nextDesk`, en `office-pure.js`), así no se pierde el foco ni salta el orden de tabulación al cambiar estados.
+  ✅ Ya no se reinsertan botones en cada render: la prioridad (te esperan → oficina → cocina → salida) la gobierna un **tabindex móvil** (`deskOrder`/`tabStop`, un solo escritorio `tabindex=0`). Las flechas/Home/End recorren el grupo sin mover nodos (`nextDesk`, en `office-pure.js`), así no se pierde el foco ni salta el orden de tabulación al cambiar estados. (El único movimiento de nodos —cambiar de grupo de zona— es de 3.2 y solo ocurre cuando el agente cambia de zona.)
 
-- [ ] **3.2 — Estructura semántica por zona** (Baja · Bajo) — `app.css:368`
-  `desks` es un contenedor plano de botones. Añadir `role="list"`/`group` con etiqueta por zona. La zona ya está en cada `aria-label` (`office.js:393-396`).
+- [x] **3.2 — Estructura semántica por zona** (Baja · Bajo) — `app.css:368`
+  ✅ `desks` deja de ser un contenedor plano: cada zona es un `role="group"` con `aria-label` (`zoneGroups`: cola, oficina, cocina, salida). Un botón vive en el grupo de su zona y **solo se mueve cuando el agente cambia de zona** (si tenía el foco, se le devuelve al moverlo). Los grupos son cajas estáticas sin caja propia en el flujo, así que las posiciones absolutas de los botones no cambian.
 
 - [ ] **3.3 — No recrear `title` cada segundo** (Baja · Bajo) — `office.js:458`
   Ya existe `aria-label`; actualizar el tooltip con menos frecuencia.

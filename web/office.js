@@ -125,6 +125,17 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
   tags.setAttribute("aria-hidden", "true");
   const desks = document.createElement("div");
   desks.className = "desks";
+  // Un grupo por zona (role="group" con su nombre): un botón vive dentro del
+  // suyo y solo se mueve de grupo si el agente cambia de zona.
+  const zoneGroups = {};
+  for (const zone of ["queue", "office", "kitchen", "exit"]) {
+    const g = document.createElement("div");
+    g.className = `desk-zone desk-zone-${zone}`;
+    g.setAttribute("role", "group");
+    g.setAttribute("aria-label", ZONE_TITLE[zone]);
+    desks.append(g);
+    zoneGroups[zone] = g;
+  }
   stage.append(canvas, tags, desks);
   root.append(stage);
   const ctx = canvas.getContext("2d");
@@ -325,7 +336,6 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     b.addEventListener("focus", () => {
       if (tabStop !== b.dataset.id) setTabStop(b.dataset.id);
     });
-    desks.append(b);
     return b;
   }
 
@@ -1362,7 +1372,16 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     }
     for (const a of visible) {
       if (!buttons.has(a.id)) buttons.set(a.id, createButton());
-      fillButton(buttons.get(a.id), a);
+      const b = buttons.get(a.id);
+      fillButton(b, a);
+      // De zona solo se cambia cuando el agente cambia de zona; si el botón
+      // tenía el foco, se devuelve al moverlo (mover un nodo lo desenfoca).
+      const g = zoneGroups[ZONE_OF[a.state] ?? "office"];
+      if (b.parentNode !== g) {
+        const focused = document.activeElement === b;
+        g.append(b);
+        if (focused) b.focus({ preventScroll: true });
+      }
     }
     if (change?.kind === "snapshot") sawSnapshot = true;
     // Un agente que llega con la página abierta entra por la puerta.
