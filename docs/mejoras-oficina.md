@@ -53,8 +53,10 @@ Severidad: **Alta / Media / Baja**. Esfuerzo: **Bajo / Medio / Alto**.
   ✅ `drawMascot` acepta `flip`: espeja patas, brazos (cada uno pasa al otro lado), cuerpo y ojos. Los caminantes lo activan cuando `tg.mx < p.x` (`flip: Boolean(tg) && tg.mx < p.x`).
   No se usaba `dx` para el `flip`; todos caminaban mirando a la derecha. `S.draw` ya soporta `flip` (`sprites.js:543-550`).
 
-- [ ] **2.2 — Waypoints y separación al caminar** (Media · Alto) — `office.js:601-626`
-  Interpolación recta: atraviesan tabiques (que tienen paso dibujado, `671-693`), escritorios y se solapan entre sí. Añadir puntos de paso por los huecos y una separación mínima.
+- [x] **2.2 — Waypoints y separación al caminar** (Media · Alto) — `office.js:601-626`
+  ✅ Los agentes ya no cruzan tabiques. `portals(layout)` saca los huecos de cada tabique (los mismos que dibuja `drawFloors`, 14 px) y `route(layout, from, to)` elige la ruta más corta entre zonas pasando por ellos (`office-geometry.js`). El caminante recorre esa polilínea con el mismo easing (`pointAlong`/`headingAlong`), y la orientación (`flip`) ahora sigue el tramo actual, no la meta, así no va de espaldas al girar.
+  Además se **apartan al caminar**: `separate()` empuja a los que se mueven si quedan a menos de `MIN_SEPARATION` (12 px), dejando quietos a los sentados. Todo es puro y va con pruebas (portales, ruta, polilínea, orientación y separación).
+  *Límite conocido:* dentro de una misma zona (p. ej. oficina) siguen yendo en recta, así que pueden rozar un escritorio; evitar obstáculos intra-zona pediría búsqueda de caminos completa y queda fuera.
 
 - [x] **2.3 — "Respiración" en reposo** (Media · Bajo) — `office.js:1110-1119, 1064-1082`
   ✅ Helper `breathe(a, t)`: bob de 1 px cada ~0.64 s, desincronizado con `S.hash(a.name)`, desactivado con `prefers-reduced-motion`. Se aplica a las mascotas quietas (escritorio, cocina sin sorbo, cola y salida) junto con lo que sostienen (taza, papel, maletín).

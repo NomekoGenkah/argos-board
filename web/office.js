@@ -32,6 +32,11 @@ import {
   door,
   kitchenLeft,
   computeTargets,
+  route,
+  polylineLength,
+  pointAlong,
+  headingAlong,
+  separate,
 } from "./office-geometry.js";
 
 // Se reexportan para no romper a quien ya las importaba de aquí.
@@ -45,6 +50,7 @@ const BOTTOM_GAP = 24; // hueco reservado bajo la oficina
 const FRAME_MS = 80; // ~12 fps: suave sin castigar la CPU (el fondo estático va cacheado)
 const SPEED = 75; // px de escena por segundo al caminar (media entre agentes)
 const MIN_WALK_S = 0.18; // tramos cortos: al menos este tiempo, para que se note el suavizado
+const MIN_SEPARATION = 12; // distancia mínima entre mascotas que caminan (no se pisan)
 // En las placas, una etiqueta corta (la completa va en el aria-label y el tooltip).
 const SHORT = { waiting_input: t("office.shortInput"), waiting_approval: t("office.shortApproval") };
 
@@ -162,7 +168,8 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
   const buttons = new Map(); // id -> botón
   const deskTags = new Map(); // id -> etiqueta del escritorio de quien anda en otro lugar
   const pos = new Map(); // id -> posición actual de la mascota
-  const journeys = new Map(); // id -> tramo recto en curso ({ x0, y0, tx, ty, t, dur })
+  const journeys = new Map(); // id -> recorrido en curso ({ pts, d, tx, ty, t, dur })
+  const facing = new Map(); // id -> ¿mira a la izquierda mientras camina?
   let targets = new Map(); // id -> { zone, mx, my, rect, plateTop }
   let layout = null;
   let layoutKey = "";
@@ -466,7 +473,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       drawMascot(a, p.x, p.y - (m.floats ? (t % 4 < 2 ? 1 : 0) : step), {
         legs: step ? "walk0" : "walk1",
         armDy: [step, 1 - step],
-        flip: Boolean(tg) && tg.mx < p.x, // mira hacia donde va
+        flip: facing.get(a.id) ?? (Boolean(tg) && tg.mx < p.x), // mira hacia donde va
       });
     }
     placeButtons();
@@ -474,48 +481,61 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
 
   function stepWalkers(dt) {
     const walking = new Set();
+    const nominal = new Map(); // id -> dónde está, antes de apartarlos
     for (const a of visible) {
       const tg = targets.get(a.id);
       if (!tg) {
         journeys.delete(a.id);
         continue;
       }
-      let p = pos.get(a.id);
+      const p = pos.get(a.id);
       if (!p || reduced.matches) {
-        p = { x: tg.mx, y: tg.my };
-        pos.set(a.id, p);
+        pos.set(a.id, { x: tg.mx, y: tg.my });
+        nominal.set(a.id, { x: tg.mx, y: tg.my });
         journeys.delete(a.id);
         continue;
       }
-      // Tramo recto en curso hacia este destino; si cambió, se empieza otro
-      // desde donde esté (así redirige a medio camino sin saltar).
+      // Recorrido en curso hacia este destino; si cambió, se traza otro desde
+      // donde esté (con puntos de paso por los huecos, sin cruzar tabiques).
       let j = journeys.get(a.id);
       if (!j || j.tx !== tg.mx || j.ty !== tg.my) {
-        const d = Math.hypot(tg.mx - p.x, tg.my - p.y);
+        const dest = { x: tg.mx, y: tg.my };
+        const pts = [{ x: p.x, y: p.y }, ...route(layout, p, dest), dest];
+        const d = polylineLength(pts);
         if (d < 0.5) {
-          p.x = tg.mx;
-          p.y = tg.my;
+          pos.set(a.id, dest);
+          nominal.set(a.id, dest);
           journeys.delete(a.id);
           continue;
         }
         const speed = SPEED * walkSpeed(S.hash(a.name));
-        j = { x0: p.x, y0: p.y, tx: tg.mx, ty: tg.my, t: 0, dur: Math.max(MIN_WALK_S, d / speed) };
+        j = { pts, d, tx: tg.mx, ty: tg.my, t: 0, dur: Math.max(MIN_WALK_S, d / speed) };
         journeys.set(a.id, j);
       }
       j.t += dt;
       const u = j.t / j.dur;
-      const e = easeInOut(u); // arranca y frena despacio
-      p.x = j.x0 + (j.tx - j.x0) * e;
-      p.y = j.y0 + (j.ty - j.y0) * e;
+      const covered = easeInOut(u) * j.d;
+      const q = u >= 1 ? { x: j.tx, y: j.ty } : pointAlong(j.pts, covered);
+      const h = u >= 1 ? 0 : headingAlong(j.pts, covered);
+      if (h) facing.set(a.id, h < 0); // mira hacia donde va (no la meta)
+      nominal.set(a.id, q);
       if (u >= 1) {
-        p.x = j.tx;
-        p.y = j.ty;
+        pos.set(a.id, q);
         journeys.delete(a.id);
         continue;
       }
       walking.add(a.id);
     }
+    // Los que caminan se apartan para no pisarse (los quietos no se mueven).
+    for (const [id, q] of separate(itemsOf(nominal, walking), MIN_SEPARATION)) pos.set(id, q);
     return walking;
+  }
+
+  /** Items para la separación: quién está dónde y quién se puede mover. */
+  function itemsOf(nominal, walking) {
+    const items = [];
+    for (const [id, q] of nominal) items.push({ id, x: q.x, y: q.y, movable: walking.has(id) });
+    return items;
   }
 
   // --- Capa estática ------------------------------------------------------------
@@ -1294,6 +1314,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
         buttons.delete(id);
         pos.delete(id);
         journeys.delete(id);
+        facing.delete(id);
       }
     }
     for (const a of visible) {

@@ -205,3 +205,166 @@ export function computeTargets(layout, groups, seatOf) {
   });
   return t;
 }
+
+// --- Navegación entre zonas (para no cruzar los tabiques) ----------------------
+const GAP = 14; // tamaño del paso en cada tabique (debe casar con drawFloors)
+
+/** Zonas con su nombre, para recorrerlas en orden. */
+function zoneList(layout) {
+  return ZONE_ORDER.map((name) => ({ name, ...layout.zones[name] }));
+}
+
+/** Zona que contiene (o más cerca queda de) un punto. */
+export function zoneAt(layout, x, y) {
+  let best = null;
+  let bestD = Infinity;
+  for (const name of ZONE_ORDER) {
+    const z = layout.zones[name];
+    const dx = Math.max(z.x - x, 0, x - (z.x + z.w));
+    const dy = Math.max(z.y - y, 0, y - (z.y + z.h));
+    const d = dx * dx + dy * dy;
+    if (d < bestD) {
+      bestD = d;
+      best = name;
+      if (d === 0) break;
+    }
+  }
+  return best;
+}
+
+/**
+ * Centros de los huecos que comunican cada par de zonas vecinas. Cada uno es un
+ * punto de paso para cruzar de una zona a otra sin atravesar el tabique.
+ */
+export function portals(layout) {
+  const zs = zoneList(layout);
+  const out = [];
+  for (const z of zs) {
+    // Tabique vertical a su izquierda (paso centrado en vertical).
+    if (z.x > 0) {
+      const w = zs.find((o) => o.name !== z.name && Math.abs(o.x + o.w - z.x) < 1 && o.y < z.y + z.h && z.y < o.y + o.h);
+      if (w) out.push({ a: w.name, b: z.name, x: z.x, y: gapCenterY(z) });
+    }
+    // Tabique horizontal encima (paso centrado en horizontal).
+    if (z.y > WALL_H) {
+      const w = zs.find((o) => o.name !== z.name && Math.abs(o.y + o.h - z.y) < 1 && o.x < z.x + z.w && z.x < o.x + o.w);
+      if (w) out.push({ a: w.name, b: z.name, x: gapCenterX(z), y: z.y });
+    }
+  }
+  return out;
+}
+
+const gapCenterX = (z) => z.x + Math.floor(z.w / 2);
+const gapCenterY = (z) => z.y + Math.floor(z.h / 2);
+
+/**
+ * Puntos intermedios (por los huecos) para ir de `from` a `to` sin cruzar
+ * tabiques. Lista vacía si ya están en la misma zona (recta) o no hay ruta.
+ * Entre las rutas posibles elige la más corta en distancia.
+ */
+export function route(layout, from, to) {
+  const fromZone = zoneAt(layout, from.x, from.y);
+  const toZone = zoneAt(layout, to.x, to.y);
+  if (fromZone === toZone) return [];
+  const adj = new Map(ZONE_ORDER.map((z) => [z, []]));
+  for (const p of portals(layout)) {
+    adj.get(p.a).push({ to: p.b, x: p.x, y: p.y });
+    adj.get(p.b).push({ to: p.a, x: p.x, y: p.y });
+  }
+  let best = null;
+  const walk = (zone, seen, pts) => {
+    if (zone === toZone) {
+      const len = polylineLength([from, ...pts, to]);
+      if (!best || len < best.len) best = { len, pts };
+      return;
+    }
+    for (const e of adj.get(zone) ?? []) {
+      if (seen.has(e.to)) continue;
+      seen.add(e.to);
+      walk(e.to, seen, [...pts, { x: e.x, y: e.y }]);
+      seen.delete(e.to);
+    }
+  };
+  walk(fromZone, new Set([fromZone]), []);
+  return best ? best.pts : [];
+}
+
+/** Longitud total de una polilínea. */
+export function polylineLength(pts) {
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) total += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+  return total;
+}
+
+/** Punto a `dist` de recorrido sobre una polilínea. */
+export function pointAlong(pts, dist) {
+  if (!pts.length) return { x: 0, y: 0 };
+  let left = Math.max(0, dist);
+  for (let i = 1; i < pts.length; i++) {
+    const dx = pts[i].x - pts[i - 1].x;
+    const dy = pts[i].y - pts[i - 1].y;
+    const seg = Math.hypot(dx, dy);
+    if (left <= seg || i === pts.length - 1) {
+      const f = seg === 0 ? 0 : Math.min(1, left / seg);
+      return { x: pts[i - 1].x + dx * f, y: pts[i - 1].y + dy * f };
+    }
+    left -= seg;
+  }
+  return { ...pts[pts.length - 1] };
+}
+
+/** Signo de la componente horizontal del tramo en el que cae `dist` (-1, 0, 1). */
+export function headingAlong(pts, dist) {
+  let left = Math.max(0, dist);
+  for (let i = 1; i < pts.length; i++) {
+    const dx = pts[i].x - pts[i - 1].x;
+    const seg = Math.hypot(dx, pts[i].y - pts[i - 1].y);
+    if (left < seg || i === pts.length - 1) return Math.sign(dx);
+    left -= seg;
+  }
+  return 0;
+}
+
+/**
+ * Aparta a los que caminan para que no se pisen; los quietos no se mueven.
+ * `items`: `[{ id, x, y, movable }]`. Devuelve `id -> { x, y }` de los movibles.
+ */
+export function separate(items, minDist, passes = 3) {
+  const pts = items.map((it) => ({ ...it }));
+  for (let k = 0; k < passes; k++) {
+    for (let i = 0; i < pts.length; i++) {
+      for (let j = i + 1; j < pts.length; j++) {
+        const a = pts[i];
+        const b = pts[j];
+        if (!a.movable && !b.movable) continue;
+        let dx = b.x - a.x;
+        let dy = b.y - a.y;
+        let d = Math.hypot(dx, dy);
+        if (d >= minDist) continue;
+        if (d < 1e-6) {
+          dx = a.id < b.id ? 1 : -1; // justo encima: dirección estable por id
+          dy = 0;
+          d = 1;
+        }
+        const ux = dx / d;
+        const uy = dy / d;
+        const push = (minDist - d) / 2;
+        if (a.movable && b.movable) {
+          a.x -= ux * push;
+          a.y -= uy * push;
+          b.x += ux * push;
+          b.y += uy * push;
+        } else if (a.movable) {
+          a.x -= ux * push * 2;
+          a.y -= uy * push * 2;
+        } else {
+          b.x += ux * push * 2;
+          b.y += uy * push * 2;
+        }
+      }
+    }
+  }
+  const out = new Map();
+  for (const it of pts) if (it.movable) out.set(it.id, { x: it.x, y: it.y });
+  return out;
+}

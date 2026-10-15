@@ -20,6 +20,13 @@ import {
   door,
   kitchenLeft,
   computeTargets,
+  zoneAt,
+  portals,
+  route,
+  polylineLength,
+  pointAlong,
+  headingAlong,
+  separate,
 } from "../../web/office-geometry.js";
 import { pickScale, ZONE_ORDER } from "../../web/office-pure.js";
 
@@ -112,4 +119,120 @@ test("computeTargets: un sitio de pie por agente, en su zona", () => {
 
   const e = t.get("e1");
   assert.equal(e.my, l.zones.exit.y + LABEL_H + 12);
+});
+
+// --- Navegación y separación ---------------------------------------------------
+
+const inZone = (l, name) => ({ x: l.zones[name].x + 2, y: l.zones[name].y + LABEL_H + 2 });
+const pairKey = (p) => [p.a, p.b].sort().join("|");
+
+test("zoneAt: sabe en qué zona cae un punto", () => {
+  const l = sceneLayout(3, 1200, counts({ desks: 1, queue: 1, kitchen: 1, exit: 1 }));
+  for (const name of ZONE_ORDER) {
+    const pt = { x: l.zones[name].x + 2, y: l.zones[name].y + 2 };
+    assert.equal(zoneAt(l, pt.x, pt.y), name);
+  }
+});
+
+test("portals: un paso por cada par de zonas vecinas", () => {
+  const wide = sceneLayout(3, 1200, counts({ desks: 1, queue: 1, kitchen: 1, exit: 1 }));
+  const widePairs = portals(wide).map(pairKey).sort();
+  assert.deepEqual(widePairs, ["exit|kitchen", "exit|queue", "kitchen|office", "office|queue"]);
+  for (const p of portals(wide)) {
+    assert.ok(p.x >= 0 && p.y >= WALL_H, "el paso cae dentro de la escena");
+  }
+  const narrow = sceneLayout(2, 300, counts({ desks: 1, queue: 1, kitchen: 1, exit: 1 }));
+  assert.deepEqual(narrow && portals(narrow).map(pairKey).sort(), ["exit|kitchen", "kitchen|office", "office|queue"]);
+});
+
+test("route: misma zona va recta (sin puntos de paso)", () => {
+  const l = sceneLayout(3, 1200, counts({ desks: 2 }));
+  const a = inZone(l, "office");
+  const b = { x: a.x + 20, y: a.y + 20 };
+  assert.deepEqual(route(l, a, b), []);
+});
+
+test("route: cruza por el hueco del tabique, no en línea recta", () => {
+  const l = sceneLayout(3, 1200, counts({ desks: 1, queue: 1 }));
+  const from = { x: 1, y: l.zones.office.y + 40 };
+  const to = { x: 1, y: l.zones.queue.y + 20 };
+  const r = route(l, from, to);
+  assert.equal(r.length, 1, "un solo tabique de por medio");
+  assert.equal(r[0].y, l.zones.office.y, "el paso está en el borde entre las dos zonas");
+});
+
+test("route: entre zonas lejanas pasa por dos pasos", () => {
+  const l = sceneLayout(3, 1200, counts({ desks: 1, queue: 1, kitchen: 1, exit: 1 }));
+  const r = route(l, inZone(l, "office"), inZone(l, "exit"));
+  assert.equal(r.length, 2);
+  for (const p of r) {
+    const onEdge = (v, lo, hi) => Math.abs(v - lo) < 1 || Math.abs(v - hi) < 1;
+    const someBoundary = ZONE_ORDER.some((n) => {
+      const z = l.zones[n];
+      return (onEdge(p.x, z.x, z.x + z.w) && p.y >= z.y && p.y <= z.y + z.h) || (onEdge(p.y, z.y, z.y + z.h) && p.x >= z.x && p.x <= z.x + z.w);
+    });
+    assert.ok(someBoundary, "cada paso cae en el borde de una zona");
+  }
+});
+
+test("polylineLength y pointAlong: largo y punto a una distancia", () => {
+  assert.equal(polylineLength([{ x: 0, y: 0 }, { x: 3, y: 4 }]), 5);
+  assert.deepEqual(pointAlong([{ x: 0, y: 0 }, { x: 10, y: 0 }], 4), { x: 4, y: 0 });
+  assert.deepEqual(pointAlong([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }], 15), { x: 10, y: 5 });
+  assert.deepEqual(pointAlong([{ x: 0, y: 0 }, { x: 10, y: 0 }], 99), { x: 10, y: 0 }, "no se pasa del final");
+  assert.deepEqual(pointAlong([{ x: 0, y: 0 }, { x: 10, y: 0 }], -3), { x: 0, y: 0 }, "no se pasa del principio");
+});
+
+test("headingAlong: la dirección del tramo actual (0 si es vertical)", () => {
+  const l = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }];
+  assert.equal(headingAlong(l, 5), 1, "primer tramo hacia la derecha");
+  assert.equal(headingAlong(l, 15), 0, "segundo tramo vertical: sin dirección");
+  assert.equal(headingAlong([{ x: 0, y: 0 }, { x: -10, y: 2 }], 4), -1, "hacia la izquierda");
+});
+
+test("separate: dos que caminan se apartan hasta la distancia mínima", () => {
+  const out = separate(
+    [
+      { id: "a", x: 0, y: 0, movable: true },
+      { id: "b", x: 1, y: 0, movable: true },
+    ],
+    12,
+  );
+  const a = out.get("a");
+  const b = out.get("b");
+  assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= 12 - 0.01, "quedan separados");
+  assert.ok(a.x < 0 && b.x > 1, "el empuje va hacia fuera");
+});
+
+test("separate: el que está quieto no se mueve", () => {
+  const out = separate(
+    [
+      { id: "m", x: 0, y: 0, movable: true },
+      { id: "f", x: 1, y: 0, movable: false },
+    ],
+    12,
+  );
+  assert.equal(out.has("f"), false, "el quieto no se devuelve ni se toca");
+  assert.ok(Math.hypot(out.get("m").x - 1, out.get("m").y) >= 12 - 0.01, "el que camina se aparta");
+});
+
+test("separate: lejos no cambia nada y solapar del todo no explota", () => {
+  const far = separate(
+    [
+      { id: "a", x: 0, y: 0, movable: true },
+      { id: "b", x: 100, y: 0, movable: true },
+    ],
+    12,
+  );
+  assert.deepEqual(far.get("a"), { x: 0, y: 0 });
+
+  const stack = separate(
+    [
+      { id: "a", x: 5, y: 5, movable: true },
+      { id: "b", x: 5, y: 5, movable: true },
+    ],
+    12,
+  );
+  const d = Math.hypot(stack.get("a").x - stack.get("b").x, stack.get("a").y - stack.get("b").y);
+  assert.ok(Number.isFinite(d) && d >= 12 - 0.01, "se acaban separando");
 });
