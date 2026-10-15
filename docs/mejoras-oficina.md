@@ -90,8 +90,9 @@ Severidad: **Alta / Media / Baja**. Esfuerzo: **Bajo / Medio / Alto**.
 - [ ] **4.1 — Partir `office.js` y nombrar constantes** (Media · Medio)
   1383 líneas mezclando geometría, dibujo y DOM, con offsets mágicos repetidos (`x + 32`, `y + 10`, etc.). Extraer constantes con nombre y, opcionalmente, separar `office-geometry.js` / `office-scene.js` / orquestación (como ya se hizo con `sprites.js`).
 
-- [ ] **4.2 — Tests de las funciones puras** (Media · Bajo) — `tests/web/`
-  No hay `office.test.mjs`. Testear `pickScale`, `assignSeats`, `miniLine`, `groupByZone`, `ZONE_OF` (`office.js:15-127, 133-180`). `computeLayout`/`layoutAt` acceden a DOM (`220-230`): separar el cálculo puro para poder testear la geometría.
+- [x] **4.2 — Tests de las funciones puras** (Media · Bajo) — `tests/web/`
+  ✅ La lógica pura se movió a `web/office-pure.js` (sin DOM): `ZONE_OF`, `pickScale`, `assignSeats`, `miniLine`, `groupByZone`; `office.js` los importa y reexporta. Nuevo `tests/web/office-pure.test.mjs` (15 pruebas: escalas, reparto de escritorios con colisiones/huecos, miniatura de líneas y agrupación/orden por zona). Además sigue `tests/web/office.test.mjs` como prueba de humo del renderizador.
+  `computeLayout`/`layoutAt` siguen dentro del renderizador porque usan `window`/`root`; separarlos queda como parte de 4.1.
 
 - [ ] **4.3 — Mover helpers compartidos a un módulo neutral** (Baja · Bajo) — `office.js:11`
   `LABELS`, `KINDS`, `formatDuration`, `sortAgents` se importan de `render.js`, que arrastra `term.js`, `console.js`, `launcher.js`. Mover a `agents.js`/`util.js` (también desbloquea 4.2).
