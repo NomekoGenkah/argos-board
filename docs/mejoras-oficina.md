@@ -64,13 +64,14 @@ Severidad: **Alta / Media / Baja**. Esfuerzo: **Bajo / Medio / Alto**.
 - [x] **2.4 — Easing y velocidad por agente** (Baja · Bajo) — `office.js:620`
   ✅ El caminante ya no va a velocidad constante. Cada tramo guarda su recta (`journeys`: origen, destino, duración) y la recorre con `easeInOut` (smoothstep: arranca y frena despacio, sin tirones). La velocidad varía ±10 % por agente (`walkSpeed(S.hash(name))`, estable por nombre) y los tramos cortos tienen un mínimo (`MIN_WALK_S`) para que se note el suavizado. Si el destino cambia a medio camino, empieza otro tramo desde donde esté (redirige sin saltar). `easeInOut` y `walkSpeed` son puras y van con pruebas.
 
-- [ ] **2.5 — Señalizar mejor los cambios de estado** (Baja · Medio)
-  Los que reconectan tras una caída no entran por la puerta (solo `agent_added` con snapshot previo, `office.js:1336-1340`). Pulsos breves al pasar a `error`/`waiting_*` (más allá de bubble/spotlight).
+- [x] **2.5 — Señalizar mejor los cambios de estado** (Baja · Medio)
+  ✅ Ahora, además de los recién llegados (`agent_added` con snapshot previo), **quien vuelve de una caída entra por la puerta**: se guarda el estado anterior (`prevState`) y una transición desde `disconnected` (a cualquier estado activo) pone la mascota en la puerta para que camine hasta su sitio. Los cambios de zona ya se veían al caminar; esto cubre el caso en que la zona no cambia.
+  Además hay un **pulso breve** (anillo que se abre y se desvanece, `PULSE_MS` = 500 ms) al pasar a `error` o `waiting_*`, encima de la burbuja/foco que ya existían. Se registra la transición en `rebuild` y el anillo se dibuja con el resto (`drawPulses`). Con `prefers-reduced-motion` ni se registra. Tres pruebas nuevas en `office.test.mjs` (puerta al reconectar, pulso y ancho estable del botón).
 
-- [ ] **2.6 — Pulido de detalles** (Baja · Bajo)
-  - Segundero con `Math.round` salta (`877-882`) → suavizar.
-  - Vapor (`STEAM`) alterna a 120 ms, quizá muy rápido (`1039, 1080`).
-  - La caja clickeable del botón salta de tamaño al llegar al destino (`placeButtons`, `407-419`) → animar o mantener estable.
+- [x] **2.6 — Pulido de detalles** (Baja · Bajo)
+  - ✅ **Segundero**: pasa de `getSeconds()` (saltos de 6° por segundo) a `getSeconds() + getMilliseconds()/1000`, así barre de forma continua.
+  - ✅ **Vapor**: `STEAM` alternaba cada frame (~0.08 s) y mareaba. Nuevo `steam(t, fase)` que cambia cada 4 frames (~0.32 s), en cafetera y taza.
+  - ✅ **Caja del botón**: mientras la mascota camina, el botón usaba una caja de `SLOT_W` y placa `SLOT_TOP`; en la oficina el destino es más ancho (`POD_W`) y la placa va más abajo, así que **al llegar saltaba**. Ahora la caja conserva el **tamaño, desfase y placa del destino** durante todo el trayecto (y sigue el movimiento de la mascota), de modo que al llegar solo se desliza, no cambia de forma. `WALK_INSET`/`SLOT_W`/`SLOT_TOP` quedan sin uso en `office.js`.
 
 ---
 
@@ -90,7 +91,7 @@ Severidad: **Alta / Media / Baja**. Esfuerzo: **Bajo / Medio / Alto**.
 ## Mantenibilidad y otras
 
 - [x] **4.1 — Partir `office.js` y nombrar constantes** (Media · Medio)
-  ✅ La **geometría** se fue a `web/office-geometry.js` (puro, sin DOM): tamaños base, `sceneLayout`/`bestLayout`, `podOrigin`, `door`, `kitchenLeft`, `computeTargets` y las constantes de sitio (`SPOT`, `WALK_INSET`, `TAG_INSET`). `office.js` pasa de ~1457 a 1351 líneas y se queda con el dibujo, el DOM y la orquestación; solo conserva un `computeLayout()` fino que lee el DOM y delega. De paso se nombraron los offsets que estaban repartidos: `COMPACT_PX`, `MIN_VIEW_H`, `BOTTOM_GAP`, y dentro de la geometría `WIDE_VW`, `RIGHT_FRAC`, `QUEUE_MIN_H`, `SLOT_GAP`, `DOOR_INSET`, etc. Nuevo `tests/web/office-geometry.test.mjs` (8 pruebas). La separación de `office-scene.js` (dibujo) queda como opcional no hecha: arrastraría ~12 dependencias del cierre y más riesgo que valor.
+  ✅ La **geometría** se fue a `web/office-geometry.js` (puro, sin DOM): tamaños base, `sceneLayout`/`bestLayout`, `podOrigin`, `door`, `kitchenLeft`, `computeTargets` y las constantes de sitio (`SPOT`, `TAG_INSET`). `office.js` pasa de ~1457 a 1351 líneas y se queda con el dibujo, el DOM y la orquestación; solo conserva un `computeLayout()` fino que lee el DOM y delega. De paso se nombraron los offsets que estaban repartidos: `COMPACT_PX`, `MIN_VIEW_H`, `BOTTOM_GAP`, y dentro de la geometría `WIDE_VW`, `RIGHT_FRAC`, `QUEUE_MIN_H`, `SLOT_GAP`, `DOOR_INSET`, etc. Nuevo `tests/web/office-geometry.test.mjs` (8 pruebas). La separación de `office-scene.js` (dibujo) queda como opcional no hecha: arrastraría ~12 dependencias del cierre y más riesgo que valor.
 
 - [x] **4.2 — Tests de las funciones puras** (Media · Bajo) — `tests/web/`
   ✅ La lógica pura se movió a `web/office-pure.js` (sin DOM): `ZONE_OF`, `pickScale`, `assignSeats`, `miniLine`, `groupByZone`; `office.js` los importa y reexporta. Nuevo `tests/web/office-pure.test.mjs` (15 pruebas: escalas, reparto de escritorios con colisiones/huecos, miniatura de líneas y agrupación/orden por zona). Además sigue `tests/web/office.test.mjs` como prueba de humo del renderizador.

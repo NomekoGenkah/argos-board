@@ -277,3 +277,52 @@ test("un agente cambia de grupo solo al cambiar de zona", () => {
   assert.deepEqual(zones.kitchen.children.map((b) => b.dataset.id), ["o2"]);
   assert.equal(zones.office.children.length, 0, "el grupo viejo queda vacío");
 });
+
+test("quien vuelve de una caída entra por la puerta", () => {
+  const { office, root } = makeRenderer();
+  office.setActive(true);
+  office.render(snapshot(agent("d1", "disconnected")));
+  const stageW = parseFloat(root.children[0].style.width);
+  const b = zoneGroups(root).office.children[0];
+  assert.ok(parseFloat(b.style.left) < stageW / 2, "desconectado: sigue en su escritorio (izquierda)");
+
+  office.render({
+    agents: new Map([["d1", agent("d1", "working")]]),
+    change: { kind: "agent_updated", agent: { id: "d1" } },
+  });
+  assert.ok(parseFloat(b.style.left) > stageW / 2, "al reconectar entra por la puerta (derecha)");
+});
+
+test("un pulso breve avisa al pasar a error", () => {
+  const { office } = makeRenderer();
+  office.setActive(true);
+  office.render(snapshot(agent("p1", "working")));
+
+  // Mismo estado: no hay transición, así que no hay pulso.
+  rec.fills = 0;
+  office.render({ agents: new Map([["p1", agent("p1", "working")]]), change: { kind: "agent_updated", agent: { id: "p1" } } });
+  const same = rec.fills;
+
+  // Pasa a error: la transición añade el anillo del pulso.
+  rec.fills = 0;
+  office.render({ agents: new Map([["p1", agent("p1", "error")]]), change: { kind: "agent_updated", agent: { id: "p1" } } });
+  assert.ok(rec.fills > same, `el pulso añade dibujo (${rec.fills} > ${same})`);
+});
+
+test("la caja del botón no salta de tamaño al llegar al destino", () => {
+  const rest = makeRenderer();
+  rest.office.setActive(true);
+  rest.office.render(snapshot(agent("z1", "working")));
+  const restW = zoneGroups(rest.root).office.children[0].style.width;
+
+  const walk = makeRenderer();
+  walk.office.setActive(true);
+  walk.office.render(snapshot(agent("z1", "disconnected")));
+  walk.office.render({
+    agents: new Map([["z1", agent("z1", "working")]]),
+    change: { kind: "agent_updated", agent: { id: "z1" } },
+  });
+  const walkW = zoneGroups(walk.root).office.children[0].style.width;
+
+  assert.equal(walkW, restW, "mismo ancho mientras camina que ya en su sitio");
+});

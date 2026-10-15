@@ -19,12 +19,9 @@ import {
   LABEL_H,
   POD_W,
   POD_H,
-  SLOT_W,
-  SLOT_TOP,
   UNIT_W,
   COUNTER_H,
   YOUR_DESK_W,
-  WALK_INSET,
   TAG_INSET,
   seatsUsed,
   bestLayout,
@@ -53,6 +50,12 @@ const MIN_WALK_S = 0.18; // tramos cortos: al menos este tiempo, para que se not
 const MIN_SEPARATION = 12; // distancia mínima entre mascotas que caminan (no se pisan)
 // En las placas, una etiqueta corta (la completa va en el aria-label y el tooltip).
 const SHORT = { waiting_input: t("office.shortInput"), waiting_approval: t("office.shortApproval") };
+
+// Vuelve de una caída: entra por la puerta, igual que quien llega de nuevo.
+const RECONNECT_FROM = "disconnected";
+// Estados que reclaman tu atención: además de su burbuja/foco, un pulso breve.
+const PULSE_STATES = new Set(["error", "waiting_input", "waiting_approval"]);
+const PULSE_MS = 500; // cuánto dura el pulso
 
 const SCENE = {
   light: {
@@ -170,6 +173,8 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
   const pos = new Map(); // id -> posición actual de la mascota
   const journeys = new Map(); // id -> recorrido en curso ({ pts, d, tx, ty, t, dur })
   const facing = new Map(); // id -> ¿mira a la izquierda mientras camina?
+  const prevState = new Map(); // id -> estado anterior (para ver transiciones)
+  const pulses = new Map(); // id -> instante (ms) del pulso al reclamar atención
   let targets = new Map(); // id -> { zone, mx, my, rect, plateTop }
   let layout = null;
   let layoutKey = "";
@@ -268,10 +273,11 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       const tg = targets.get(a.id);
       const p = pos.get(a.id);
       if (!b || !tg || !p) continue;
+      // Misma caja (tamaño, desfase y placa) en todo el trayecto que en el
+      // destino: así al llegar no salta de tamaño, solo se desliza.
       const rest = atRest(p, tg);
-      const r = rest ? tg.rect : { x: p.x - WALK_INSET.x, y: p.y - WALK_INSET.y, w: SLOT_W, h: layout.slotH - 2 };
-      const plateTop = rest ? tg.plateTop : SLOT_TOP;
-      const geom = [r.x, r.y, r.w, r.h, plateTop].map((v) => Math.round(v * scale));
+      const r = rest ? tg.rect : { x: p.x - (tg.mx - tg.rect.x), y: p.y - (tg.my - tg.rect.y), w: tg.rect.w, h: tg.rect.h };
+      const geom = [r.x, r.y, r.w, r.h, tg.plateTop].map((v) => Math.round(v * scale));
       const key = geom.join("|");
       if (b.dataset.geom === key) continue;
       b.dataset.geom = key;
@@ -460,6 +466,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     drawQueueZone(th, t);
     drawExitZone(th, t);
     drawKitchenZone(th, t);
+    drawPulses(now); // avisos breves: un anillo que se abre y se desvanece
     drawOffice(th, t, walking);
 
     // Los que caminan van encima de todo.
@@ -477,6 +484,33 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       });
     }
     placeButtons();
+  }
+
+  // Un anillo que se abre y se desvanece cuando alguien reclama tu atención
+  // (error o te espera). Es solo decoración; el aviso de verdad es su burbuja.
+  function drawPulses(now) {
+    for (const [id, t0] of pulses) {
+      const k = (now - t0) / PULSE_MS;
+      if (k < 0 || k >= 1) {
+        pulses.delete(id);
+        continue;
+      }
+      const p = pos.get(id);
+      const a = agents.get(id);
+      if (!p || !a) continue;
+      const alpha = (1 - k) * 0.7;
+      const color = a.state === "error" ? `rgb(217 54 25 / ${alpha})` : `rgb(242 200 75 / ${alpha})`;
+      ringPixels(p.x + 8, p.y + 10, 5 + k * 15, color);
+    }
+  }
+
+  function ringPixels(cx, cy, r, color) {
+    ctx.fillStyle = color;
+    const steps = Math.max(10, Math.round(r * 8));
+    for (let i = 0; i < steps; i++) {
+      const ang = (i / steps) * Math.PI * 2;
+      ctx.fillRect(Math.round(cx + Math.cos(ang) * r), Math.round(cy + Math.sin(ang) * r * 0.6), 1, 1);
+    }
   }
 
   function stepWalkers(dt) {
@@ -796,7 +830,9 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
   }
 
   function drawClock(th, cx, cy, date) {
-    const sec = date.getSeconds() / 60;
+    // Con milisegundos el segundero barre; sin ellos daba un salto de 6° por
+    // segundo (muy brusco).
+    const sec = (date.getSeconds() + date.getMilliseconds() / 1000) / 60;
     const min = (date.getMinutes() + sec) / 60;
     const hr = ((date.getHours() % 12) + min) / 12;
     hand(cx, cy, hr, 3.5, S.OUTLINE);
@@ -811,6 +847,9 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       rect(cx + Math.round(Math.sin(a) * i), cy - Math.round(Math.cos(a) * i), 1, 1, color);
     }
   }
+
+  // El vapor cambiaba cada frame (~0.08 s) y mareaba; cada 4 (~0.32 s) se ve.
+  const steam = (t, phase = 0) => S.STEAM[((t >> 2) + phase) % 2];
 
   // El emblema de Argos: placa y ojo (estáticos) más una pupila que mira al
   // primero de la fila y un parpadeo ocasional (dinámicos).
@@ -979,7 +1018,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     rect(cx + 1, cy + 11, cw - 2, 7, th.counterFront);
     for (let x = cx + 20; x < cx + cw - 18; x += 12) rect(x, cy + 13, 3, 1, th.deskTopHi);
     S.draw(ctx, S.COFFEE_MACHINE, cx + 4, cy - 3, coffeePal);
-    if (!reduced.matches) S.draw(ctx, S.STEAM[t % 2], cx + 6, cy - 7, steamPal);
+    if (!reduced.matches) S.draw(ctx, steam(t), cx + 6, cy - 7, steamPal);
     const sink = cx + Math.floor(cw / 2) - 6;
     rect(sink, cy + 7, 12, 3, "#9aa4a8");
     rect(sink + 1, cy + 8, 10, 1, "#7d878b");
@@ -1021,7 +1060,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       } else {
         const mx = side ? p.x - 9 : p.x + 20;
         S.draw(ctx, S.MUG, mx, p.y + 8 + bob, mugPal);
-        if (!reduced.matches) S.draw(ctx, S.STEAM[(t + i) % 2], mx, p.y + 4 + bob, steamPal);
+        if (!reduced.matches) S.draw(ctx, steam(t, i), mx, p.y + 4 + bob, steamPal);
       }
     });
   }
@@ -1315,8 +1354,11 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
         pos.delete(id);
         journeys.delete(id);
         facing.delete(id);
+        prevState.delete(id);
+        pulses.delete(id);
       }
     }
+    const reentering = []; // vuelven de una caída: entran por la puerta
     for (const a of visible) {
       if (!buttons.has(a.id)) buttons.set(a.id, createButton());
       const b = buttons.get(a.id);
@@ -1329,12 +1371,22 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
         g.append(b);
         if (focused) b.focus({ preventScroll: true });
       }
+      // Transición de estado: reconectar (entra por la puerta) o reclamar
+      // atención (pulso). Todo lo demás ya se ve al cambiar de zona.
+      const before = prevState.get(a.id);
+      if (before && before !== a.state) {
+        if (before === RECONNECT_FROM && a.state !== RECONNECT_FROM && a.state !== "exited") reentering.push(a.id);
+        else if (PULSE_STATES.has(a.state) && !reduced.matches) pulses.set(a.id, performance.now());
+      }
+      prevState.set(a.id, a.state);
     }
     if (change?.kind === "snapshot") sawSnapshot = true;
-    // Un agente que llega con la página abierta entra por la puerta.
-    if (change?.kind === "agent_added" && sawSnapshot && layout && !reduced.matches) {
+    // Entran por la puerta: los recién llegados y los que vuelven de una caída.
+    const arriving = [...reentering];
+    if (change?.kind === "agent_added" && sawSnapshot) arriving.push(change.agent.id);
+    if (arriving.length && layout && !reduced.matches) {
       const d = door(layout);
-      pos.set(change.agent.id, { x: d.x, y: d.y + 6 });
+      for (const id of arriving) pos.set(id, { x: d.x, y: d.y + 6 });
     }
     // Orden de prioridad (ZONE_ORDER): manda la navegación con flechas, no el
     // orden del DOM (que queda estable). Dentro de la oficina, por asiento.

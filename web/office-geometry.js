@@ -29,8 +29,6 @@ const SPOT = {
   exit: { x: 11, y: 12 },
 };
 
-// Caja del botón mientras la mascota camina (no está en su hueco).
-export const WALK_INSET = { x: 11, y: 12 };
 // Etiqueta del escritorio de quien anda fuera: separación por dentro del hueco.
 export const TAG_INSET = { x: 4, y: 8 };
 
