@@ -6,7 +6,9 @@ import { t } from "./i18n.js";
 import { createTermView } from "./term.js";
 import { DEFAULT_TERM_THEME } from "./termthemes.js";
 import { createConsole, inputBlocker } from "./console.js";
-import { LABELS, KINDS, fillLaunch } from "./render.js";
+import { LABELS } from "./agents.js";
+import { KINDS } from "./kinds.js";
+import { fillLaunch } from "./render.js";
 import { wireStopButton } from "./launcher.js";
 
 export function createAgentDialog({ dialog, sendInput, voice, uploadFile, stop, onBoard, prefs }) {

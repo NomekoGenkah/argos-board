@@ -94,8 +94,8 @@ Severidad: **Alta / Media / Baja**. Esfuerzo: **Bajo / Medio / Alto**.
   ✅ La lógica pura se movió a `web/office-pure.js` (sin DOM): `ZONE_OF`, `pickScale`, `assignSeats`, `miniLine`, `groupByZone`; `office.js` los importa y reexporta. Nuevo `tests/web/office-pure.test.mjs` (15 pruebas: escalas, reparto de escritorios con colisiones/huecos, miniatura de líneas y agrupación/orden por zona). Además sigue `tests/web/office.test.mjs` como prueba de humo del renderizador.
   `computeLayout`/`layoutAt` siguen dentro del renderizador porque usan `window`/`root`; separarlos queda como parte de 4.1.
 
-- [ ] **4.3 — Mover helpers compartidos a un módulo neutral** (Baja · Bajo) — `office.js:11`
-  `LABELS`, `KINDS`, `formatDuration`, `sortAgents` se importan de `render.js`, que arrastra `term.js`, `console.js`, `launcher.js`. Mover a `agents.js`/`util.js` (también desbloquea 4.2).
+- [x] **4.3 — Mover helpers compartidos a un módulo neutral** (Baja · Bajo) — `office.js:11`
+  ✅ Nuevo `web/agents.js` (sin DOM) con `LABELS`, `formatDuration`, `sortAgents` y reexport de `KINDS`; `render.js` los importa de ahí y `dialog.js`/`launcher.js` ya no pasan por render para `LABELS`/`KINDS`. `office.js` dejó de importar `render.js`, así que importarlo **ya no arrastra** `term.js`/`console.js`/`launcher.js` (verificado: `import('./web/office.js')` sin DOM). De paso desaparece el ciclo `render → launcher → render`.
 
 - [ ] **4.4 — Orden de zonas explícito al dibujar señales** (Baja · Bajo) — `office.js:580`
   `Object.keys(layout.zones)` depende del orden de inserción para la superposición. Hacerlo explícito.

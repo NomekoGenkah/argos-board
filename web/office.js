@@ -8,7 +8,8 @@
 // (aria-hidden); lo interactivo y accesible son botones HTML encima de cada agente.
 
 import * as S from "./sprites.js";
-import { LABELS, KINDS, formatDuration, sortAgents } from "./render.js";
+import { LABELS, formatDuration, sortAgents } from "./agents.js";
+import { KINDS } from "./kinds.js";
 import { stripAnsi } from "./ansi.js";
 import { t } from "./i18n.js";
 import { ZONE_OF, pickScale, assignSeats, miniLine, groupByZone } from "./office-pure.js";

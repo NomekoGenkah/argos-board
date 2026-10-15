@@ -3,7 +3,7 @@
 
 import { t } from "./i18n.js";
 
-import { KINDS } from "./render.js";
+import { KINDS } from "./kinds.js";
 
 const KIND_ORDER = ["claude", "opencode", "agy", "copilot"];
 
