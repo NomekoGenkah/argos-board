@@ -1,7 +1,7 @@
 // Pruebas de la lógica pura de la Oficina (sin DOM ni canvas).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ZONE_OF, pickScale, assignSeats, miniLine, groupByZone, nextDesk } from "../../web/office-pure.js";
+import { ZONE_OF, ZONE_ORDER, pickScale, assignSeats, miniLine, groupByZone, nextDesk } from "../../web/office-pure.js";
 
 test("ZONE_OF: cada estado cae en su lugar", () => {
   assert.deepEqual(ZONE_OF.working, "office");
@@ -11,6 +11,11 @@ test("ZONE_OF: cada estado cae en su lugar", () => {
   assert.deepEqual(ZONE_OF.waiting_approval, "queue");
   assert.deepEqual(ZONE_OF.idle, "kitchen");
   assert.deepEqual(ZONE_OF.exited, "exit");
+});
+
+test("ZONE_ORDER: orden canónico de las zonas", () => {
+  assert.deepEqual(ZONE_ORDER, ["queue", "office", "kitchen", "exit"]);
+  for (const zone of Object.values(ZONE_OF)) assert.ok(ZONE_ORDER.includes(zone), `${zone} está en el orden`);
 });
 
 test("pickScale: escala entera según el ancho", () => {

@@ -13,6 +13,12 @@ export const ZONE_OF = {
   exited: "exit",
 };
 
+/**
+ * Orden canónico de las zonas (de más te-reclaman a terminado). Manda la
+ * apilación, el orden de dibujo de los carteles y la navegación con flechas.
+ */
+export const ZONE_ORDER = ["queue", "office", "kitchen", "exit"];
+
 /** Escala entera mínima según el ancho (por debajo, todo se vería diminuto). */
 export function pickScale(cssWidth) {
   if (cssWidth >= 1300) return 4;

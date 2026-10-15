@@ -87,8 +87,8 @@ Severidad: **Alta / Media / Baja**. Esfuerzo: **Bajo / Medio / Alto**.
 
 ## Mantenibilidad y otras
 
-- [ ] **4.1 — Partir `office.js` y nombrar constantes** (Media · Medio)
-  1383 líneas mezclando geometría, dibujo y DOM, con offsets mágicos repetidos (`x + 32`, `y + 10`, etc.). Extraer constantes con nombre y, opcionalmente, separar `office-geometry.js` / `office-scene.js` / orquestación (como ya se hizo con `sprites.js`).
+- [x] **4.1 — Partir `office.js` y nombrar constantes** (Media · Medio)
+  ✅ La **geometría** se fue a `web/office-geometry.js` (puro, sin DOM): tamaños base, `sceneLayout`/`bestLayout`, `podOrigin`, `door`, `kitchenLeft`, `computeTargets` y las constantes de sitio (`SPOT`, `WALK_INSET`, `TAG_INSET`). `office.js` pasa de ~1457 a 1351 líneas y se queda con el dibujo, el DOM y la orquestación; solo conserva un `computeLayout()` fino que lee el DOM y delega. De paso se nombraron los offsets que estaban repartidos: `COMPACT_PX`, `MIN_VIEW_H`, `BOTTOM_GAP`, y dentro de la geometría `WIDE_VW`, `RIGHT_FRAC`, `QUEUE_MIN_H`, `SLOT_GAP`, `DOOR_INSET`, etc. Nuevo `tests/web/office-geometry.test.mjs` (8 pruebas). La separación de `office-scene.js` (dibujo) queda como opcional no hecha: arrastraría ~12 dependencias del cierre y más riesgo que valor.
 
 - [x] **4.2 — Tests de las funciones puras** (Media · Bajo) — `tests/web/`
   ✅ La lógica pura se movió a `web/office-pure.js` (sin DOM): `ZONE_OF`, `pickScale`, `assignSeats`, `miniLine`, `groupByZone`; `office.js` los importa y reexporta. Nuevo `tests/web/office-pure.test.mjs` (15 pruebas: escalas, reparto de escritorios con colisiones/huecos, miniatura de líneas y agrupación/orden por zona). Además sigue `tests/web/office.test.mjs` como prueba de humo del renderizador.
@@ -97,8 +97,8 @@ Severidad: **Alta / Media / Baja**. Esfuerzo: **Bajo / Medio / Alto**.
 - [x] **4.3 — Mover helpers compartidos a un módulo neutral** (Baja · Bajo) — `office.js:11`
   ✅ Nuevo `web/agents.js` (sin DOM) con `LABELS`, `formatDuration`, `sortAgents` y reexport de `KINDS`; `render.js` los importa de ahí y `dialog.js`/`launcher.js` ya no pasan por render para `LABELS`/`KINDS`. `office.js` dejó de importar `render.js`, así que importarlo **ya no arrastra** `term.js`/`console.js`/`launcher.js` (verificado: `import('./web/office.js')` sin DOM). De paso desaparece el ciclo `render → launcher → render`.
 
-- [ ] **4.4 — Orden de zonas explícito al dibujar señales** (Baja · Bajo) — `office.js:580`
-  `Object.keys(layout.zones)` depende del orden de inserción para la superposición. Hacerlo explícito.
+- [x] **4.4 — Orden de zonas explícito al dibujar señales** (Baja · Bajo) — `office.js:580`
+  ✅ `ZONE_ORDER` (en `office-pure.js`) fija el orden canónico: `[queue, office, kitchen, exit]`. Lo usan el dibujo de los carteles, la apilación de zonas en el modo estrecho, los grupos semánticos, el recorrido con flechas (`deskOrder`) y las particiones. Ya no depende del orden de inserción de `layout.zones`.
 
 ---
 

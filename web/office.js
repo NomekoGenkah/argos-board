@@ -12,25 +12,36 @@ import { LABELS, formatDuration, sortAgents } from "./agents.js";
 import { KINDS } from "./kinds.js";
 import { stripAnsi } from "./ansi.js";
 import { t } from "./i18n.js";
-import { ZONE_OF, pickScale, assignSeats, miniLine, groupByZone, nextDesk } from "./office-pure.js";
+import { ZONE_OF, ZONE_ORDER, pickScale, assignSeats, miniLine, groupByZone, nextDesk } from "./office-pure.js";
+import {
+  WALL_H,
+  ZPAD,
+  LABEL_H,
+  POD_W,
+  POD_H,
+  SLOT_W,
+  SLOT_TOP,
+  UNIT_W,
+  COUNTER_H,
+  YOUR_DESK_W,
+  WALK_INSET,
+  TAG_INSET,
+  seatsUsed,
+  bestLayout,
+  podOrigin,
+  door,
+  kitchenLeft,
+  computeTargets,
+} from "./office-geometry.js";
 
 // Se reexportan para no romper a quien ya las importaba de aquí.
-export { ZONE_OF, pickScale, assignSeats, miniLine, groupByZone };
+export { ZONE_OF, ZONE_ORDER, pickScale, assignSeats, miniLine, groupByZone };
 
 const ZONE_TITLE = { queue: t("office.queue"), office: t("office.office"), kitchen: t("office.kitchen"), exit: t("office.exit") };
 
-const POD_W = 56; // escritorio
-const POD_H = 42;
-const SLOT_W = 38; // lugar de una mascota en la fila, la cocina o la salida
-const SLOT_TOP = 30; // alto del lugar sin la placa
-const UNIT_W = 76; // mesa de la cocina con dos taburetes
-const COUNTER_H = 22;
-const YOUR_DESK_W = 56;
-const DOOR_W = 30;
-const WALL_H = 44;
-const ZPAD = 5;
-const LABEL_H = 14;
-const PLATE_PX = 40; // alto de la placa HTML, en px de pantalla
+const COMPACT_PX = 100; // por debajo, la placa se encoge (sin el texto del estado)
+const MIN_VIEW_H = 360; // no se encoge por debajo de esto
+const BOTTOM_GAP = 24; // hueco reservado bajo la oficina
 const FRAME_MS = 80; // ~12 fps: suave sin castigar la CPU (el fondo estático va cacheado)
 const SPEED = 75; // px de escena por segundo al caminar
 // En las placas, una etiqueta corta (la completa va en el aria-label y el tooltip).
@@ -128,7 +139,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
   // Un grupo por zona (role="group" con su nombre): un botón vive dentro del
   // suyo y solo se mueve de grupo si el agente cambia de zona.
   const zoneGroups = {};
-  for (const zone of ["queue", "office", "kitchen", "exit"]) {
+  for (const zone of ZONE_ORDER) {
     const g = document.createElement("div");
     g.className = `desk-zone desk-zone-${zone}`;
     g.setAttribute("role", "group");
@@ -165,145 +176,27 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
 
   // --- Geometría -------------------------------------------------------------
   /**
-   * Los píxeles más grandes con los que la oficina entra en la pantalla; si no
-   * entra con ninguno, la escala según el ancho (y se hace scroll).
+   * Geometría de la escena para el tamaño actual de la ventana. Lo puro vive en
+   * office-geometry.js; aquí solo se leen el DOM y el estado.
    */
   function computeLayout() {
     const cssW = root.clientWidth || 1;
-    const availH = Math.max(360, window.innerHeight - root.getBoundingClientRect().top - 24);
-    const byWidth = pickScale(cssW);
-    for (const scale of [4, 3]) {
-      if (scale < byWidth - 1 || cssW / scale < 150) continue;
-      const l = layoutAt(scale, cssW);
-      if (l.vh * scale <= availH) return l;
-    }
-    return layoutAt(byWidth, cssW);
-  }
-
-  function layoutAt(scale, cssW) {
-    const vw = Math.max(150, Math.floor(cssW / scale));
-    const plateV = Math.ceil(PLATE_PX / scale);
-    const slotH = SLOT_TOP + plateV + 3;
-    const rowH = POD_H + plateV + 5;
-    const desksUsed = Math.max(1, ...[...seatOf.values()].map((s) => s + 1));
-    const n = { queue: groups.queue.length, kitchen: groups.kitchen.length, exit: groups.exit.length };
-
-    const queuePerRow = (w) => Math.max(1, Math.floor((w - 2 * ZPAD - YOUR_DESK_W) / SLOT_W));
-    const exitPerRow = (w) => Math.max(1, Math.floor((w - 2 * ZPAD - DOOR_W) / SLOT_W));
-    const officeCols = (w) => Math.max(1, Math.floor((w - 2 * ZPAD) / POD_W));
-    const unitsPerRow = (w) => Math.max(1, Math.floor((w - 2 * ZPAD) / UNIT_W));
-    const rows = (count, perRow) => Math.max(1, Math.ceil(count / perRow));
-    const height = {
-      queue: (w) => LABEL_H + Math.max(38, rows(n.queue, queuePerRow(w)) * slotH) + ZPAD,
-      exit: (w) => LABEL_H + Math.max(34, rows(n.exit, exitPerRow(w)) * slotH) + ZPAD,
-      office: (w) => LABEL_H + rows(desksUsed, officeCols(w)) * rowH + ZPAD,
-      kitchen: (w) => LABEL_H + COUNTER_H + rows(Math.ceil(n.kitchen / 2), unitsPerRow(w)) * slotH + ZPAD,
-    };
-
-    const zones = {};
-    const wide = vw >= 330;
-    if (wide) {
-      // La columna derecha (salida y cocina) crece con quienes están ahí.
-      const units = Math.min(2, Math.max(1, Math.ceil(n.kitchen / 2)));
-      const exitW = DOOR_W + SLOT_W * Math.min(3, Math.max(1, n.exit));
-      const rw = Math.min(Math.floor(vw * 0.4), Math.max(units * UNIT_W, exitW)) + 2 * ZPAD;
-      const lw = vw - rw;
-      const h1 = Math.max(height.queue(lw), height.exit(rw));
-      const h2 = Math.max(height.office(lw), height.kitchen(rw));
-      zones.queue = { x: 0, y: WALL_H, w: lw, h: h1 };
-      zones.exit = { x: lw, y: WALL_H, w: rw, h: h1 };
-      zones.office = { x: 0, y: WALL_H + h1, w: lw, h: h2 };
-      zones.kitchen = { x: lw, y: WALL_H + h1, w: rw, h: h2 };
-    } else {
-      let y = WALL_H;
-      for (const z of ["queue", "office", "kitchen", "exit"]) {
-        const h = height[z](vw);
-        zones[z] = { x: 0, y, w: vw, h };
-        y += h;
-      }
-    }
-    const vh = Math.max(...Object.values(zones).map((z) => z.y + z.h));
-    const cols = officeCols(zones.office.w);
-    const office = {
-      cols,
-      seats: Math.max(desksUsed, Math.min(cols, 3)), // sin rellenar filas con escritorios vacíos
-      left: zones.office.x + Math.floor((zones.office.w - cols * POD_W) / 2),
-    };
-    return {
-      scale,
-      vw,
-      vh,
-      plateV,
-      slotH,
-      rowH,
-      zones,
-      office,
-      queuePerRow: queuePerRow(zones.queue.w),
-      exitPerRow: exitPerRow(zones.exit.w),
-      unitsPerRow: unitsPerRow(zones.kitchen.w),
-    };
-  }
-
-  function podOrigin(seat) {
-    const { office, rowH, zones } = layout;
-    return {
-      x: office.left + (seat % office.cols) * POD_W,
-      y: zones.office.y + LABEL_H + Math.floor(seat / office.cols) * rowH,
-    };
-  }
-
-  const slotRect = (sx, sy) => ({ x: sx, y: sy, w: SLOT_W, h: layout.slotH - 2 });
-
-  function door() {
-    const z = layout.zones.exit;
-    return { x: z.x + z.w - ZPAD - 20, y: z.y + LABEL_H };
-  }
-
-  function kitchenLeft() {
-    const z = layout.zones.kitchen;
-    const units = Math.max(1, Math.ceil(groups.kitchen.length / 2));
-    return z.x + Math.floor((z.w - Math.min(layout.unitsPerRow, units) * UNIT_W) / 2);
-  }
-
-  /** Dónde tiene que estar cada agente según su estado. */
-  function computeTargets() {
-    const t = new Map();
-    const { zones, slotH } = layout;
-    for (const a of groups.office) {
-      const { x, y } = podOrigin(seatOf.get(a.id));
-      t.set(a.id, { mx: x + 32, my: y + 10, rect: { x, y, w: POD_W, h: layout.rowH - 3 }, plateTop: POD_H });
-    }
-    groups.queue.forEach((a, i) => {
-      const z = zones.queue;
-      const per = layout.queuePerRow;
-      const sx = z.x + ZPAD + YOUR_DESK_W + (i % per) * SLOT_W;
-      const sy = z.y + LABEL_H + Math.floor(i / per) * slotH;
-      t.set(a.id, { mx: sx + 11, my: sy + 14, rect: slotRect(sx, sy), plateTop: SLOT_TOP });
+    const availH = Math.max(MIN_VIEW_H, window.innerHeight - root.getBoundingClientRect().top - BOTTOM_GAP);
+    return bestLayout({
+      cssW,
+      availH,
+      counts: {
+        desks: seatsUsed(seatOf),
+        queue: groups.queue.length,
+        kitchen: groups.kitchen.length,
+        exit: groups.exit.length,
+      },
     });
-    const left = kitchenLeft();
-    groups.kitchen.forEach((a, i) => {
-      const z = zones.kitchen;
-      const u = Math.floor(i / 2);
-      const side = i % 2;
-      const per = layout.unitsPerRow;
-      const ux = left + (u % per) * UNIT_W;
-      const uy = z.y + LABEL_H + COUNTER_H + Math.floor(u / per) * slotH;
-      const sx = ux + side * SLOT_W;
-      t.set(a.id, { mx: ux + (side ? 52 : 8), my: uy + 9, rect: slotRect(sx, uy), plateTop: SLOT_TOP });
-    });
-    groups.exit.forEach((a, i) => {
-      const z = zones.exit;
-      const per = layout.exitPerRow;
-      const sx = z.x + ZPAD + (i % per) * SLOT_W;
-      const sy = z.y + LABEL_H + Math.floor(i / per) * slotH;
-      t.set(a.id, { mx: sx + 11, my: sy + 12, rect: slotRect(sx, sy), plateTop: SLOT_TOP });
-    });
-    return t;
   }
 
   function resize() {
     layout = computeLayout();
-    targets = computeTargets();
+    targets = computeTargets(layout, groups, seatOf);
     const key = JSON.stringify([layout.vw, layout.zones]);
     // Si cambió la ventana (no un estado), nadie camina: todos aparecen en su lugar.
     if (key !== layoutKey && !moved) for (const [id, tg] of targets) pos.set(id, { x: tg.mx, y: tg.my });
@@ -367,7 +260,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       const p = pos.get(a.id);
       if (!b || !tg || !p) continue;
       const rest = atRest(p, tg);
-      const r = rest ? tg.rect : { x: p.x - 11, y: p.y - 12, w: SLOT_W, h: layout.slotH - 2 };
+      const r = rest ? tg.rect : { x: p.x - WALK_INSET.x, y: p.y - WALK_INSET.y, w: SLOT_W, h: layout.slotH - 2 };
       const plateTop = rest ? tg.plateTop : SLOT_TOP;
       const geom = [r.x, r.y, r.w, r.h, plateTop].map((v) => Math.round(v * scale));
       const key = geom.join("|");
@@ -378,7 +271,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       b.style.width = `${geom[2]}px`;
       b.style.height = `${geom[3]}px`;
       b.style.setProperty("--plate-top", `${geom[4]}px`);
-      b.classList.toggle("compact", geom[2] < 100);
+      b.classList.toggle("compact", geom[2] < COMPACT_PX);
     }
   }
 
@@ -402,10 +295,10 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
         deskTags.set(a.id, el);
       }
       el.textContent = a.name;
-      const { x, y } = podOrigin(seatOf.get(a.id));
-      el.style.left = `${(x + 4) * scale}px`;
+      const { x, y } = podOrigin(layout, seatOf.get(a.id));
+      el.style.left = `${(x + TAG_INSET.x) * scale}px`;
       el.style.top = `${(y + POD_H) * scale}px`;
-      el.style.width = `${(POD_W - 8) * scale}px`;
+      el.style.width = `${(POD_W - 2 * TAG_INSET.x) * scale}px`;
     }
   }
 
@@ -554,7 +447,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     drawWindow(th, x0, 5, t, date); // la ventana anima nubes, estrellas y destellos
     drawEmblem(th, x0 + 88, t); // la pupila sigue a la fila
     drawClock(th, x0 + 125, 17, date); // las agujas, sobre la esfera ya pintada
-    for (const z of Object.keys(layout.zones)) drawSign(th, z);
+    for (const z of ZONE_ORDER) drawSign(th, z);
     drawQueueZone(th, t);
     drawExitZone(th, t);
     drawKitchenZone(th, t);
@@ -671,7 +564,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       r(e.x + (h % e.w), e.y + ((h >>> 8) % e.h), 1, 1, th.concrete[1]);
     }
     // Tabiques, con un paso en cada uno.
-    for (const z of Object.values(zones)) {
+    for (const z of ZONE_ORDER.map((name) => zones[name])) {
       if (z.y > WALL_H) {
         const gap = z.x + Math.floor(z.w / 2) - 7;
         for (const [x0, x1] of [
@@ -1014,7 +907,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
 
   // --- Salida -----------------------------------------------------------------------
   function drawExitZone(th, t) {
-    const d = door();
+    const d = door(layout);
     S.draw(ctx, S.COAT_RACK, d.x - 10, d.y + 8, plainPal({}));
     S.draw(ctx, S.DOOR, d.x, d.y, doorPal);
     rect(d.x + 5, d.y - 3, 6, 3, "#1ad988"); // luz de salida
@@ -1056,7 +949,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     // Mesas con taburetes; los inactivos se sientan con su taza.
     const n = Math.max(1, Math.ceil(groups.kitchen.length / 2));
     const per = layout.unitsPerRow;
-    const left = kitchenLeft();
+    const left = kitchenLeft(layout, groups.kitchen.length);
     for (let u = 0; u < n; u++) {
       const ux = left + (u % per) * UNIT_W;
       const uy = z.y + LABEL_H + COUNTER_H + Math.floor(u / per) * layout.slotH;
@@ -1100,7 +993,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
   function drawOffice(th, t, walking) {
     const bySeat = new Map(visible.map((a) => [seatOf.get(a.id), a]));
     for (let seat = 0; seat < layout.office.seats; seat++) {
-      const { x, y } = podOrigin(seat);
+      const { x, y } = podOrigin(layout, seat);
       const a = bySeat.get(seat) ?? null;
       const here = Boolean(
         a && ZONE_OF[a.state] === "office" && !walking.has(a.id) && atRest(pos.get(a.id), targets.get(a.id)),
@@ -1397,13 +1290,14 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     if (change?.kind === "snapshot") sawSnapshot = true;
     // Un agente que llega con la página abierta entra por la puerta.
     if (change?.kind === "agent_added" && sawSnapshot && layout && !reduced.matches) {
-      const d = door();
+      const d = door(layout);
       pos.set(change.agent.id, { x: d.x, y: d.y + 6 });
     }
-    // Orden de prioridad (te esperan, oficina, cocina, salida): manda la
-    // navegación con flechas, no el orden del DOM (que queda estable).
+    // Orden de prioridad (ZONE_ORDER): manda la navegación con flechas, no el
+    // orden del DOM (que queda estable). Dentro de la oficina, por asiento.
     const office = [...groups.office].sort((p, q) => seatOf.get(p.id) - seatOf.get(q.id));
-    deskOrder = [...groups.queue, ...office, ...groups.kitchen, ...groups.exit].map((a) => a.id);
+    const byZone = { queue: groups.queue, office, kitchen: groups.kitchen, exit: groups.exit };
+    deskOrder = ZONE_ORDER.flatMap((z) => byZone[z]).map((a) => a.id);
     if (!deskOrder.includes(tabStop)) tabStop = deskOrder[0] ?? null;
     for (const a of visible) buttons.get(a.id).tabIndex = a.id === tabStop ? 0 : -1;
     moved = change?.kind === "agent_updated" || change?.kind === "agent_added" || change?.kind === "agent_removed";
