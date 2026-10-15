@@ -475,6 +475,8 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
   const theme = () => (document.documentElement.dataset.theme === "dark" ? SCENE.dark : SCENE.light);
   const mascotOf = (a) => S.MASCOTS[a?.kind] ?? S.MASCOTS.generic;
   const atRest = (p, tg) => p && tg && Math.abs(p.x - tg.mx) < 0.5 && Math.abs(p.y - tg.my) < 0.5;
+  // Bob de 1 px, lento y desincronizado por agente: da vida a las mascotas quietas.
+  const breathe = (a, t) => (reduced.matches ? 0 : ((t + (S.hash(a.name) % 40)) >> 3) & 1);
 
   const palettes = new Map();
   function mascotPalette(kind, gray) {
@@ -503,33 +505,36 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     const pal = mascotPalette(a.kind, Boolean(o.gray));
     const body = m.body;
     const legs = o.legs ?? "stand";
+    const flip = Boolean(o.flip);
     if (legs !== "none") {
       m.legs.forEach((lx, i) => {
         const lift = (legs === "walk0" && i % 2 === 0) || (legs === "walk1" && i % 2 === 1) ? 1 : 0;
-        S.draw(ctx, S.LEG, x + lx - 1, y + body.h - 1 - lift, pal);
+        S.draw(ctx, S.LEG, flip ? x + body.w - lx - 2 : x + lx - 1, y + body.h - 1 - lift, pal, flip);
       });
     }
     const [la, ra] = o.arms ?? ["side", "side"];
     const [ldy, rdy] = o.armDy ?? [0, 0];
     const arm = (kind, right, dy) => {
+      const side = right !== flip; // al voltear, cada brazo pasa al otro lado
       const ay = y + m.armY + dy;
-      if (kind === "side") S.draw(ctx, S.ARM, right ? x + body.w - 1 : x - 2, ay, pal, right);
-      else if (kind === "up") S.draw(ctx, S.ARM_UP, right ? x + body.w - 1 : x - 2, ay - 4, pal, !right);
-      else if (kind === "down") S.draw(ctx, S.ARM_DOWN, right ? x + body.w - 2 : x - 1, ay + 1, pal, right);
+      if (kind === "side") S.draw(ctx, S.ARM, side ? x + body.w - 1 : x - 2, ay, pal, side);
+      else if (kind === "up") S.draw(ctx, S.ARM_UP, side ? x + body.w - 1 : x - 2, ay - 4, pal, !side);
+      else if (kind === "down") S.draw(ctx, S.ARM_DOWN, side ? x + body.w - 2 : x - 1, ay + 1, pal, side);
     };
     arm(la, false, ldy);
     arm(ra, true, rdy);
-    S.draw(ctx, body, x, y, pal);
-    drawEyes(m, x, y, o.eyes ?? "normal", o.gray ? pal.o : m.eyeColor, a);
+    S.draw(ctx, body, x, y, pal, flip);
+    drawEyes(m, x, y, o.eyes ?? "normal", o.gray ? pal.o : m.eyeColor, a, flip);
   }
 
-  function drawEyes(m, x, y, style, color, a) {
+  function drawEyes(m, x, y, style, color, a, flip) {
     const t = frameNow();
     if (["normal", "left", "wide", "up"].includes(style) && !reduced.matches && (t + (S.hash(a.name) % 45)) % 45 === 0) {
       style = "closed"; // parpadeo
     }
     ctx.fillStyle = color;
-    const px = (dx, dy, w = 1, h = 1) => ctx.fillRect(x + dx, y + dy, w, h);
+    const bw = m.body.w;
+    const px = (dx, dy, w = 1, h = 1) => ctx.fillRect(x + (flip ? bw - dx - w : dx), y + dy, w, h);
     if (style === "prompt") {
       // OpenCode trabajando: la cara es un prompt ">_".
       px(4, 3);
@@ -600,10 +605,12 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       const p = pos.get(a.id);
       const m = mascotOf(a);
       const step = t % 2;
+      const tg = targets.get(a.id);
       if (m.floats) floatShadow(p.x, p.y + m.body.h + 2);
       drawMascot(a, p.x, p.y - (m.floats ? (t % 4 < 2 ? 1 : 0) : step), {
         legs: step ? "walk0" : "walk1",
         armDy: [step, 1 - step],
+        flip: Boolean(tg) && tg.mx < p.x, // mira hacia donde va
       });
     }
     placeButtons();
@@ -1025,9 +1032,10 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
         S.draw(ctx, S.SIGN_Q, stickX - 4, y - 14, signPal);
       } else {
         // Pide permiso: te muestra un papel para firmar.
-        drawMascot(a, p.x, p.y, { eyes: "up", armDy: [1, 1] });
-        S.draw(ctx, S.PAPER, p.x + 5, p.y + 5, signPal);
-        drawBubble(p.x + 12, p.y - 13 + (!reduced.matches && t % 8 < 4 ? -1 : 0), "#d93619", "hand");
+        const bob = breathe(a, t);
+        drawMascot(a, p.x, p.y + bob, { eyes: "up", armDy: [1, 1] });
+        S.draw(ctx, S.PAPER, p.x + 5, p.y + 5 + bob, signPal);
+        drawBubble(p.x + 12, p.y - 13 + bob + (!reduced.matches && t % 8 < 4 ? -1 : 0), "#d93619", "hand");
       }
     }
   }
@@ -1057,8 +1065,9 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       if (!atRest(p, tg)) continue;
       // Terminó: se despide con el maletín en la mano.
       const wave = !reduced.matches && t % 16 < 8;
-      drawMascot(a, p.x, p.y, { eyes: "happy", arms: [wave ? "up" : "side", "side"] });
-      S.draw(ctx, S.BRIEFCASE, p.x + 15, p.y + 7, mascotPalette(a.kind, false));
+      const bob = breathe(a, t);
+      drawMascot(a, p.x, p.y + bob, { eyes: "happy", arms: [wave ? "up" : "side", "side"] });
+      S.draw(ctx, S.BRIEFCASE, p.x + 15, p.y + 7 + bob, mascotPalette(a.kind, false));
     }
   }
   const doorPal = plainPal({ F: "#8a5a3c", D: "#a8714c", d: "#93603f", Y: "#f2c84b" });
@@ -1106,17 +1115,18 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       if (!atRest(p, tg)) return;
       const side = i % 2; // 0: a la izquierda de la mesa, 1: a la derecha
       const sip = !reduced.matches && (t + S.hash(a.name)) % 50 < 8;
+      const bob = sip ? 0 : breathe(a, t);
       const toTable = side ? "left" : "right";
       const arms = { left: "side", right: "side" };
       if (sip) arms[toTable] = "up";
-      drawMascot(a, p.x, p.y, { eyes: sip ? "closed" : "happy", legs: "none", arms: [arms.left, arms.right] });
+      drawMascot(a, p.x, p.y + bob, { eyes: sip ? "closed" : "happy", legs: "none", arms: [arms.left, arms.right] });
       const mugPal = mascotPalette(a.kind, false);
       if (sip) {
         S.draw(ctx, S.MUG, side ? p.x - 4 : p.x + 15, p.y + 1, mugPal);
       } else {
         const mx = side ? p.x - 9 : p.x + 20;
-        S.draw(ctx, S.MUG, mx, p.y + 8, mugPal);
-        if (!reduced.matches) S.draw(ctx, S.STEAM[(t + i) % 2], mx, p.y + 4, steamPal);
+        S.draw(ctx, S.MUG, mx, p.y + 8 + bob, mugPal);
+        if (!reduced.matches) S.draw(ctx, S.STEAM[(t + i) % 2], mx, p.y + 4 + bob, steamPal);
       }
     });
   }
@@ -1146,6 +1156,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     const state = here ? a.state : null;
     const typing = state === "working" && !reduced.matches;
     const m = mascotOf(a);
+    const bob = here ? breathe(a, t) : 0; // respiración sutil en reposo
     if (here) {
       const gray = state === "disconnected";
       if (gray) ctx.globalAlpha = 0.55;
@@ -1155,7 +1166,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       if (state === "error") eyes = "x";
       else if (gray) eyes = "closed";
       else if (state === "working" && m.screen) eyes = "prompt";
-      drawMascot(a, x + 32 + shake, y + 10 + nod, { eyes, legs: "none", arms: ["none", "none"], gray });
+      drawMascot(a, x + 32 + shake, y + 10 + nod + bob, { eyes, legs: "none", arms: ["none", "none"], gray });
       ctx.globalAlpha = 1;
     }
 
@@ -1177,8 +1188,8 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     if (here && state !== "disconnected") {
       const pal = mascotPalette(a.kind, false);
       const l = typing ? t % 2 : 0;
-      S.draw(ctx, S.ARM_DOWN, x + 31, y + 11 + m.armY - l, pal);
-      S.draw(ctx, S.ARM_DOWN, x + 46, y + 11 + m.armY - (typing ? 1 - l : 0), pal, true);
+      S.draw(ctx, S.ARM_DOWN, x + 31, y + 11 + m.armY - l + bob, pal);
+      S.draw(ctx, S.ARM_DOWN, x + 46, y + 11 + m.armY - (typing ? 1 - l : 0) + bob, pal, true);
       if (typing) rect(x + 33 + ((t * 5) % 7) * 2, y + 23, 1, 1, m.colors.M);
     }
 

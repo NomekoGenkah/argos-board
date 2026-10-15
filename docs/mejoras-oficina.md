@@ -49,14 +49,15 @@ Severidad: **Alta / Media / Baja**. Esfuerzo: **Bajo / Medio / Alto**.
 
 ## Animación y calidad visual
 
-- [ ] **2.1 — Voltear el sprite según la dirección** (Media · Bajo) — `office.js:587-597`
-  No se usa `dx` para el `flip`; todos caminan mirando a la derecha. `S.draw` ya soporta `flip` (`sprites.js:543-550`).
+- [x] **2.1 — Voltear el sprite según la dirección** (Media · Bajo) — `office.js:587-597`
+  ✅ `drawMascot` acepta `flip`: espeja patas, brazos (cada uno pasa al otro lado), cuerpo y ojos. Los caminantes lo activan cuando `tg.mx < p.x` (`flip: Boolean(tg) && tg.mx < p.x`).
+  No se usaba `dx` para el `flip`; todos caminaban mirando a la derecha. `S.draw` ya soporta `flip` (`sprites.js:543-550`).
 
 - [ ] **2.2 — Waypoints y separación al caminar** (Media · Alto) — `office.js:601-626`
   Interpolación recta: atraviesan tabiques (que tienen paso dibujado, `671-693`), escritorios y se solapan entre sí. Añadir puntos de paso por los huecos y una separación mínima.
 
-- [ ] **2.3 — "Respiración" en reposo** (Media · Bajo) — `office.js:1110-1119, 1064-1082`
-  Un *bob* de 1 px lento, desincronizado con `hash` por agente, da vida sin coste perceptible.
+- [x] **2.3 — "Respiración" en reposo** (Media · Bajo) — `office.js:1110-1119, 1064-1082`
+  ✅ Helper `breathe(a, t)`: bob de 1 px cada ~0.64 s, desincronizado con `S.hash(a.name)`, desactivado con `prefers-reduced-motion`. Se aplica a las mascotas quietas (escritorio, cocina sin sorbo, cola y salida) junto con lo que sostienen (taza, papel, maletín).
 
 - [ ] **2.4 — Easing y velocidad por agente** (Baja · Bajo) — `office.js:620`
   Velocidad constante → arranque/parada bruscos. Suavizado corto + variación por agente.
