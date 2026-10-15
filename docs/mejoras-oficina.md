@@ -80,8 +80,8 @@ Severidad: **Alta / Media / Baja**. Esfuerzo: **Bajo / Medio / Alto**.
 - [x] **3.2 — Estructura semántica por zona** (Baja · Bajo) — `app.css:368`
   ✅ `desks` deja de ser un contenedor plano: cada zona es un `role="group"` con `aria-label` (`zoneGroups`: cola, oficina, cocina, salida). Un botón vive en el grupo de su zona y **solo se mueve cuando el agente cambia de zona** (si tenía el foco, se le devuelve al moverlo). Los grupos son cajas estáticas sin caja propia en el flujo, así que las posiciones absolutas de los botones no cambian.
 
-- [ ] **3.3 — No recrear `title` cada segundo** (Baja · Bajo) — `office.js:458`
-  Ya existe `aria-label`; actualizar el tooltip con menos frecuencia.
+- [x] **3.3 — No recrear `title` cada segundo** (Baja · Bajo) — `office.js:458`
+  ✅ `tickPlates()` ya solo actualiza el texto de la placa (que sí cambia de segundo en segundo). El `title` se calcula **al pasar el ratón** (`pointerenter` → `tip()`), con su duración al día, así no se reescribe el atributo 1 vez/s ni parpadea el tooltip. Con teclado manda el `aria-label` (ya existente).
 
 ---
 

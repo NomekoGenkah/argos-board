@@ -336,6 +336,12 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     b.addEventListener("focus", () => {
       if (tabStop !== b.dataset.id) setTabStop(b.dataset.id);
     });
+    // El tooltip se calcula al pasar el ratón (con su duración al día), no en
+    // cada tick: reescribir `title` cada segundo lo manda a pintar sin motivo.
+    b.addEventListener("pointerenter", () => {
+      const a = agents.get(b.dataset.id);
+      if (a) b.title = tip(a);
+    });
     return b;
   }
 
@@ -403,6 +409,12 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     }
   }
 
+  /** Tooltip del escritorio: se calcula justo cuando hace falta, no cada segundo. */
+  function tip(a) {
+    const since = formatDuration(Date.now() - Date.parse(a.state_since));
+    return t("office.tip", a.name, LABELS[a.state] ?? a.state, since, a.project);
+  }
+
   function tickPlates() {
     const now = Date.now();
     for (const a of visible) {
@@ -410,7 +422,6 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       const since = formatDuration(now - Date.parse(a.state_since));
       const text = `${SHORT[a.state] ?? LABELS[a.state] ?? a.state} · ${since}`;
       if (b.plateText.textContent !== text) b.plateText.textContent = text;
-      b.title = t("office.tip", a.name, LABELS[a.state] ?? a.state, since, a.project);
     }
   }
 

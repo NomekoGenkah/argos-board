@@ -49,8 +49,16 @@ function makeEl(tag = "div") {
     removeAttribute(k) {
       el._attrs.delete(k);
     },
-    addEventListener() {},
-    removeEventListener() {},
+    _handlers: {},
+    addEventListener(type, fn) {
+      (el._handlers[type] ||= []).push(fn);
+    },
+    removeEventListener(type, fn) {
+      el._handlers[type] = (el._handlers[type] || []).filter((h) => h !== fn);
+    },
+    _fire(type, ev) {
+      for (const h of el._handlers[type] || []) h(ev);
+    },
     appendChild(c) {
       if (c.parentNode) c.parentNode.children = c.parentNode.children.filter((x) => x !== c);
       c.parentNode = el;
@@ -237,6 +245,18 @@ test("cada escritorio vive en el grupo de su zona", () => {
   assert.deepEqual(ids("office"), ["o1"]);
   assert.deepEqual(ids("kitchen"), ["k1"]);
   assert.deepEqual(ids("exit"), ["e1"]);
+});
+
+test("el tooltip se calcula al pasar el ratón, no en cada tick", () => {
+  const { office, root } = makeRenderer();
+  office.setActive(true);
+  office.render(snapshot(agent("h1", "working")));
+
+  const zones = zoneGroups(root);
+  const b = zones.office.children[0];
+  assert.equal(b.title, "", "sin pasar el ratón no se escribe el title");
+  b._fire("pointerenter");
+  assert.match(b.title, /h1/, "al pasar el ratón el tooltip lleva el nombre");
 });
 
 test("un agente cambia de grupo solo al cambiar de zona", () => {
