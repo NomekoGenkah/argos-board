@@ -12,7 +12,7 @@ import { LABELS, formatDuration, sortAgents } from "./agents.js";
 import { KINDS } from "./kinds.js";
 import { stripAnsi } from "./ansi.js";
 import { t } from "./i18n.js";
-import { ZONE_OF, pickScale, assignSeats, miniLine, groupByZone } from "./office-pure.js";
+import { ZONE_OF, pickScale, assignSeats, miniLine, groupByZone, nextDesk } from "./office-pure.js";
 
 // Se reexportan para no romper a quien ya las importaba de aquí.
 export { ZONE_OF, pickScale, assignSeats, miniLine, groupByZone };
@@ -146,6 +146,8 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
   let active = false;
   let dirty = false; // hay datos sin volcar a la escena (p.ej. mientras la Oficina está oculta)
   let lastChange = null;
+  let deskOrder = []; // ids en orden de prioridad (fila, oficina, cocina, salida)
+  let tabStop = null; // único escritorio con tabindex 0 (navegación con flechas)
   let loop = null;
   let sawSnapshot = false;
   let lastTime = performance.now();
@@ -318,7 +320,11 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       '<span class="plate"><span class="plate-name"></span><span class="plate-state"><span class="dot" aria-hidden="true"></span><span class="plate-text"></span></span></span>';
     b.plateName = b.querySelector(".plate-name");
     b.plateText = b.querySelector(".plate-text");
+    b.tabIndex = -1; // solo uno es tabulable; las flechas mueven entre todos
     b.addEventListener("click", () => onOpen?.(b.dataset.id));
+    b.addEventListener("focus", () => {
+      if (tabStop !== b.dataset.id) setTabStop(b.dataset.id);
+    });
     desks.append(b);
     return b;
   }
@@ -1364,24 +1370,20 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       const d = door();
       pos.set(change.agent.id, { x: d.x, y: d.y + 6 });
     }
-    // Orden de Tab: por lugar (te esperan, oficina, cocina, salida) y posición.
+    // Orden de prioridad (te esperan, oficina, cocina, salida): manda la
+    // navegación con flechas, no el orden del DOM (que queda estable).
     const office = [...groups.office].sort((p, q) => seatOf.get(p.id) - seatOf.get(q.id));
-    const order = [...groups.queue, ...office, ...groups.kitchen, ...groups.exit];
-    const desired = order.map((a) => buttons.get(a.id));
-    const focused = document.activeElement;
-    // Solo se reordena el DOM si de verdad cambió: reinsertar fuerza reflujo.
-    if (!inOrder(desks, desired)) for (const b of desired) desks.append(b);
-    if (focused && desks.contains(focused) && document.activeElement !== focused) focused.focus({ preventScroll: true });
+    deskOrder = [...groups.queue, ...office, ...groups.kitchen, ...groups.exit].map((a) => a.id);
+    if (!deskOrder.includes(tabStop)) tabStop = deskOrder[0] ?? null;
+    for (const a of visible) buttons.get(a.id).tabIndex = a.id === tabStop ? 0 : -1;
     moved = change?.kind === "agent_updated" || change?.kind === "agent_added" || change?.kind === "agent_removed";
     dirty = false;
   }
 
-  /** ¿Los hijos de `parent` son exactamente `list`, en ese orden? */
-  function inOrder(parent, list) {
-    const kids = parent.children;
-    if (kids.length !== list.length) return false;
-    for (let i = 0; i < list.length; i++) if (kids[i] !== list[i]) return false;
-    return true;
+  /** Mueve el único punto de tabulación a un escritorio (sin reordenar el DOM). */
+  function setTabStop(id) {
+    tabStop = id;
+    for (const [bid, b] of buttons) b.tabIndex = bid === id ? 0 : -1;
   }
 
   /** "Reordenar": escritorios por estado (te necesita primero) y luego por nombre. */
@@ -1412,6 +1414,14 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     b.scrollIntoView({ block: "nearest", behavior: "smooth" });
     b.focus({ preventScroll: true });
   }
+
+  // Flechas/Home/End recorren los escritorios en orden de prioridad sin tocar el DOM.
+  desks.addEventListener("keydown", (ev) => {
+    const id = nextDesk(deskOrder, document.activeElement?.dataset?.id, ev.key);
+    if (!id) return;
+    ev.preventDefault();
+    focusAgent(id);
+  });
 
   return { render, relayout, setActive, focusAgent };
 }

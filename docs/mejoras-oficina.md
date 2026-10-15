@@ -37,7 +37,7 @@ Severidad: **Alta / Media / Baja**. Esfuerzo: **Bajo / Medio / Alto**.
   ✅ La referencia a `.plate-text` se cachea en el botón (`b.plateText`) al crearlo, en vez de `querySelector` cada segundo.
 
 - [x] **1.9 — No re-`append`ear todos los botones si el orden no cambió** (Baja · Medio) — `office.js:1345`
-  ✅ `inOrder()` compara el orden actual de `desks.children` con el deseado y solo reinserta si cambió (resuelve 1.9 y alivia 3.1).
+  ✅ Resuelto del todo en 3.1: ya no se reinsertan botones en absoluto; el orden de prioridad se gestiona con `tabindex`.
 
 - [x] **1.10 — Debounce del `ResizeObserver`** (Baja · Bajo) — `office.js:1306`
   ✅ El observer colapsa la ráfaga de redimensionados a un `requestAnimationFrame`.
@@ -74,8 +74,8 @@ Severidad: **Alta / Media / Baja**. Esfuerzo: **Bajo / Medio / Alto**.
 
 ## Accesibilidad
 
-- [ ] **3.1 — No reescribir el orden del DOM en cada render** (Media · Medio) — `office.js:1345`
-  Moving nodos rompe orden de tabulación/foco (se re-foca a mano, `1344-1346`). No reordenar y usar CSS `order` en un contenedor flex, o `tabindex` gestionado.
+- [x] **3.1 — No reescribir el orden del DOM en cada render** (Media · Medio) — `office.js:1345`
+  ✅ Ya no se reinsertan botones: el DOM queda en orden de creación y la prioridad (te esperan → oficina → cocina → salida) la gobierna un **tabindex móvil** (`deskOrder`/`tabStop`, un solo escritorio `tabindex=0`). Las flechas/Home/End recorren el grupo sin mover nodos (`nextDesk`, en `office-pure.js`), así no se pierde el foco ni salta el orden de tabulación al cambiar estados.
 
 - [ ] **3.2 — Estructura semántica por zona** (Baja · Bajo) — `app.css:368`
   `desks` es un contenedor plano de botones. Añadir `role="list"`/`group` con etiqueta por zona. La zona ya está en cada `aria-label` (`office.js:393-396`).

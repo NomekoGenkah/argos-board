@@ -1,7 +1,7 @@
 // Pruebas de la lógica pura de la Oficina (sin DOM ni canvas).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ZONE_OF, pickScale, assignSeats, miniLine, groupByZone } from "../../web/office-pure.js";
+import { ZONE_OF, pickScale, assignSeats, miniLine, groupByZone, nextDesk } from "../../web/office-pure.js";
 
 test("ZONE_OF: cada estado cae en su lugar", () => {
   assert.deepEqual(ZONE_OF.working, "office");
@@ -122,4 +122,32 @@ test("groupByZone: la oficina conserva el orden de entrada", () => {
   const o2 = agent("o2", "error", "2024-01-01T00:00:00Z");
   const g = groupByZone([o1, o2], new Map());
   assert.deepEqual(g.office.map((x) => x.id), ["o1", "o2"]);
+});
+
+test("nextDesk: flechas avanzan y retroceden por el orden", () => {
+  const order = ["a", "b", "c"];
+  assert.equal(nextDesk(order, "a", "ArrowDown"), "b");
+  assert.equal(nextDesk(order, "a", "ArrowRight"), "b");
+  assert.equal(nextDesk(order, "b", "ArrowUp"), "a");
+  assert.equal(nextDesk(order, "b", "ArrowLeft"), "a");
+});
+
+test("nextDesk: Home y End van a los extremos", () => {
+  const order = ["a", "b", "c"];
+  assert.equal(nextDesk(order, "b", "Home"), "a");
+  assert.equal(nextDesk(order, "b", "End"), "c");
+});
+
+test("nextDesk: sin foco entra por el principio (abajo) o el final (arriba)", () => {
+  const order = ["a", "b", "c"];
+  assert.equal(nextDesk(order, null, "ArrowDown"), "a");
+  assert.equal(nextDesk(order, null, "ArrowUp"), "c");
+});
+
+test("nextDesk: no se pasa de los extremos y solo reacciona a las flechas", () => {
+  const order = ["a", "b"];
+  assert.equal(nextDesk(order, "b", "ArrowDown"), null);
+  assert.equal(nextDesk(order, "a", "ArrowUp"), null);
+  assert.equal(nextDesk(order, "a", "Enter"), null);
+  assert.equal(nextDesk([], "a", "ArrowDown"), null);
 });

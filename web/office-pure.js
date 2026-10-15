@@ -62,6 +62,20 @@ export function miniLine(text, width, charsPerPx = 3.6) {
   return out;
 }
 
+/**
+ * Destino de una tecla de navegación dentro de un grupo de escritorios (ids en
+ * orden de prioridad), sabiendo cuál tiene el foco. `null` si no aplica.
+ */
+export function nextDesk(order, currentId, key) {
+  if (!order.length) return null;
+  const i = order.indexOf(currentId);
+  if (key === "Home") return order[0];
+  if (key === "End") return order[order.length - 1];
+  if (key === "ArrowDown" || key === "ArrowRight") return order[i < 0 ? 0 : i + 1] ?? null;
+  if (key === "ArrowUp" || key === "ArrowLeft") return order[i < 0 ? order.length - 1 : i - 1] ?? null;
+  return null;
+}
+
 /** Quién va a cada lugar, en orden: la fila, por orden de llegada. */
 export function groupByZone(agents, seatOf) {
   const groups = { queue: [], office: [], kitchen: [], exit: [] };
