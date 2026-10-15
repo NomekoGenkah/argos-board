@@ -12,7 +12,7 @@ import { LABELS, formatDuration, sortAgents } from "./agents.js";
 import { KINDS } from "./kinds.js";
 import { stripAnsi } from "./ansi.js";
 import { t } from "./i18n.js";
-import { ZONE_OF, ZONE_ORDER, pickScale, assignSeats, miniLine, groupByZone, nextDesk } from "./office-pure.js";
+import { ZONE_OF, ZONE_ORDER, pickScale, assignSeats, miniLine, groupByZone, nextDesk, easeInOut, walkSpeed } from "./office-pure.js";
 import {
   WALL_H,
   ZPAD,
@@ -43,7 +43,8 @@ const COMPACT_PX = 100; // por debajo, la placa se encoge (sin el texto del esta
 const MIN_VIEW_H = 360; // no se encoge por debajo de esto
 const BOTTOM_GAP = 24; // hueco reservado bajo la oficina
 const FRAME_MS = 80; // ~12 fps: suave sin castigar la CPU (el fondo estático va cacheado)
-const SPEED = 75; // px de escena por segundo al caminar
+const SPEED = 75; // px de escena por segundo al caminar (media entre agentes)
+const MIN_WALK_S = 0.18; // tramos cortos: al menos este tiempo, para que se note el suavizado
 // En las placas, una etiqueta corta (la completa va en el aria-label y el tooltip).
 const SHORT = { waiting_input: t("office.shortInput"), waiting_approval: t("office.shortApproval") };
 
@@ -161,6 +162,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
   const buttons = new Map(); // id -> botón
   const deskTags = new Map(); // id -> etiqueta del escritorio de quien anda en otro lugar
   const pos = new Map(); // id -> posición actual de la mascota
+  const journeys = new Map(); // id -> tramo recto en curso ({ x0, y0, tx, ty, t, dur })
   let targets = new Map(); // id -> { zone, mx, my, rect, plateTop }
   let layout = null;
   let layoutKey = "";
@@ -474,24 +476,43 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     const walking = new Set();
     for (const a of visible) {
       const tg = targets.get(a.id);
-      if (!tg) continue;
+      if (!tg) {
+        journeys.delete(a.id);
+        continue;
+      }
       let p = pos.get(a.id);
       if (!p || reduced.matches) {
         p = { x: tg.mx, y: tg.my };
         pos.set(a.id, p);
+        journeys.delete(a.id);
         continue;
       }
-      const dx = tg.mx - p.x;
-      const dy = tg.my - p.y;
-      const d = Math.hypot(dx, dy);
-      if (d < 0.5) {
-        p.x = tg.mx;
-        p.y = tg.my;
+      // Tramo recto en curso hacia este destino; si cambió, se empieza otro
+      // desde donde esté (así redirige a medio camino sin saltar).
+      let j = journeys.get(a.id);
+      if (!j || j.tx !== tg.mx || j.ty !== tg.my) {
+        const d = Math.hypot(tg.mx - p.x, tg.my - p.y);
+        if (d < 0.5) {
+          p.x = tg.mx;
+          p.y = tg.my;
+          journeys.delete(a.id);
+          continue;
+        }
+        const speed = SPEED * walkSpeed(S.hash(a.name));
+        j = { x0: p.x, y0: p.y, tx: tg.mx, ty: tg.my, t: 0, dur: Math.max(MIN_WALK_S, d / speed) };
+        journeys.set(a.id, j);
+      }
+      j.t += dt;
+      const u = j.t / j.dur;
+      const e = easeInOut(u); // arranca y frena despacio
+      p.x = j.x0 + (j.tx - j.x0) * e;
+      p.y = j.y0 + (j.ty - j.y0) * e;
+      if (u >= 1) {
+        p.x = j.tx;
+        p.y = j.ty;
+        journeys.delete(a.id);
         continue;
       }
-      const len = Math.min(d, SPEED * dt);
-      p.x += (dx / d) * len;
-      p.y += (dy / d) * len;
       walking.add(a.id);
     }
     return walking;
@@ -1272,6 +1293,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
         b.remove();
         buttons.delete(id);
         pos.delete(id);
+        journeys.delete(id);
       }
     }
     for (const a of visible) {

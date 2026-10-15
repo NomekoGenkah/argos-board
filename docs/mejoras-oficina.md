@@ -59,8 +59,8 @@ Severidad: **Alta / Media / Baja**. Esfuerzo: **Bajo / Medio / Alto**.
 - [x] **2.3 — "Respiración" en reposo** (Media · Bajo) — `office.js:1110-1119, 1064-1082`
   ✅ Helper `breathe(a, t)`: bob de 1 px cada ~0.64 s, desincronizado con `S.hash(a.name)`, desactivado con `prefers-reduced-motion`. Se aplica a las mascotas quietas (escritorio, cocina sin sorbo, cola y salida) junto con lo que sostienen (taza, papel, maletín).
 
-- [ ] **2.4 — Easing y velocidad por agente** (Baja · Bajo) — `office.js:620`
-  Velocidad constante → arranque/parada bruscos. Suavizado corto + variación por agente.
+- [x] **2.4 — Easing y velocidad por agente** (Baja · Bajo) — `office.js:620`
+  ✅ El caminante ya no va a velocidad constante. Cada tramo guarda su recta (`journeys`: origen, destino, duración) y la recorre con `easeInOut` (smoothstep: arranca y frena despacio, sin tirones). La velocidad varía ±10 % por agente (`walkSpeed(S.hash(name))`, estable por nombre) y los tramos cortos tienen un mínimo (`MIN_WALK_S`) para que se note el suavizado. Si el destino cambia a medio camino, empieza otro tramo desde donde esté (redirige sin saltar). `easeInOut` y `walkSpeed` son puras y van con pruebas.
 
 - [ ] **2.5 — Señalizar mejor los cambios de estado** (Baja · Medio)
   Los que reconectan tras una caída no entran por la puerta (solo `agent_added` con snapshot previo, `office.js:1336-1340`). Pulsos breves al pasar a `error`/`waiting_*` (más allá de bubble/spotlight).

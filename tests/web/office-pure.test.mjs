@@ -1,7 +1,7 @@
 // Pruebas de la lógica pura de la Oficina (sin DOM ni canvas).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ZONE_OF, ZONE_ORDER, pickScale, assignSeats, miniLine, groupByZone, nextDesk } from "../../web/office-pure.js";
+import { ZONE_OF, ZONE_ORDER, pickScale, assignSeats, miniLine, groupByZone, nextDesk, easeInOut, walkSpeed } from "../../web/office-pure.js";
 
 test("ZONE_OF: cada estado cae en su lugar", () => {
   assert.deepEqual(ZONE_OF.working, "office");
@@ -155,4 +155,33 @@ test("nextDesk: no se pasa de los extremos y solo reacciona a las flechas", () =
   assert.equal(nextDesk(order, "a", "ArrowUp"), null);
   assert.equal(nextDesk(order, "a", "Enter"), null);
   assert.equal(nextDesk([], "a", "ArrowDown"), null);
+});
+
+test("easeInOut: extremos fijos, medio justo y monótono", () => {
+  assert.equal(easeInOut(0), 0);
+  assert.equal(easeInOut(1), 1);
+  assert.equal(easeInOut(0.5), 0.5);
+  assert.equal(easeInOut(-3), 0, "recorta por debajo");
+  assert.equal(easeInOut(9), 1, "recorta por encima");
+  let prev = 0;
+  for (let u = 0; u <= 1.0001; u += 0.05) {
+    const e = easeInOut(u);
+    assert.ok(e >= prev, "no retrocede");
+    prev = e;
+  }
+});
+
+test("easeInOut: arranca y frena más despacio que a velocidad constante", () => {
+  assert.ok(easeInOut(0.25) < 0.25, "al principio va por detrás");
+  assert.ok(easeInOut(0.75) > 0.75, "al final va por delante");
+});
+
+test("walkSpeed: variación pequeña, acotada y estable por hash", () => {
+  for (const h of [0, 1, 7, 12345, 4294967295]) {
+    const v = walkSpeed(h);
+    assert.ok(v >= 0.9 && v <= 1.1, `${v} dentro de ±10%`);
+    assert.equal(walkSpeed(h), v, "el mismo hash da la misma velocidad");
+  }
+  assert.equal(walkSpeed(0, 0), 1, "sin variación, velocidad base");
+  assert.notEqual(walkSpeed(0), walkSpeed(10), "hashes distintos, velocidades distintas");
 });

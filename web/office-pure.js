@@ -82,6 +82,17 @@ export function nextDesk(order, currentId, key) {
   return null;
 }
 
+/** Suavizado (smoothstep): arranca y frena despacio, sin tirones al ir en línea recta. */
+export function easeInOut(u) {
+  const x = u <= 0 ? 0 : u >= 1 ? 1 : u;
+  return x * x * (3 - 2 * x);
+}
+
+/** Velocidad relativa de cada agente (±`spread`, estable a partir de su hash). */
+export function walkSpeed(hash, spread = 0.1) {
+  return 1 + ((Math.abs(hash) % 21) - 10) / 10 * spread;
+}
+
 /** Quién va a cada lugar, en orden: la fila, por orden de llegada. */
 export function groupByZone(agents, seatOf) {
   const groups = { queue: [], office: [], kitchen: [], exit: [] };
