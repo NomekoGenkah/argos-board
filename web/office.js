@@ -35,7 +35,7 @@ const WALL_H = 44;
 const ZPAD = 5;
 const LABEL_H = 14;
 const PLATE_PX = 40; // alto de la placa HTML, en px de pantalla
-const FRAME_MS = 120;
+const FRAME_MS = 80; // ~12 fps: suave sin castigar la CPU (el fondo estático va cacheado)
 const SPEED = 75; // px de escena por segundo al caminar
 // En las placas, una etiqueta corta (la completa va en el aria-label y el tooltip).
 const SHORT = { waiting_input: t("office.shortInput"), waiting_approval: t("office.shortApproval") };
@@ -172,7 +172,9 @@ export function miniLine(text, width, charsPerPx = 3.6) {
 export function groupByZone(agents, seatOf) {
   const groups = { queue: [], office: [], kitchen: [], exit: [] };
   for (const a of agents) groups[ZONE_OF[a.state] ?? "office"].push(a);
-  const bySince = (p, q) => Date.parse(p.state_since) - Date.parse(q.state_since) || p.name.localeCompare(q.name);
+  // `state_since` se parsea una sola vez por agente (antes: 2 veces por comparación).
+  const since = new Map(agents.map((a) => [a.id, Date.parse(a.state_since) || 0]));
+  const bySince = (p, q) => since.get(p.id) - since.get(q.id) || p.name.localeCompare(q.name);
   groups.queue.sort(bySince);
   groups.exit.sort(bySince);
   groups.kitchen.sort((p, q) => seatOf.get(p.id) - seatOf.get(q.id));
@@ -208,6 +210,8 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
   let layoutKey = "";
   let moved = false; // el próximo cambio de lugar viene de un cambio de estado (se camina)
   let active = false;
+  let dirty = false; // hay datos sin volcar a la escena (p.ej. mientras la Oficina está oculta)
+  let lastChange = null;
   let loop = null;
   let sawSnapshot = false;
   let lastTime = performance.now();
@@ -378,6 +382,8 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     b.className = "desk";
     b.innerHTML =
       '<span class="plate"><span class="plate-name"></span><span class="plate-state"><span class="dot" aria-hidden="true"></span><span class="plate-text"></span></span></span>';
+    b.plateName = b.querySelector(".plate-name");
+    b.plateText = b.querySelector(".plate-text");
     b.addEventListener("click", () => onOpen?.(b.dataset.id));
     desks.append(b);
     return b;
@@ -389,7 +395,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     b.dataset.id = a.id;
     b.dataset.state = a.state;
     b.dataset.kind = a.kind;
-    b.querySelector(".plate-name").textContent = a.name;
+    b.plateName.textContent = a.name;
     b.setAttribute(
       "aria-label",
       t("office.aria", a.name, KINDS[a.kind] ?? a.kind, LABELS[a.state] ?? a.state, WHERE[ZONE_OF[a.state] ?? "office"]),
@@ -453,16 +459,17 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       const b = buttons.get(a.id);
       const since = formatDuration(now - Date.parse(a.state_since));
       const text = `${SHORT[a.state] ?? LABELS[a.state] ?? a.state} · ${since}`;
-      const el = b.querySelector(".plate-text");
-      if (el.textContent !== text) el.textContent = text;
+      if (b.plateText.textContent !== text) b.plateText.textContent = text;
       b.title = t("office.tip", a.name, LABELS[a.state] ?? a.state, since, a.project);
     }
   }
 
   // --- Dibujo: utilidades -------------------------------------------------------
+  // `dctx` apunta al canvas o a la capa estática, según qué se esté pintando.
+  let dctx = ctx;
   const rect = (x, y, w, h, color) => {
-    ctx.fillStyle = color;
-    ctx.fillRect(Math.round(x), Math.round(y), w, h);
+    dctx.fillStyle = color;
+    dctx.fillRect(Math.round(x), Math.round(y), w, h);
   };
   const frameNow = () => (reduced.matches ? 0 : Math.floor(performance.now() / FRAME_MS));
   const theme = () => (document.documentElement.dataset.theme === "dark" ? SCENE.dark : SCENE.light);
@@ -568,6 +575,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
   function draw() {
     if (!layout || !active) return;
     const th = theme();
+    const date = new Date(); // una sola lectura de reloj por frame
     const t = frameNow();
     const now = performance.now();
     const dt = Math.min(0.25, (now - lastTime) / 1000);
@@ -575,8 +583,11 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     const walking = stepWalkers(dt);
 
     ctx.imageSmoothingEnabled = false;
-    drawBackground(th);
-    drawWall(th, t);
+    drawStatic(th); // fondo, pared, calendario, esfera del reloj, emblema y plantas
+    const x0 = wallX0();
+    drawWindow(th, x0, 5, t, date); // la ventana anima nubes, estrellas y destellos
+    drawEmblem(th, x0 + 88, t); // la pupila sigue a la fila
+    drawClock(th, x0 + 125, 17, date); // las agujas, sobre la esfera ya pintada
     for (const z of Object.keys(layout.zones)) drawSign(th, z);
     drawQueueZone(th, t);
     drawExitZone(th, t);
@@ -625,88 +636,100 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     return walking;
   }
 
-  // Pisos distintos por lugar y tabiques entre ellos; se repintan solo si cambia algo.
-  function drawBackground(th) {
-    const key = `${layoutKey}|${th === SCENE.dark}`;
-    if (key !== bgKey) {
-      bgKey = key;
-      bg.width = canvas.width;
-      bg.height = canvas.height;
-      const g = bg.getContext("2d");
-      const r = (x, y, w, h, c) => {
-        g.fillStyle = c;
-        g.fillRect(x, y, w, h);
-      };
-      const { zones } = layout;
-      // Oficina: tablas de madera.
-      const o = zones.office;
-      for (let row = 0, y = o.y; y < o.y + o.h; row++, y += 5) {
-        r(o.x, y, o.w, 5, th.plank[row % 2]);
-        r(o.x, y + 4, o.w, 1, th.seam);
-        const off = S.hash(`fila${row}`) % 70;
-        for (let x = o.x + off; x < o.x + o.w; x += 70) {
-          r(x, y, 1, 4, th.seam);
-          r(x + 23, y + 2, 5, 1, th.plank[2]);
-        }
-      }
-      // Te esperan: alfombra.
-      const q = zones.queue;
-      r(q.x, q.y, q.w, q.h, th.carpet[0]);
-      for (let y = q.y + 1; y < q.y + q.h; y += 3) {
-        for (let x = q.x + (((y - q.y) / 3) % 2 ? 1 : 2); x < q.x + q.w; x += 3) r(x, y, 1, 1, th.carpet[1]);
-      }
-      // Cocina: baldosas.
-      const k = zones.kitchen;
-      for (let y = k.y; y < k.y + k.h; y += 6) {
-        for (let x = k.x; x < k.x + k.w; x += 6) r(x, y, 6, 6, th.tile[((x - k.x) / 6 + (y - k.y) / 6) % 2]);
-      }
-      // Salida: cemento.
-      const e = zones.exit;
-      r(e.x, e.y, e.w, e.h, th.concrete[0]);
-      for (let i = 0; i < (e.w * e.h) / 30; i++) {
-        const h = S.hash(`c${i}`);
-        r(e.x + (h % e.w), e.y + ((h >>> 8) % e.h), 1, 1, th.concrete[1]);
-      }
-      // Tabiques, con un paso en cada uno.
-      for (const z of Object.values(zones)) {
-        if (z.y > WALL_H) {
-          const gap = z.x + Math.floor(z.w / 2) - 7;
-          for (const [x0, x1] of [
-            [z.x, gap],
-            [gap + 14, z.x + z.w],
-          ]) {
-            r(x0, z.y - 1, x1 - x0, 3, th.partition);
-            r(x0, z.y - 1, x1 - x0, 1, th.partitionTop);
-            r(x0, z.y + 1, x1 - x0, 1, S.OUTLINE);
-          }
-        }
-        if (z.x > 0) {
-          const gapY = z.y + Math.floor(z.h / 2) - 7;
-          for (const [y0, y1] of [
-            [z.y, gapY],
-            [gapY + 14, z.y + z.h],
-          ]) {
-            r(z.x - 1, y0, 3, y1 - y0, th.partition);
-            r(z.x + 1, y0, 1, y1 - y0, S.OUTLINE);
-          }
-        }
-      }
+  // --- Capa estática ------------------------------------------------------------
+  // Pisos, tabiques, pared, calendario, esfera del reloj, base del emblema y
+  // plantas cambian muy poco: se pintan aparte y solo se rehacen si cambia la
+  // geometría, el tema o el día. Lo que anima se pinta encima en cada frame.
+  const wallX0 = () => Math.floor((layout.vw - 136) / 2);
+  const todayKey = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  };
+
+  function drawStatic(th) {
+    const key = `${layoutKey}|${th === SCENE.dark}|${todayKey()}`;
+    if (key === bgKey) {
+      ctx.drawImage(bg, 0, 0);
+      return;
     }
+    bgKey = key;
+    bg.width = canvas.width;
+    bg.height = canvas.height;
+    dctx = bg.getContext("2d");
+    drawFloors(th);
+    drawWallBase(th);
+    const x0 = wallX0();
+    drawCalendar(th, x0 + 47, 7);
+    drawEmblemBase(th, x0 + 88);
+    drawClockFace(x0 + 125, 17);
+    dctx = ctx;
     ctx.drawImage(bg, 0, 0);
   }
 
-  function drawSign(th, zone) {
-    const z = layout.zones[zone];
-    let text = ZONE_TITLE[zone];
-    const count = groups[zone].length;
-    if (zone === "queue" && count) text += ` ${count}`;
-    const hot = zone === "queue" && count > 0;
-    rect(z.x + 4, z.y + 3, S.textWidth(text) + 6, 9, hot ? "#d93619" : th.plaque);
-    S.drawText(ctx, text, z.x + 7, z.y + 5, th.signText);
+  // Pisos distintos por lugar y tabiques entre ellos.
+  function drawFloors(th) {
+    const r = (x, y, w, h, c) => {
+      dctx.fillStyle = c;
+      dctx.fillRect(x, y, w, h);
+    };
+    const { zones } = layout;
+    // Oficina: tablas de madera.
+    const o = zones.office;
+    for (let row = 0, y = o.y; y < o.y + o.h; row++, y += 5) {
+      r(o.x, y, o.w, 5, th.plank[row % 2]);
+      r(o.x, y + 4, o.w, 1, th.seam);
+      const off = S.hash(`fila${row}`) % 70;
+      for (let x = o.x + off; x < o.x + o.w; x += 70) {
+        r(x, y, 1, 4, th.seam);
+        r(x + 23, y + 2, 5, 1, th.plank[2]);
+      }
+    }
+    // Te esperan: alfombra.
+    const q = zones.queue;
+    r(q.x, q.y, q.w, q.h, th.carpet[0]);
+    for (let y = q.y + 1; y < q.y + q.h; y += 3) {
+      for (let x = q.x + (((y - q.y) / 3) % 2 ? 1 : 2); x < q.x + q.w; x += 3) r(x, y, 1, 1, th.carpet[1]);
+    }
+    // Cocina: baldosas.
+    const k = zones.kitchen;
+    for (let y = k.y; y < k.y + k.h; y += 6) {
+      for (let x = k.x; x < k.x + k.w; x += 6) r(x, y, 6, 6, th.tile[((x - k.x) / 6 + (y - k.y) / 6) % 2]);
+    }
+    // Salida: cemento.
+    const e = zones.exit;
+    r(e.x, e.y, e.w, e.h, th.concrete[0]);
+    for (let i = 0; i < (e.w * e.h) / 30; i++) {
+      const h = S.hash(`c${i}`);
+      r(e.x + (h % e.w), e.y + ((h >>> 8) % e.h), 1, 1, th.concrete[1]);
+    }
+    // Tabiques, con un paso en cada uno.
+    for (const z of Object.values(zones)) {
+      if (z.y > WALL_H) {
+        const gap = z.x + Math.floor(z.w / 2) - 7;
+        for (const [x0, x1] of [
+          [z.x, gap],
+          [gap + 14, z.x + z.w],
+        ]) {
+          r(x0, z.y - 1, x1 - x0, 3, th.partition);
+          r(x0, z.y - 1, x1 - x0, 1, th.partitionTop);
+          r(x0, z.y + 1, x1 - x0, 1, S.OUTLINE);
+        }
+      }
+      if (z.x > 0) {
+        const gapY = z.y + Math.floor(z.h / 2) - 7;
+        for (const [y0, y1] of [
+          [z.y, gapY],
+          [gapY + 14, z.y + z.h],
+        ]) {
+          r(z.x - 1, y0, 3, y1 - y0, th.partition);
+          r(z.x + 1, y0, 1, y1 - y0, S.OUTLINE);
+        }
+      }
+    }
   }
 
-  // --- Pared --------------------------------------------------------------------
-  function drawWall(th, t) {
+  // Pared, panel, tira LED y plantas.
+  function drawWallBase(th) {
     const { vw } = layout;
     rect(0, 0, vw, WALL_H, th.wall);
     rect(0, 0, vw, 2, th.wallShade);
@@ -718,20 +741,23 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     if (th.isDark) {
       // Tira LED ambiental oculta a lo largo del panel de la pared
       rect(0, WALL_H - 13, vw, 1, "#1ad988");
-      ctx.fillStyle = "rgb(26 217 136 / .14)";
-      ctx.fillRect(0, WALL_H - 12, vw, 3);
+      dctx.fillStyle = "rgb(26 217 136 / .14)";
+      dctx.fillRect(0, WALL_H - 12, vw, 3);
     }
-
-    // Una ventana, el calendario, el ojo de Argos y el reloj, centrados.
-    const x0 = Math.floor((vw - 136) / 2);
-    drawWindow(th, x0, 5, t);
-    drawCalendar(th, x0 + 47, 7);
-    drawEmblem(th, x0 + 88, t);
-    drawClock(th, x0 + 125, 17);
     if (vw >= 260) {
-      S.draw(ctx, S.BIG_PLANT, 2, WALL_H - 13, plantPal);
-      S.draw(ctx, S.BIG_PLANT, vw - S.BIG_PLANT.w - 2, WALL_H - 13, plantPal, true);
+      S.draw(dctx, S.BIG_PLANT, 2, WALL_H - 13, plantPal);
+      S.draw(dctx, S.BIG_PLANT, vw - S.BIG_PLANT.w - 2, WALL_H - 13, plantPal, true);
     }
+  }
+
+  function drawSign(th, zone) {
+    const z = layout.zones[zone];
+    let text = ZONE_TITLE[zone];
+    const count = groups[zone].length;
+    if (zone === "queue" && count) text += ` ${count}`;
+    const hot = zone === "queue" && count > 0;
+    rect(z.x + 4, z.y + 3, S.textWidth(text) + 6, 9, hot ? "#d93619" : th.plaque);
+    S.drawText(ctx, text, z.x + 7, z.y + 5, th.signText);
   }
 
   const plantPal = plainPal({ g: "#24644a", G: "#318561", T: "#994739", t: "#7d3a2f" });
@@ -747,10 +773,10 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     return { bands: ["#141c3a", "#1b2650", "#26346a"], stars: true, city: true };
   }
 
-  function drawWindow(th, x, y, t) {
+  function drawWindow(th, x, y, t, date) {
     const w = 38;
     const h = 26;
-    const sky = skyFor(new Date(), th.isDark);
+    const sky = skyFor(date, th.isDark);
     rect(x - 1, y - 1, w + 2, h + 2, S.OUTLINE);
     rect(x, y, w, h, th.frame);
     const ix = x + 2;
@@ -823,7 +849,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     rect(x - 2, y + h + 1, w + 4, 2, th.frameShade);
   }
 
-  // Calendario: el mes en la parte roja y el día grande.
+  // Calendario: el mes en la parte roja y el día grande. (Estático, día a día.)
   function drawCalendar(th, x, y) {
     const w = 19;
     const now = new Date();
@@ -832,28 +858,29 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     rect(x, y, w, 8, "#d93619");
     rect(x, y + 8, w, 1, "#a8291a");
     const month = S.MONTHS[now.getMonth()];
-    S.drawText(ctx, month, x + Math.floor((w - S.textWidth(month)) / 2), y + 2, "#ffffff");
+    S.drawText(dctx, month, x + Math.floor((w - S.textWidth(month)) / 2), y + 2, "#ffffff");
     const day = String(now.getDate());
-    S.drawText(ctx, day, x + Math.floor((w - S.textWidth(day, 2)) / 2) + 1, y + 10, S.OUTLINE, 2);
+    S.drawText(dctx, day, x + Math.floor((w - S.textWidth(day, 2)) / 2) + 1, y + 10, S.OUTLINE, 2);
     rect(x + 4, y - 3, 1, 4, th.base);
     rect(x + w - 5, y - 3, 1, 4, th.base);
   }
 
-  // Reloj de pared: marco de madera, marcas de las 12 horas y segundero.
-  function drawClock(th, cx, cy) {
-    const r = 9;
-    const disk = (radius, color, ox = 0, oy = 0) => {
-      for (let y = -radius - 1; y <= radius + 1; y++) {
-        for (let x = -radius - 1; x <= radius + 1; x++) {
-          if (x * x + y * y <= (radius + 0.5) ** 2) rect(cx + x + ox, cy + y + oy, 1, 1, color);
-        }
+  // Reloj de pared: la esfera (marco, discos y marcas) es estática; las agujas, no.
+  function clockDisk(cx, cy, radius, color, ox = 0, oy = 0) {
+    for (let y = -radius - 1; y <= radius + 1; y++) {
+      for (let x = -radius - 1; x <= radius + 1; x++) {
+        if (x * x + y * y <= (radius + 0.5) ** 2) rect(cx + x + ox, cy + y + oy, 1, 1, color);
       }
-    };
-    disk(r + 1, "rgb(0 0 0 / .18)", 1, 1);
-    disk(r + 1, S.OUTLINE);
-    disk(r, "#8a5a3c");
-    disk(r - 1, S.OUTLINE);
-    disk(r - 2, "#fffdf8");
+    }
+  }
+
+  function drawClockFace(cx, cy) {
+    const r = 9;
+    clockDisk(cx, cy, r + 1, "rgb(0 0 0 / .18)", 1, 1);
+    clockDisk(cx, cy, r + 1, S.OUTLINE);
+    clockDisk(cx, cy, r, "#8a5a3c");
+    clockDisk(cx, cy, r - 1, S.OUTLINE);
+    clockDisk(cx, cy, r - 2, "#fffdf8");
     for (let hour = 0; hour < 12; hour++) {
       const ang = (hour / 12) * Math.PI * 2;
       const at = (d) => [Math.round(Math.sin(ang) * d), -Math.round(Math.cos(ang) * d)];
@@ -864,10 +891,12 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
         rect(cx + x2, cy + y2, 1, 1, S.OUTLINE);
       }
     }
-    const now = new Date();
-    const sec = now.getSeconds() / 60;
-    const min = (now.getMinutes() + sec) / 60;
-    const hr = ((now.getHours() % 12) + min) / 12;
+  }
+
+  function drawClock(th, cx, cy, date) {
+    const sec = date.getSeconds() / 60;
+    const min = (date.getMinutes() + sec) / 60;
+    const hr = ((date.getHours() % 12) + min) / 12;
     hand(cx, cy, hr, 3.5, S.OUTLINE);
     hand(cx, cy, min, 5.5, S.OUTLINE);
     if (!reduced.matches) hand(cx, cy, sec, 6, "#d93619");
@@ -881,8 +910,9 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     }
   }
 
-  // El emblema de Argos: un ojo que mira al primero de la fila.
-  function drawEmblem(th, cx, t) {
+  // El emblema de Argos: placa y ojo (estáticos) más una pupila que mira al
+  // primero de la fila y un parpadeo ocasional (dinámicos).
+  function drawEmblemBase(th, cx) {
     const x = cx - 13;
     const y = 6;
     rect(x - 1, y - 1, 28, 21, S.OUTLINE);
@@ -890,16 +920,25 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     rect(x + 2, y + 2, 22, 15, th.plaqueIn);
     const ex = cx - 8;
     const ey = y + 5;
-    if (!reduced.matches && t % 47 === 0) {
-      rect(ex + 1, ey + 4, 15, 1, S.OUTLINE);
-      return;
-    }
     EYE.forEach((row, ry) => {
       for (let rx = 0; rx < row.length; rx++) {
         if (row[rx] === "o") rect(ex + rx, ey + ry, 1, 1, S.OUTLINE);
         else if (row[rx] === "W") rect(ex + rx, ey + ry, 1, 1, "#ffffff");
       }
     });
+  }
+
+  function drawEmblem(th, cx, t) {
+    const x = cx - 13;
+    const y = 6;
+    const ex = cx - 8;
+    const ey = y + 5;
+    if (!reduced.matches && t % 47 === 0) {
+      // Parpadeo: se tapa el ojo ya pintado y se deja una raya.
+      rect(ex, ey, 17, 9, th.plaqueIn);
+      rect(ex + 1, ey + 4, 15, 1, S.OUTLINE);
+      return;
+    }
     const [dx, dy] = gaze(cx, t);
     const ix = ex + 8 + dx;
     const iy = ey + 4 + dy;
@@ -1178,6 +1217,20 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     return propPalettes.get(main);
   }
 
+  // Una terminal repinta la misma pantalla muchas veces por segundo: guardamos el
+  // resultado de limpiar el ANSI y de rasterizar la línea, indexado por línea cruda.
+  const lineCache = new Map();
+  function lineInfo(raw) {
+    let c = lineCache.get(raw);
+    if (!c) {
+      const text = stripAnsi(raw);
+      c = { text, bits: miniLine(text, 16), selected: /[❯›»]/.test(text), endLen: Math.ceil(text.trimEnd().length / 3.6) };
+      if (lineCache.size >= 1000) lineCache.clear(); // cota simple para no crecer sin freno
+      lineCache.set(raw, c);
+    }
+    return c;
+  }
+
   function drawMonitor(th, x, y, a, state, t, h) {
     const sx = x + 8;
     const sy = y + 6;
@@ -1236,22 +1289,22 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       return;
     }
     rect(sx, sy, sw, sh, a.state === "error" ? "#3a1412" : "#17202d");
-    const lines = (a.last_lines ?? []).map(stripAnsi).filter((l) => l.trim() !== "").slice(-5);
-    lines.forEach((text, i) => {
+    const infos = (a.last_lines ?? []).map(lineInfo).filter((l) => l.text.trim() !== "").slice(-5);
+    infos.forEach((info, i) => {
       const ly = sy + 1 + i * 2;
-      const selected = /[❯›»]/.test(text);
       let color = a.state === "error" ? "#e0806c" : "#8ea3bd";
-      if (selected) color = accent;
-      if (selected && a.state === "waiting_input") {
+      if (info.selected) color = accent;
+      if (info.selected && a.state === "waiting_input") {
         rect(sx, ly, sw, 1, "#d93619");
         color = "#ffffff";
       }
-      miniLine(text, sw - 2).forEach((on, px) => on && rect(sx + 1 + px, ly, 1, 1, color));
+      const bits = info.bits;
+      for (let px = 0; px < bits.length; px++) if (bits[px]) rect(sx + 1 + px, ly, 1, 1, color);
     });
     if (state === "working" && t % 2 === 0) {
-      const last = lines.length ? lines[lines.length - 1] : "";
-      const end = Math.min(sw - 3, Math.ceil(last.trimEnd().length / 3.6) + 1);
-      rect(sx + 1 + end, sy + 1 + Math.max(0, lines.length - 1) * 2, 2, 1, "#e6edf5");
+      const last = infos.length ? infos[infos.length - 1] : null;
+      const end = last ? Math.min(sw - 3, last.endLen + 1) : 1;
+      rect(sx + 1 + end, sy + 1 + Math.max(0, infos.length - 1) * 2, 2, 1, "#e6edf5");
     }
     if (state === "error" && !reduced.matches) {
       // Humo saliendo del monitor.
@@ -1263,8 +1316,13 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     }
   }
 
+  const bubblePals = new Map(); // color -> paleta (el globo se repinta cada frame)
   function drawBubble(x, y, color, glyph) {
-    const pal = plainPal({ B: color, G: "#ffffff" });
+    let pal = bubblePals.get(color);
+    if (!pal) {
+      pal = plainPal({ B: color, G: "#ffffff" });
+      bubblePals.set(color, pal);
+    }
     S.draw(ctx, S.BUBBLE, x, y, pal);
     S.draw(ctx, S.GLYPHS[glyph], x + 3, y + 1, pal);
   }
@@ -1303,7 +1361,16 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     }
   }
   reduced.addEventListener?.("change", start);
-  new ResizeObserver(() => active && resize()).observe(root);
+  // Durante un arrastre el observer dispara muchas veces: se colapsa a un frame.
+  let resizeQueued = false;
+  new ResizeObserver(() => {
+    if (!active || resizeQueued) return;
+    resizeQueued = true;
+    requestAnimationFrame(() => {
+      resizeQueued = false;
+      if (active) resize();
+    });
+  }).observe(root);
   setInterval(() => active && tickPlates(), 1000);
   new MutationObserver(() => {
     S.clearSpriteCache();
@@ -1314,6 +1381,20 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
   // --- API -----------------------------------------------------------------------------
   function render({ agents: all, change }) {
     agents = all;
+    lastChange = change;
+    // Con la Oficina oculta no hay nada que pintar: se recuerda para la próxima
+    // vez que se muestre. Evita recalcular lugares y dibujar en cada mensaje WS.
+    if (!active) {
+      dirty = true;
+      return;
+    }
+    rebuild(change);
+    resize();
+    tickPlates();
+  }
+
+  /** Recalcula lugares, botones y orden de Tab. No dibuja: eso lo hacen resize/draw. */
+  function rebuild(change) {
     visible = [...agents.values()].filter((a) => !prefs.isDismissed(a));
     const { result, seats } = assignSeats(visible, prefs.seats());
     seatOf = result;
@@ -1334,21 +1415,28 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     }
     if (change?.kind === "snapshot") sawSnapshot = true;
     // Un agente que llega con la página abierta entra por la puerta.
-    if (change?.kind === "agent_added" && sawSnapshot && layout && active && !reduced.matches) {
+    if (change?.kind === "agent_added" && sawSnapshot && layout && !reduced.matches) {
       const d = door();
       pos.set(change.agent.id, { x: d.x, y: d.y + 6 });
     }
     // Orden de Tab: por lugar (te esperan, oficina, cocina, salida) y posición.
     const office = [...groups.office].sort((p, q) => seatOf.get(p.id) - seatOf.get(q.id));
     const order = [...groups.queue, ...office, ...groups.kitchen, ...groups.exit];
+    const desired = order.map((a) => buttons.get(a.id));
     const focused = document.activeElement;
-    order.forEach((a) => desks.append(buttons.get(a.id)));
+    // Solo se reordena el DOM si de verdad cambió: reinsertar fuerza reflujo.
+    if (!inOrder(desks, desired)) for (const b of desired) desks.append(b);
     if (focused && desks.contains(focused) && document.activeElement !== focused) focused.focus({ preventScroll: true });
     moved = change?.kind === "agent_updated" || change?.kind === "agent_added" || change?.kind === "agent_removed";
-    if (active) {
-      resize();
-      tickPlates();
-    }
+    dirty = false;
+  }
+
+  /** ¿Los hijos de `parent` son exactamente `list`, en ese orden? */
+  function inOrder(parent, list) {
+    const kids = parent.children;
+    if (kids.length !== list.length) return false;
+    for (let i = 0; i < list.length; i++) if (kids[i] !== list[i]) return false;
+    return true;
   }
 
   /** "Reordenar": escritorios por estado (te necesita primero) y luego por nombre. */
@@ -1363,7 +1451,8 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     active = on;
     if (on) {
       layoutKey = ""; // al mostrarse, todos en su lugar
-      moved = false;
+      if (dirty) rebuild(lastChange); // vuelca lo acumulado mientras estaba oculta
+      moved = false; // y aparecen colocados, sin caminar desde posiciones viejas
       resize();
       tickPlates();
       start();
