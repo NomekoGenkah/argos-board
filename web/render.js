@@ -9,18 +9,8 @@ import { DEFAULT_TERM_THEME } from "./termthemes.js";
 import { cardSizeFor, DEFAULT_TERM_MODE, gridOf } from "./termgrid.js";
 import { createConsole } from "./console.js";
 import { launchText, wireStopButton } from "./launcher.js";
+import { LABELS, formatDuration, sortAgents } from "./agents.js";
 
-export const LABELS = {
-  working: t("state.working"),
-  waiting_input: t("state.waiting_input"),
-  waiting_approval: t("state.waiting_approval"),
-  idle: t("state.idle"),
-  error: t("state.error"),
-  exited: t("state.exited"),
-  disconnected: t("state.disconnected"),
-};
-
-export { KINDS } from "./kinds.js";
 import { KINDS } from "./kinds.js";
 
 // Solo estos cambios se anuncian a lectores de pantalla: working ↔ idle cambia
@@ -28,7 +18,6 @@ import { KINDS } from "./kinds.js";
 const ANNOUNCED = new Set(["waiting_input", "waiting_approval", "error", "exited", "disconnected"]);
 const ANNOUNCE_DELAY_MS = 1500;
 
-const ORDER = ["waiting_input", "waiting_approval", "error", "working", "idle", "disconnected", "exited"];
 const ENDED = new Set(["exited", "disconnected"]);
 
 const CONN_TEXT = {
@@ -50,22 +39,6 @@ export function shortPath(p) {
   if (!p) return "";
   const parts = p.split("/").filter(Boolean);
   return parts.length <= 2 ? p : `…/${parts.slice(-2).join("/")}`;
-}
-
-export function formatDuration(ms) {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  if (s < 60) return `${s} s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m} min ${s % 60} s`;
-  const h = Math.floor(m / 60);
-  return `${h} h ${m % 60} min`;
-}
-
-export function sortAgents(list) {
-  return [...list].sort((a, b) => {
-    const d = ORDER.indexOf(a.state) - ORDER.indexOf(b.state);
-    return d !== 0 ? d : a.name.localeCompare(b.name);
-  });
 }
 
 /** Posiciones en mosaico para `n` tarjetas de un mismo tamaño (por defecto, el básico). */
