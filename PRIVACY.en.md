@@ -1,6 +1,6 @@
 # Privacy policy
 
-[Español](PRIVACY.md)
+[Español](PRIVACY.md) · [README](README.md)
 
 Argos Board is a program that runs on your own machine. It has no accounts, no server of its own, and it collects
 no telemetry, usage statistics or crash reports. This page says exactly what it stores, what it sends, and how to
@@ -67,7 +67,7 @@ secret of another shape, it may show on the card. It is not written to disk and 
 ## Network access
 
 From a phone, traffic goes over plain HTTP. Use it on networks you trust or through an encrypted tunnel
-(WireGuard, Tailscale), and do not put a reverse proxy in front (see the README). Any paired device has full access:
+(WireGuard, Tailscale), and do not put a reverse proxy in front (see the [reference guide](docs/guide.es.md), in Spanish). Any paired device has full access:
 it can view, write to the agents and launch them.
 
 ## Your controls

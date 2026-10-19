@@ -36,7 +36,7 @@ Fuera del alcance (v1):
 
 ### 2.1 Nota sobre WSL2
 
-- El servidor escucha en `127.0.0.1` dentro de WSL2. Desde un navegador de Windows, `http://localhost:8787` debe funcionar gracias al reenvío de localhost de WSL2 (activo por defecto; también con `networkingMode=mirrored`). **Verificarlo en M1**; si no funciona, documentar la solución en el README en vez de abrir el servidor a `0.0.0.0`.
+- El servidor escucha en `127.0.0.1` dentro de WSL2. Desde un navegador de Windows, `http://localhost:8787` debe funcionar gracias al reenvío de localhost de WSL2 (activo por defecto; también con `networkingMode=mirrored`). **Verificarlo en M1**; si no funciona, documentar la solución en la guía (docs/guide.es.md) en vez de abrir el servidor a `0.0.0.0`.
 - Mantener el repositorio y `target/` dentro del sistema de archivos de WSL (`~/...`), no en `/mnt/c/...`, por rendimiento de compilación y de eventos de archivos.
 - Las notificaciones del navegador las muestra el navegador de Windows; no hace falta nada del lado de WSL.
 - Los directorios de configuración y el token usan rutas de Linux (`~/.config/argos-board/`).

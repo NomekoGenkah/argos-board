@@ -1,0 +1,114 @@
+name: Release
+
+# Se publica al subir un tag vX.Y.Z (p. ej. `git tag v1.0.0 && git push origin v1.0.0`).
+# El tag debe coincidir con la versión de Cargo.toml y con una sección de CHANGELOG.md.
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verificar tag, fmt, clippy y tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: El tag coincide con Cargo.toml y el changelog
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          crate=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)
+          if [ "$version" != "$crate" ]; then
+            echo "::error::El tag es $GITHUB_REF_NAME pero Cargo.toml dice $crate"; exit 1
+          fi
+          if ! grep -q "^## \[$version\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md no tiene una sección para $version"; exit 1
+          fi
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked
+      - run: node --test tests/web/*.test.mjs
+
+  build:
+    name: Compilar ${{ matrix.target }}
+    needs: verify
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # Ubuntu 22.04 (glibc 2.35) para que el binario corra también en distribuciones algo antiguas.
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04-arm
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Compilar
+        run: cargo build --release --locked
+      - name: Comprobar el binario
+        run: |
+          ./target/release/argos-board --version
+          expected="argos-board ${GITHUB_REF_NAME#v}"
+          ./target/release/argos-board --version | grep -q "^$expected" || { echo "::error::--version no dice $expected"; exit 1; }
+      - name: Empaquetar
+        run: |
+          name="argos-board-${{ matrix.target }}"
+          mkdir "$name"
+          cp target/release/argos-board LICENSE README.md README.es.md PRIVACY.md PRIVACY.en.md CHANGELOG.md "$name/"
+          tar czf "$name.tar.gz" "$name"
+          sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: argos-board-${{ matrix.target }}
+          path: |
+            argos-board-${{ matrix.target }}.tar.gz
+            argos-board-${{ matrix.target }}.tar.gz.sha256
+          if-no-files-found: error
+
+  release:
+    name: Publicar la release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Sumas de verificación y notas
+        run: |
+          cd dist
+          cat *.sha256 > SHA256SUMS
+          rm *.sha256
+          cd ..
+          version="${GITHUB_REF_NAME#v}"
+          # Las notas son la sección de este número de versión en CHANGELOG.md.
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          test -s notes.md || { echo "::error::notas vacías para $version"; exit 1; }
+      - name: Crear la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=""
+          case "$GITHUB_REF_NAME" in *-*) flags="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "argos-board $GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            --verify-tag $flags
