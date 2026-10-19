@@ -1,6 +1,6 @@
 # Política de privacidad
 
-[English](PRIVACY.en.md)
+[English](PRIVACY.en.md) · [README](README.es.md)
 
 Argos Board es un programa que corre en tu propia máquina. No tiene cuentas, no tiene un servidor propio y no
 recoge telemetría, estadísticas de uso ni informes de fallos. Esta página dice exactamente qué guarda, qué envía y
@@ -71,7 +71,7 @@ si trabajas con un secreto con otra forma, puede verse en la tarjeta. No se escr
 ## Acceso por la red
 
 Desde el celular, el tráfico va por HTTP sin cifrar. Úsalo en redes en las que confíes o a través de un túnel
-cifrado (WireGuard, Tailscale), y no pongas un proxy inverso delante (ver el README). Cualquier dispositivo
+cifrado (WireGuard, Tailscale), y no pongas un proxy inverso delante (ver la [guía de referencia](docs/guide.es.md)). Cualquier dispositivo
 emparejado tiene acceso total: ver, escribir en los agentes y lanzarlos.
 
 ## Tus controles
