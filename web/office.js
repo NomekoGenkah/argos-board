@@ -8,37 +8,54 @@
 // (aria-hidden); lo interactivo y accesible son botones HTML encima de cada agente.
 
 import * as S from "./sprites.js";
-import { LABELS, KINDS, formatDuration, sortAgents } from "./render.js";
+import { LABELS, formatDuration, sortAgents } from "./agents.js";
+import { KINDS } from "./kinds.js";
 import { stripAnsi } from "./ansi.js";
 import { t } from "./i18n.js";
+import { ZONE_OF, ZONE_ORDER, pickScale, assignSeats, miniLine, groupByZone, nextDesk, easeInOut, walkSpeed } from "./office-pure.js";
+import {
+  WALL_H,
+  ZPAD,
+  LABEL_H,
+  POD_W,
+  POD_H,
+  UNIT_W,
+  COUNTER_H,
+  YOUR_DESK_W,
+  TAG_INSET,
+  seatsUsed,
+  bestLayout,
+  podOrigin,
+  door,
+  kitchenLeft,
+  computeTargets,
+  route,
+  polylineLength,
+  pointAlong,
+  headingAlong,
+  separate,
+} from "./office-geometry.js";
 
-export const ZONE_OF = {
-  working: "office",
-  error: "office",
-  disconnected: "office",
-  waiting_input: "queue",
-  waiting_approval: "queue",
-  idle: "kitchen",
-  exited: "exit",
-};
+// Se reexportan para no romper a quien ya las importaba de aquí.
+export { ZONE_OF, ZONE_ORDER, pickScale, assignSeats, miniLine, groupByZone };
+
 const ZONE_TITLE = { queue: t("office.queue"), office: t("office.office"), kitchen: t("office.kitchen"), exit: t("office.exit") };
 
-const POD_W = 56; // escritorio
-const POD_H = 42;
-const SLOT_W = 38; // lugar de una mascota en la fila, la cocina o la salida
-const SLOT_TOP = 30; // alto del lugar sin la placa
-const UNIT_W = 76; // mesa de la cocina con dos taburetes
-const COUNTER_H = 22;
-const YOUR_DESK_W = 56;
-const DOOR_W = 30;
-const WALL_H = 44;
-const ZPAD = 5;
-const LABEL_H = 14;
-const PLATE_PX = 40; // alto de la placa HTML, en px de pantalla
-const FRAME_MS = 120;
-const SPEED = 75; // px de escena por segundo al caminar
+const COMPACT_PX = 100; // por debajo, la placa se encoge (sin el texto del estado)
+const MIN_VIEW_H = 360; // no se encoge por debajo de esto
+const BOTTOM_GAP = 24; // hueco reservado bajo la oficina
+const FRAME_MS = 80; // ~12 fps: suave sin castigar la CPU (el fondo estático va cacheado)
+const SPEED = 75; // px de escena por segundo al caminar (media entre agentes)
+const MIN_WALK_S = 0.18; // tramos cortos: al menos este tiempo, para que se note el suavizado
+const MIN_SEPARATION = 12; // distancia mínima entre mascotas que caminan (no se pisan)
 // En las placas, una etiqueta corta (la completa va en el aria-label y el tooltip).
 const SHORT = { waiting_input: t("office.shortInput"), waiting_approval: t("office.shortApproval") };
+
+// Vuelve de una caída: entra por la puerta, igual que quien llega de nuevo.
+const RECONNECT_FROM = "disconnected";
+// Estados que reclaman tu atención: además de su burbuja/foco, un pulso breve.
+const PULSE_STATES = new Set(["error", "waiting_input", "waiting_approval"]);
+const PULSE_MS = 500; // cuánto dura el pulso
 
 const SCENE = {
   light: {
@@ -119,66 +136,6 @@ const EYE = [
   ".....ooooooo.....",
 ];
 
-/** Escala entera mínima según el ancho (por debajo, todo se vería diminuto). */
-export function pickScale(cssWidth) {
-  if (cssWidth >= 1300) return 4;
-  if (cssWidth >= 820) return 3;
-  return 2;
-}
-
-/**
- * Escritorio estable para cada agente: el que ya tenía (por nombre) si está
- * libre; si no, el primer hueco. Devuelve id -> escritorio y nombre -> escritorio.
- */
-export function assignSeats(agents, saved) {
-  const seats = { ...saved };
-  const taken = new Map();
-  const result = new Map();
-  for (const a of agents) {
-    const s = seats[a.name];
-    if (Number.isInteger(s) && !taken.has(s)) {
-      taken.set(s, a.id);
-      result.set(a.id, s);
-    }
-  }
-  for (const a of agents) {
-    if (result.has(a.id)) continue;
-    let s = 0;
-    while (taken.has(s)) s++;
-    taken.set(s, a.id);
-    result.set(a.id, s);
-    seats[a.name] = s;
-  }
-  return { result, seats };
-}
-
-/** Las líneas de la pantalla, en miniatura: qué columnas tienen texto. */
-export function miniLine(text, width, charsPerPx = 3.6) {
-  const out = new Array(width).fill(false);
-  for (let px = 0; px < width; px++) {
-    const from = Math.floor(px * charsPerPx);
-    const to = Math.floor((px + 1) * charsPerPx);
-    for (let i = from; i < to && i < text.length; i++) {
-      if (text[i] !== " ") {
-        out[px] = true;
-        break;
-      }
-    }
-  }
-  return out;
-}
-
-/** Quién va a cada lugar, en orden: la fila, por orden de llegada. */
-export function groupByZone(agents, seatOf) {
-  const groups = { queue: [], office: [], kitchen: [], exit: [] };
-  for (const a of agents) groups[ZONE_OF[a.state] ?? "office"].push(a);
-  const bySince = (p, q) => Date.parse(p.state_since) - Date.parse(q.state_since) || p.name.localeCompare(q.name);
-  groups.queue.sort(bySince);
-  groups.exit.sort(bySince);
-  groups.kitchen.sort((p, q) => seatOf.get(p.id) - seatOf.get(q.id));
-  return groups;
-}
-
 export function createOfficeRenderer({ root, prefs, onOpen }) {
   const stage = document.createElement("div");
   stage.className = "office-stage";
@@ -189,6 +146,17 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
   tags.setAttribute("aria-hidden", "true");
   const desks = document.createElement("div");
   desks.className = "desks";
+  // Un grupo por zona (role="group" con su nombre): un botón vive dentro del
+  // suyo y solo se mueve de grupo si el agente cambia de zona.
+  const zoneGroups = {};
+  for (const zone of ZONE_ORDER) {
+    const g = document.createElement("div");
+    g.className = `desk-zone desk-zone-${zone}`;
+    g.setAttribute("role", "group");
+    g.setAttribute("aria-label", ZONE_TITLE[zone]);
+    desks.append(g);
+    zoneGroups[zone] = g;
+  }
   stage.append(canvas, tags, desks);
   root.append(stage);
   const ctx = canvas.getContext("2d");
@@ -203,156 +171,46 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
   const buttons = new Map(); // id -> botón
   const deskTags = new Map(); // id -> etiqueta del escritorio de quien anda en otro lugar
   const pos = new Map(); // id -> posición actual de la mascota
+  const journeys = new Map(); // id -> recorrido en curso ({ pts, d, tx, ty, t, dur })
+  const facing = new Map(); // id -> ¿mira a la izquierda mientras camina?
+  const prevState = new Map(); // id -> estado anterior (para ver transiciones)
+  const pulses = new Map(); // id -> instante (ms) del pulso al reclamar atención
   let targets = new Map(); // id -> { zone, mx, my, rect, plateTop }
   let layout = null;
   let layoutKey = "";
   let moved = false; // el próximo cambio de lugar viene de un cambio de estado (se camina)
   let active = false;
+  let dirty = false; // hay datos sin volcar a la escena (p.ej. mientras la Oficina está oculta)
+  let lastChange = null;
+  let deskOrder = []; // ids en orden de prioridad (fila, oficina, cocina, salida)
+  let tabStop = null; // único escritorio con tabindex 0 (navegación con flechas)
   let loop = null;
   let sawSnapshot = false;
   let lastTime = performance.now();
 
   // --- Geometría -------------------------------------------------------------
   /**
-   * Los píxeles más grandes con los que la oficina entra en la pantalla; si no
-   * entra con ninguno, la escala según el ancho (y se hace scroll).
+   * Geometría de la escena para el tamaño actual de la ventana. Lo puro vive en
+   * office-geometry.js; aquí solo se leen el DOM y el estado.
    */
   function computeLayout() {
     const cssW = root.clientWidth || 1;
-    const availH = Math.max(360, window.innerHeight - root.getBoundingClientRect().top - 24);
-    const byWidth = pickScale(cssW);
-    for (const scale of [4, 3]) {
-      if (scale < byWidth - 1 || cssW / scale < 150) continue;
-      const l = layoutAt(scale, cssW);
-      if (l.vh * scale <= availH) return l;
-    }
-    return layoutAt(byWidth, cssW);
-  }
-
-  function layoutAt(scale, cssW) {
-    const vw = Math.max(150, Math.floor(cssW / scale));
-    const plateV = Math.ceil(PLATE_PX / scale);
-    const slotH = SLOT_TOP + plateV + 3;
-    const rowH = POD_H + plateV + 5;
-    const desksUsed = Math.max(1, ...[...seatOf.values()].map((s) => s + 1));
-    const n = { queue: groups.queue.length, kitchen: groups.kitchen.length, exit: groups.exit.length };
-
-    const queuePerRow = (w) => Math.max(1, Math.floor((w - 2 * ZPAD - YOUR_DESK_W) / SLOT_W));
-    const exitPerRow = (w) => Math.max(1, Math.floor((w - 2 * ZPAD - DOOR_W) / SLOT_W));
-    const officeCols = (w) => Math.max(1, Math.floor((w - 2 * ZPAD) / POD_W));
-    const unitsPerRow = (w) => Math.max(1, Math.floor((w - 2 * ZPAD) / UNIT_W));
-    const rows = (count, perRow) => Math.max(1, Math.ceil(count / perRow));
-    const height = {
-      queue: (w) => LABEL_H + Math.max(38, rows(n.queue, queuePerRow(w)) * slotH) + ZPAD,
-      exit: (w) => LABEL_H + Math.max(34, rows(n.exit, exitPerRow(w)) * slotH) + ZPAD,
-      office: (w) => LABEL_H + rows(desksUsed, officeCols(w)) * rowH + ZPAD,
-      kitchen: (w) => LABEL_H + COUNTER_H + rows(Math.ceil(n.kitchen / 2), unitsPerRow(w)) * slotH + ZPAD,
-    };
-
-    const zones = {};
-    const wide = vw >= 330;
-    if (wide) {
-      // La columna derecha (salida y cocina) crece con quienes están ahí.
-      const units = Math.min(2, Math.max(1, Math.ceil(n.kitchen / 2)));
-      const exitW = DOOR_W + SLOT_W * Math.min(3, Math.max(1, n.exit));
-      const rw = Math.min(Math.floor(vw * 0.4), Math.max(units * UNIT_W, exitW)) + 2 * ZPAD;
-      const lw = vw - rw;
-      const h1 = Math.max(height.queue(lw), height.exit(rw));
-      const h2 = Math.max(height.office(lw), height.kitchen(rw));
-      zones.queue = { x: 0, y: WALL_H, w: lw, h: h1 };
-      zones.exit = { x: lw, y: WALL_H, w: rw, h: h1 };
-      zones.office = { x: 0, y: WALL_H + h1, w: lw, h: h2 };
-      zones.kitchen = { x: lw, y: WALL_H + h1, w: rw, h: h2 };
-    } else {
-      let y = WALL_H;
-      for (const z of ["queue", "office", "kitchen", "exit"]) {
-        const h = height[z](vw);
-        zones[z] = { x: 0, y, w: vw, h };
-        y += h;
-      }
-    }
-    const vh = Math.max(...Object.values(zones).map((z) => z.y + z.h));
-    const cols = officeCols(zones.office.w);
-    const office = {
-      cols,
-      seats: Math.max(desksUsed, Math.min(cols, 3)), // sin rellenar filas con escritorios vacíos
-      left: zones.office.x + Math.floor((zones.office.w - cols * POD_W) / 2),
-    };
-    return {
-      scale,
-      vw,
-      vh,
-      plateV,
-      slotH,
-      rowH,
-      zones,
-      office,
-      queuePerRow: queuePerRow(zones.queue.w),
-      exitPerRow: exitPerRow(zones.exit.w),
-      unitsPerRow: unitsPerRow(zones.kitchen.w),
-    };
-  }
-
-  function podOrigin(seat) {
-    const { office, rowH, zones } = layout;
-    return {
-      x: office.left + (seat % office.cols) * POD_W,
-      y: zones.office.y + LABEL_H + Math.floor(seat / office.cols) * rowH,
-    };
-  }
-
-  const slotRect = (sx, sy) => ({ x: sx, y: sy, w: SLOT_W, h: layout.slotH - 2 });
-
-  function door() {
-    const z = layout.zones.exit;
-    return { x: z.x + z.w - ZPAD - 20, y: z.y + LABEL_H };
-  }
-
-  function kitchenLeft() {
-    const z = layout.zones.kitchen;
-    const units = Math.max(1, Math.ceil(groups.kitchen.length / 2));
-    return z.x + Math.floor((z.w - Math.min(layout.unitsPerRow, units) * UNIT_W) / 2);
-  }
-
-  /** Dónde tiene que estar cada agente según su estado. */
-  function computeTargets() {
-    const t = new Map();
-    const { zones, slotH } = layout;
-    for (const a of groups.office) {
-      const { x, y } = podOrigin(seatOf.get(a.id));
-      t.set(a.id, { mx: x + 32, my: y + 10, rect: { x, y, w: POD_W, h: layout.rowH - 3 }, plateTop: POD_H });
-    }
-    groups.queue.forEach((a, i) => {
-      const z = zones.queue;
-      const per = layout.queuePerRow;
-      const sx = z.x + ZPAD + YOUR_DESK_W + (i % per) * SLOT_W;
-      const sy = z.y + LABEL_H + Math.floor(i / per) * slotH;
-      t.set(a.id, { mx: sx + 11, my: sy + 14, rect: slotRect(sx, sy), plateTop: SLOT_TOP });
+    const availH = Math.max(MIN_VIEW_H, window.innerHeight - root.getBoundingClientRect().top - BOTTOM_GAP);
+    return bestLayout({
+      cssW,
+      availH,
+      counts: {
+        desks: seatsUsed(seatOf),
+        queue: groups.queue.length,
+        kitchen: groups.kitchen.length,
+        exit: groups.exit.length,
+      },
     });
-    const left = kitchenLeft();
-    groups.kitchen.forEach((a, i) => {
-      const z = zones.kitchen;
-      const u = Math.floor(i / 2);
-      const side = i % 2;
-      const per = layout.unitsPerRow;
-      const ux = left + (u % per) * UNIT_W;
-      const uy = z.y + LABEL_H + COUNTER_H + Math.floor(u / per) * slotH;
-      const sx = ux + side * SLOT_W;
-      t.set(a.id, { mx: ux + (side ? 52 : 8), my: uy + 9, rect: slotRect(sx, uy), plateTop: SLOT_TOP });
-    });
-    groups.exit.forEach((a, i) => {
-      const z = zones.exit;
-      const per = layout.exitPerRow;
-      const sx = z.x + ZPAD + (i % per) * SLOT_W;
-      const sy = z.y + LABEL_H + Math.floor(i / per) * slotH;
-      t.set(a.id, { mx: sx + 11, my: sy + 12, rect: slotRect(sx, sy), plateTop: SLOT_TOP });
-    });
-    return t;
   }
 
   function resize() {
     layout = computeLayout();
-    targets = computeTargets();
+    targets = computeTargets(layout, groups, seatOf);
     const key = JSON.stringify([layout.vw, layout.zones]);
     // Si cambió la ventana (no un estado), nadie camina: todos aparecen en su lugar.
     if (key !== layoutKey && !moved) for (const [id, tg] of targets) pos.set(id, { x: tg.mx, y: tg.my });
@@ -378,8 +236,19 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     b.className = "desk";
     b.innerHTML =
       '<span class="plate"><span class="plate-name"></span><span class="plate-state"><span class="dot" aria-hidden="true"></span><span class="plate-text"></span></span></span>';
+    b.plateName = b.querySelector(".plate-name");
+    b.plateText = b.querySelector(".plate-text");
+    b.tabIndex = -1; // solo uno es tabulable; las flechas mueven entre todos
     b.addEventListener("click", () => onOpen?.(b.dataset.id));
-    desks.append(b);
+    b.addEventListener("focus", () => {
+      if (tabStop !== b.dataset.id) setTabStop(b.dataset.id);
+    });
+    // El tooltip se calcula al pasar el ratón (con su duración al día), no en
+    // cada tick: reescribir `title` cada segundo lo manda a pintar sin motivo.
+    b.addEventListener("pointerenter", () => {
+      const a = agents.get(b.dataset.id);
+      if (a) b.title = tip(a);
+    });
     return b;
   }
 
@@ -389,7 +258,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     b.dataset.id = a.id;
     b.dataset.state = a.state;
     b.dataset.kind = a.kind;
-    b.querySelector(".plate-name").textContent = a.name;
+    b.plateName.textContent = a.name;
     b.setAttribute(
       "aria-label",
       t("office.aria", a.name, KINDS[a.kind] ?? a.kind, LABELS[a.state] ?? a.state, WHERE[ZONE_OF[a.state] ?? "office"]),
@@ -404,10 +273,11 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       const tg = targets.get(a.id);
       const p = pos.get(a.id);
       if (!b || !tg || !p) continue;
+      // Misma caja (tamaño, desfase y placa) en todo el trayecto que en el
+      // destino: así al llegar no salta de tamaño, solo se desliza.
       const rest = atRest(p, tg);
-      const r = rest ? tg.rect : { x: p.x - 11, y: p.y - 12, w: SLOT_W, h: layout.slotH - 2 };
-      const plateTop = rest ? tg.plateTop : SLOT_TOP;
-      const geom = [r.x, r.y, r.w, r.h, plateTop].map((v) => Math.round(v * scale));
+      const r = rest ? tg.rect : { x: p.x - (tg.mx - tg.rect.x), y: p.y - (tg.my - tg.rect.y), w: tg.rect.w, h: tg.rect.h };
+      const geom = [r.x, r.y, r.w, r.h, tg.plateTop].map((v) => Math.round(v * scale));
       const key = geom.join("|");
       if (b.dataset.geom === key) continue;
       b.dataset.geom = key;
@@ -416,7 +286,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       b.style.width = `${geom[2]}px`;
       b.style.height = `${geom[3]}px`;
       b.style.setProperty("--plate-top", `${geom[4]}px`);
-      b.classList.toggle("compact", geom[2] < 100);
+      b.classList.toggle("compact", geom[2] < COMPACT_PX);
     }
   }
 
@@ -440,11 +310,17 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
         deskTags.set(a.id, el);
       }
       el.textContent = a.name;
-      const { x, y } = podOrigin(seatOf.get(a.id));
-      el.style.left = `${(x + 4) * scale}px`;
+      const { x, y } = podOrigin(layout, seatOf.get(a.id));
+      el.style.left = `${(x + TAG_INSET.x) * scale}px`;
       el.style.top = `${(y + POD_H) * scale}px`;
-      el.style.width = `${(POD_W - 8) * scale}px`;
+      el.style.width = `${(POD_W - 2 * TAG_INSET.x) * scale}px`;
     }
+  }
+
+  /** Tooltip del escritorio: se calcula justo cuando hace falta, no cada segundo. */
+  function tip(a) {
+    const since = formatDuration(Date.now() - Date.parse(a.state_since));
+    return t("office.tip", a.name, LABELS[a.state] ?? a.state, since, a.project);
   }
 
   function tickPlates() {
@@ -453,21 +329,23 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       const b = buttons.get(a.id);
       const since = formatDuration(now - Date.parse(a.state_since));
       const text = `${SHORT[a.state] ?? LABELS[a.state] ?? a.state} · ${since}`;
-      const el = b.querySelector(".plate-text");
-      if (el.textContent !== text) el.textContent = text;
-      b.title = t("office.tip", a.name, LABELS[a.state] ?? a.state, since, a.project);
+      if (b.plateText.textContent !== text) b.plateText.textContent = text;
     }
   }
 
   // --- Dibujo: utilidades -------------------------------------------------------
+  // `dctx` apunta al canvas o a la capa estática, según qué se esté pintando.
+  let dctx = ctx;
   const rect = (x, y, w, h, color) => {
-    ctx.fillStyle = color;
-    ctx.fillRect(Math.round(x), Math.round(y), w, h);
+    dctx.fillStyle = color;
+    dctx.fillRect(Math.round(x), Math.round(y), w, h);
   };
   const frameNow = () => (reduced.matches ? 0 : Math.floor(performance.now() / FRAME_MS));
   const theme = () => (document.documentElement.dataset.theme === "dark" ? SCENE.dark : SCENE.light);
   const mascotOf = (a) => S.MASCOTS[a?.kind] ?? S.MASCOTS.generic;
   const atRest = (p, tg) => p && tg && Math.abs(p.x - tg.mx) < 0.5 && Math.abs(p.y - tg.my) < 0.5;
+  // Bob de 1 px, lento y desincronizado por agente: da vida a las mascotas quietas.
+  const breathe = (a, t) => (reduced.matches ? 0 : ((t + (S.hash(a.name) % 40)) >> 3) & 1);
 
   const palettes = new Map();
   function mascotPalette(kind, gray) {
@@ -496,33 +374,36 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     const pal = mascotPalette(a.kind, Boolean(o.gray));
     const body = m.body;
     const legs = o.legs ?? "stand";
+    const flip = Boolean(o.flip);
     if (legs !== "none") {
       m.legs.forEach((lx, i) => {
         const lift = (legs === "walk0" && i % 2 === 0) || (legs === "walk1" && i % 2 === 1) ? 1 : 0;
-        S.draw(ctx, S.LEG, x + lx - 1, y + body.h - 1 - lift, pal);
+        S.draw(ctx, S.LEG, flip ? x + body.w - lx - 2 : x + lx - 1, y + body.h - 1 - lift, pal, flip);
       });
     }
     const [la, ra] = o.arms ?? ["side", "side"];
     const [ldy, rdy] = o.armDy ?? [0, 0];
     const arm = (kind, right, dy) => {
+      const side = right !== flip; // al voltear, cada brazo pasa al otro lado
       const ay = y + m.armY + dy;
-      if (kind === "side") S.draw(ctx, S.ARM, right ? x + body.w - 1 : x - 2, ay, pal, right);
-      else if (kind === "up") S.draw(ctx, S.ARM_UP, right ? x + body.w - 1 : x - 2, ay - 4, pal, !right);
-      else if (kind === "down") S.draw(ctx, S.ARM_DOWN, right ? x + body.w - 2 : x - 1, ay + 1, pal, right);
+      if (kind === "side") S.draw(ctx, S.ARM, side ? x + body.w - 1 : x - 2, ay, pal, side);
+      else if (kind === "up") S.draw(ctx, S.ARM_UP, side ? x + body.w - 1 : x - 2, ay - 4, pal, !side);
+      else if (kind === "down") S.draw(ctx, S.ARM_DOWN, side ? x + body.w - 2 : x - 1, ay + 1, pal, side);
     };
     arm(la, false, ldy);
     arm(ra, true, rdy);
-    S.draw(ctx, body, x, y, pal);
-    drawEyes(m, x, y, o.eyes ?? "normal", o.gray ? pal.o : m.eyeColor, a);
+    S.draw(ctx, body, x, y, pal, flip);
+    drawEyes(m, x, y, o.eyes ?? "normal", o.gray ? pal.o : m.eyeColor, a, flip);
   }
 
-  function drawEyes(m, x, y, style, color, a) {
+  function drawEyes(m, x, y, style, color, a, flip) {
     const t = frameNow();
     if (["normal", "left", "wide", "up"].includes(style) && !reduced.matches && (t + (S.hash(a.name) % 45)) % 45 === 0) {
       style = "closed"; // parpadeo
     }
     ctx.fillStyle = color;
-    const px = (dx, dy, w = 1, h = 1) => ctx.fillRect(x + dx, y + dy, w, h);
+    const bw = m.body.w;
+    const px = (dx, dy, w = 1, h = 1) => ctx.fillRect(x + (flip ? bw - dx - w : dx), y + dy, w, h);
     if (style === "prompt") {
       // OpenCode trabajando: la cara es un prompt ">_".
       px(4, 3);
@@ -568,6 +449,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
   function draw() {
     if (!layout || !active) return;
     const th = theme();
+    const date = new Date(); // una sola lectura de reloj por frame
     const t = frameNow();
     const now = performance.now();
     const dt = Math.min(0.25, (now - lastTime) / 1000);
@@ -575,12 +457,16 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     const walking = stepWalkers(dt);
 
     ctx.imageSmoothingEnabled = false;
-    drawBackground(th);
-    drawWall(th, t);
-    for (const z of Object.keys(layout.zones)) drawSign(th, z);
+    drawStatic(th); // fondo, pared, calendario, esfera del reloj, emblema y plantas
+    const x0 = wallX0();
+    drawWindow(th, x0, 5, t, date); // la ventana anima nubes, estrellas y destellos
+    drawEmblem(th, x0 + 88, t); // la pupila sigue a la fila
+    drawClock(th, x0 + 125, 17, date); // las agujas, sobre la esfera ya pintada
+    for (const z of ZONE_ORDER) drawSign(th, z);
     drawQueueZone(th, t);
     drawExitZone(th, t);
     drawKitchenZone(th, t);
+    drawPulses(now); // avisos breves: un anillo que se abre y se desvanece
     drawOffice(th, t, walking);
 
     // Los que caminan van encima de todo.
@@ -589,124 +475,197 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       const p = pos.get(a.id);
       const m = mascotOf(a);
       const step = t % 2;
+      const tg = targets.get(a.id);
       if (m.floats) floatShadow(p.x, p.y + m.body.h + 2);
       drawMascot(a, p.x, p.y - (m.floats ? (t % 4 < 2 ? 1 : 0) : step), {
         legs: step ? "walk0" : "walk1",
         armDy: [step, 1 - step],
+        flip: facing.get(a.id) ?? (Boolean(tg) && tg.mx < p.x), // mira hacia donde va
       });
     }
     placeButtons();
   }
 
+  // Un anillo que se abre y se desvanece cuando alguien reclama tu atención
+  // (error o te espera). Es solo decoración; el aviso de verdad es su burbuja.
+  function drawPulses(now) {
+    for (const [id, t0] of pulses) {
+      const k = (now - t0) / PULSE_MS;
+      if (k < 0 || k >= 1) {
+        pulses.delete(id);
+        continue;
+      }
+      const p = pos.get(id);
+      const a = agents.get(id);
+      if (!p || !a) continue;
+      const alpha = (1 - k) * 0.7;
+      const color = a.state === "error" ? `rgb(217 54 25 / ${alpha})` : `rgb(242 200 75 / ${alpha})`;
+      ringPixels(p.x + 8, p.y + 10, 5 + k * 15, color);
+    }
+  }
+
+  function ringPixels(cx, cy, r, color) {
+    ctx.fillStyle = color;
+    const steps = Math.max(10, Math.round(r * 8));
+    for (let i = 0; i < steps; i++) {
+      const ang = (i / steps) * Math.PI * 2;
+      ctx.fillRect(Math.round(cx + Math.cos(ang) * r), Math.round(cy + Math.sin(ang) * r * 0.6), 1, 1);
+    }
+  }
+
   function stepWalkers(dt) {
     const walking = new Set();
+    const nominal = new Map(); // id -> dónde está, antes de apartarlos
     for (const a of visible) {
       const tg = targets.get(a.id);
-      if (!tg) continue;
-      let p = pos.get(a.id);
+      if (!tg) {
+        journeys.delete(a.id);
+        continue;
+      }
+      const p = pos.get(a.id);
       if (!p || reduced.matches) {
-        p = { x: tg.mx, y: tg.my };
-        pos.set(a.id, p);
+        pos.set(a.id, { x: tg.mx, y: tg.my });
+        nominal.set(a.id, { x: tg.mx, y: tg.my });
+        journeys.delete(a.id);
         continue;
       }
-      const dx = tg.mx - p.x;
-      const dy = tg.my - p.y;
-      const d = Math.hypot(dx, dy);
-      if (d < 0.5) {
-        p.x = tg.mx;
-        p.y = tg.my;
+      // Recorrido en curso hacia este destino; si cambió, se traza otro desde
+      // donde esté (con puntos de paso por los huecos, sin cruzar tabiques).
+      let j = journeys.get(a.id);
+      if (!j || j.tx !== tg.mx || j.ty !== tg.my) {
+        const dest = { x: tg.mx, y: tg.my };
+        const pts = [{ x: p.x, y: p.y }, ...route(layout, p, dest), dest];
+        const d = polylineLength(pts);
+        if (d < 0.5) {
+          pos.set(a.id, dest);
+          nominal.set(a.id, dest);
+          journeys.delete(a.id);
+          continue;
+        }
+        const speed = SPEED * walkSpeed(S.hash(a.name));
+        j = { pts, d, tx: tg.mx, ty: tg.my, t: 0, dur: Math.max(MIN_WALK_S, d / speed) };
+        journeys.set(a.id, j);
+      }
+      j.t += dt;
+      const u = j.t / j.dur;
+      const covered = easeInOut(u) * j.d;
+      const q = u >= 1 ? { x: j.tx, y: j.ty } : pointAlong(j.pts, covered);
+      const h = u >= 1 ? 0 : headingAlong(j.pts, covered);
+      if (h) facing.set(a.id, h < 0); // mira hacia donde va (no la meta)
+      nominal.set(a.id, q);
+      if (u >= 1) {
+        pos.set(a.id, q);
+        journeys.delete(a.id);
         continue;
       }
-      const len = Math.min(d, SPEED * dt);
-      p.x += (dx / d) * len;
-      p.y += (dy / d) * len;
       walking.add(a.id);
     }
+    // Los que caminan se apartan para no pisarse (los quietos no se mueven).
+    for (const [id, q] of separate(itemsOf(nominal, walking), MIN_SEPARATION)) pos.set(id, q);
     return walking;
   }
 
-  // Pisos distintos por lugar y tabiques entre ellos; se repintan solo si cambia algo.
-  function drawBackground(th) {
-    const key = `${layoutKey}|${th === SCENE.dark}`;
-    if (key !== bgKey) {
-      bgKey = key;
-      bg.width = canvas.width;
-      bg.height = canvas.height;
-      const g = bg.getContext("2d");
-      const r = (x, y, w, h, c) => {
-        g.fillStyle = c;
-        g.fillRect(x, y, w, h);
-      };
-      const { zones } = layout;
-      // Oficina: tablas de madera.
-      const o = zones.office;
-      for (let row = 0, y = o.y; y < o.y + o.h; row++, y += 5) {
-        r(o.x, y, o.w, 5, th.plank[row % 2]);
-        r(o.x, y + 4, o.w, 1, th.seam);
-        const off = S.hash(`fila${row}`) % 70;
-        for (let x = o.x + off; x < o.x + o.w; x += 70) {
-          r(x, y, 1, 4, th.seam);
-          r(x + 23, y + 2, 5, 1, th.plank[2]);
-        }
-      }
-      // Te esperan: alfombra.
-      const q = zones.queue;
-      r(q.x, q.y, q.w, q.h, th.carpet[0]);
-      for (let y = q.y + 1; y < q.y + q.h; y += 3) {
-        for (let x = q.x + (((y - q.y) / 3) % 2 ? 1 : 2); x < q.x + q.w; x += 3) r(x, y, 1, 1, th.carpet[1]);
-      }
-      // Cocina: baldosas.
-      const k = zones.kitchen;
-      for (let y = k.y; y < k.y + k.h; y += 6) {
-        for (let x = k.x; x < k.x + k.w; x += 6) r(x, y, 6, 6, th.tile[((x - k.x) / 6 + (y - k.y) / 6) % 2]);
-      }
-      // Salida: cemento.
-      const e = zones.exit;
-      r(e.x, e.y, e.w, e.h, th.concrete[0]);
-      for (let i = 0; i < (e.w * e.h) / 30; i++) {
-        const h = S.hash(`c${i}`);
-        r(e.x + (h % e.w), e.y + ((h >>> 8) % e.h), 1, 1, th.concrete[1]);
-      }
-      // Tabiques, con un paso en cada uno.
-      for (const z of Object.values(zones)) {
-        if (z.y > WALL_H) {
-          const gap = z.x + Math.floor(z.w / 2) - 7;
-          for (const [x0, x1] of [
-            [z.x, gap],
-            [gap + 14, z.x + z.w],
-          ]) {
-            r(x0, z.y - 1, x1 - x0, 3, th.partition);
-            r(x0, z.y - 1, x1 - x0, 1, th.partitionTop);
-            r(x0, z.y + 1, x1 - x0, 1, S.OUTLINE);
-          }
-        }
-        if (z.x > 0) {
-          const gapY = z.y + Math.floor(z.h / 2) - 7;
-          for (const [y0, y1] of [
-            [z.y, gapY],
-            [gapY + 14, z.y + z.h],
-          ]) {
-            r(z.x - 1, y0, 3, y1 - y0, th.partition);
-            r(z.x + 1, y0, 1, y1 - y0, S.OUTLINE);
-          }
-        }
-      }
+  /** Items para la separación: quién está dónde y quién se puede mover. */
+  function itemsOf(nominal, walking) {
+    const items = [];
+    for (const [id, q] of nominal) items.push({ id, x: q.x, y: q.y, movable: walking.has(id) });
+    return items;
+  }
+
+  // --- Capa estática ------------------------------------------------------------
+  // Pisos, tabiques, pared, calendario, esfera del reloj, base del emblema y
+  // plantas cambian muy poco: se pintan aparte y solo se rehacen si cambia la
+  // geometría, el tema o el día. Lo que anima se pinta encima en cada frame.
+  const wallX0 = () => Math.floor((layout.vw - 136) / 2);
+  const todayKey = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  };
+
+  function drawStatic(th) {
+    const key = `${layoutKey}|${th === SCENE.dark}|${todayKey()}`;
+    if (key === bgKey) {
+      ctx.drawImage(bg, 0, 0);
+      return;
     }
+    bgKey = key;
+    bg.width = canvas.width;
+    bg.height = canvas.height;
+    dctx = bg.getContext("2d");
+    drawFloors(th);
+    drawWallBase(th);
+    const x0 = wallX0();
+    drawCalendar(th, x0 + 47, 7);
+    drawEmblemBase(th, x0 + 88);
+    drawClockFace(x0 + 125, 17);
+    dctx = ctx;
     ctx.drawImage(bg, 0, 0);
   }
 
-  function drawSign(th, zone) {
-    const z = layout.zones[zone];
-    let text = ZONE_TITLE[zone];
-    const count = groups[zone].length;
-    if (zone === "queue" && count) text += ` ${count}`;
-    const hot = zone === "queue" && count > 0;
-    rect(z.x + 4, z.y + 3, S.textWidth(text) + 6, 9, hot ? "#d93619" : th.plaque);
-    S.drawText(ctx, text, z.x + 7, z.y + 5, th.signText);
+  // Pisos distintos por lugar y tabiques entre ellos.
+  function drawFloors(th) {
+    const r = (x, y, w, h, c) => {
+      dctx.fillStyle = c;
+      dctx.fillRect(x, y, w, h);
+    };
+    const { zones } = layout;
+    // Oficina: tablas de madera.
+    const o = zones.office;
+    for (let row = 0, y = o.y; y < o.y + o.h; row++, y += 5) {
+      r(o.x, y, o.w, 5, th.plank[row % 2]);
+      r(o.x, y + 4, o.w, 1, th.seam);
+      const off = S.hash(`fila${row}`) % 70;
+      for (let x = o.x + off; x < o.x + o.w; x += 70) {
+        r(x, y, 1, 4, th.seam);
+        r(x + 23, y + 2, 5, 1, th.plank[2]);
+      }
+    }
+    // Te esperan: alfombra.
+    const q = zones.queue;
+    r(q.x, q.y, q.w, q.h, th.carpet[0]);
+    for (let y = q.y + 1; y < q.y + q.h; y += 3) {
+      for (let x = q.x + (((y - q.y) / 3) % 2 ? 1 : 2); x < q.x + q.w; x += 3) r(x, y, 1, 1, th.carpet[1]);
+    }
+    // Cocina: baldosas.
+    const k = zones.kitchen;
+    for (let y = k.y; y < k.y + k.h; y += 6) {
+      for (let x = k.x; x < k.x + k.w; x += 6) r(x, y, 6, 6, th.tile[((x - k.x) / 6 + (y - k.y) / 6) % 2]);
+    }
+    // Salida: cemento.
+    const e = zones.exit;
+    r(e.x, e.y, e.w, e.h, th.concrete[0]);
+    for (let i = 0; i < (e.w * e.h) / 30; i++) {
+      const h = S.hash(`c${i}`);
+      r(e.x + (h % e.w), e.y + ((h >>> 8) % e.h), 1, 1, th.concrete[1]);
+    }
+    // Tabiques, con un paso en cada uno.
+    for (const z of ZONE_ORDER.map((name) => zones[name])) {
+      if (z.y > WALL_H) {
+        const gap = z.x + Math.floor(z.w / 2) - 7;
+        for (const [x0, x1] of [
+          [z.x, gap],
+          [gap + 14, z.x + z.w],
+        ]) {
+          r(x0, z.y - 1, x1 - x0, 3, th.partition);
+          r(x0, z.y - 1, x1 - x0, 1, th.partitionTop);
+          r(x0, z.y + 1, x1 - x0, 1, S.OUTLINE);
+        }
+      }
+      if (z.x > 0) {
+        const gapY = z.y + Math.floor(z.h / 2) - 7;
+        for (const [y0, y1] of [
+          [z.y, gapY],
+          [gapY + 14, z.y + z.h],
+        ]) {
+          r(z.x - 1, y0, 3, y1 - y0, th.partition);
+          r(z.x + 1, y0, 1, y1 - y0, S.OUTLINE);
+        }
+      }
+    }
   }
 
-  // --- Pared --------------------------------------------------------------------
-  function drawWall(th, t) {
+  // Pared, panel, tira LED y plantas.
+  function drawWallBase(th) {
     const { vw } = layout;
     rect(0, 0, vw, WALL_H, th.wall);
     rect(0, 0, vw, 2, th.wallShade);
@@ -718,20 +677,23 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     if (th.isDark) {
       // Tira LED ambiental oculta a lo largo del panel de la pared
       rect(0, WALL_H - 13, vw, 1, "#1ad988");
-      ctx.fillStyle = "rgb(26 217 136 / .14)";
-      ctx.fillRect(0, WALL_H - 12, vw, 3);
+      dctx.fillStyle = "rgb(26 217 136 / .14)";
+      dctx.fillRect(0, WALL_H - 12, vw, 3);
     }
-
-    // Una ventana, el calendario, el ojo de Argos y el reloj, centrados.
-    const x0 = Math.floor((vw - 136) / 2);
-    drawWindow(th, x0, 5, t);
-    drawCalendar(th, x0 + 47, 7);
-    drawEmblem(th, x0 + 88, t);
-    drawClock(th, x0 + 125, 17);
     if (vw >= 260) {
-      S.draw(ctx, S.BIG_PLANT, 2, WALL_H - 13, plantPal);
-      S.draw(ctx, S.BIG_PLANT, vw - S.BIG_PLANT.w - 2, WALL_H - 13, plantPal, true);
+      S.draw(dctx, S.BIG_PLANT, 2, WALL_H - 13, plantPal);
+      S.draw(dctx, S.BIG_PLANT, vw - S.BIG_PLANT.w - 2, WALL_H - 13, plantPal, true);
     }
+  }
+
+  function drawSign(th, zone) {
+    const z = layout.zones[zone];
+    let text = ZONE_TITLE[zone];
+    const count = groups[zone].length;
+    if (zone === "queue" && count) text += ` ${count}`;
+    const hot = zone === "queue" && count > 0;
+    rect(z.x + 4, z.y + 3, S.textWidth(text) + 6, 9, hot ? "#d93619" : th.plaque);
+    S.drawText(ctx, text, z.x + 7, z.y + 5, th.signText);
   }
 
   const plantPal = plainPal({ g: "#24644a", G: "#318561", T: "#994739", t: "#7d3a2f" });
@@ -747,10 +709,10 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     return { bands: ["#141c3a", "#1b2650", "#26346a"], stars: true, city: true };
   }
 
-  function drawWindow(th, x, y, t) {
+  function drawWindow(th, x, y, t, date) {
     const w = 38;
     const h = 26;
-    const sky = skyFor(new Date(), th.isDark);
+    const sky = skyFor(date, th.isDark);
     rect(x - 1, y - 1, w + 2, h + 2, S.OUTLINE);
     rect(x, y, w, h, th.frame);
     const ix = x + 2;
@@ -823,7 +785,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     rect(x - 2, y + h + 1, w + 4, 2, th.frameShade);
   }
 
-  // Calendario: el mes en la parte roja y el día grande.
+  // Calendario: el mes en la parte roja y el día grande. (Estático, día a día.)
   function drawCalendar(th, x, y) {
     const w = 19;
     const now = new Date();
@@ -832,28 +794,29 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     rect(x, y, w, 8, "#d93619");
     rect(x, y + 8, w, 1, "#a8291a");
     const month = S.MONTHS[now.getMonth()];
-    S.drawText(ctx, month, x + Math.floor((w - S.textWidth(month)) / 2), y + 2, "#ffffff");
+    S.drawText(dctx, month, x + Math.floor((w - S.textWidth(month)) / 2), y + 2, "#ffffff");
     const day = String(now.getDate());
-    S.drawText(ctx, day, x + Math.floor((w - S.textWidth(day, 2)) / 2) + 1, y + 10, S.OUTLINE, 2);
+    S.drawText(dctx, day, x + Math.floor((w - S.textWidth(day, 2)) / 2) + 1, y + 10, S.OUTLINE, 2);
     rect(x + 4, y - 3, 1, 4, th.base);
     rect(x + w - 5, y - 3, 1, 4, th.base);
   }
 
-  // Reloj de pared: marco de madera, marcas de las 12 horas y segundero.
-  function drawClock(th, cx, cy) {
-    const r = 9;
-    const disk = (radius, color, ox = 0, oy = 0) => {
-      for (let y = -radius - 1; y <= radius + 1; y++) {
-        for (let x = -radius - 1; x <= radius + 1; x++) {
-          if (x * x + y * y <= (radius + 0.5) ** 2) rect(cx + x + ox, cy + y + oy, 1, 1, color);
-        }
+  // Reloj de pared: la esfera (marco, discos y marcas) es estática; las agujas, no.
+  function clockDisk(cx, cy, radius, color, ox = 0, oy = 0) {
+    for (let y = -radius - 1; y <= radius + 1; y++) {
+      for (let x = -radius - 1; x <= radius + 1; x++) {
+        if (x * x + y * y <= (radius + 0.5) ** 2) rect(cx + x + ox, cy + y + oy, 1, 1, color);
       }
-    };
-    disk(r + 1, "rgb(0 0 0 / .18)", 1, 1);
-    disk(r + 1, S.OUTLINE);
-    disk(r, "#8a5a3c");
-    disk(r - 1, S.OUTLINE);
-    disk(r - 2, "#fffdf8");
+    }
+  }
+
+  function drawClockFace(cx, cy) {
+    const r = 9;
+    clockDisk(cx, cy, r + 1, "rgb(0 0 0 / .18)", 1, 1);
+    clockDisk(cx, cy, r + 1, S.OUTLINE);
+    clockDisk(cx, cy, r, "#8a5a3c");
+    clockDisk(cx, cy, r - 1, S.OUTLINE);
+    clockDisk(cx, cy, r - 2, "#fffdf8");
     for (let hour = 0; hour < 12; hour++) {
       const ang = (hour / 12) * Math.PI * 2;
       const at = (d) => [Math.round(Math.sin(ang) * d), -Math.round(Math.cos(ang) * d)];
@@ -864,10 +827,14 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
         rect(cx + x2, cy + y2, 1, 1, S.OUTLINE);
       }
     }
-    const now = new Date();
-    const sec = now.getSeconds() / 60;
-    const min = (now.getMinutes() + sec) / 60;
-    const hr = ((now.getHours() % 12) + min) / 12;
+  }
+
+  function drawClock(th, cx, cy, date) {
+    // Con milisegundos el segundero barre; sin ellos daba un salto de 6° por
+    // segundo (muy brusco).
+    const sec = (date.getSeconds() + date.getMilliseconds() / 1000) / 60;
+    const min = (date.getMinutes() + sec) / 60;
+    const hr = ((date.getHours() % 12) + min) / 12;
     hand(cx, cy, hr, 3.5, S.OUTLINE);
     hand(cx, cy, min, 5.5, S.OUTLINE);
     if (!reduced.matches) hand(cx, cy, sec, 6, "#d93619");
@@ -881,8 +848,12 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     }
   }
 
-  // El emblema de Argos: un ojo que mira al primero de la fila.
-  function drawEmblem(th, cx, t) {
+  // El vapor cambiaba cada frame (~0.08 s) y mareaba; cada 4 (~0.32 s) se ve.
+  const steam = (t, phase = 0) => S.STEAM[((t >> 2) + phase) % 2];
+
+  // El emblema de Argos: placa y ojo (estáticos) más una pupila que mira al
+  // primero de la fila y un parpadeo ocasional (dinámicos).
+  function drawEmblemBase(th, cx) {
     const x = cx - 13;
     const y = 6;
     rect(x - 1, y - 1, 28, 21, S.OUTLINE);
@@ -890,16 +861,25 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     rect(x + 2, y + 2, 22, 15, th.plaqueIn);
     const ex = cx - 8;
     const ey = y + 5;
-    if (!reduced.matches && t % 47 === 0) {
-      rect(ex + 1, ey + 4, 15, 1, S.OUTLINE);
-      return;
-    }
     EYE.forEach((row, ry) => {
       for (let rx = 0; rx < row.length; rx++) {
         if (row[rx] === "o") rect(ex + rx, ey + ry, 1, 1, S.OUTLINE);
         else if (row[rx] === "W") rect(ex + rx, ey + ry, 1, 1, "#ffffff");
       }
     });
+  }
+
+  function drawEmblem(th, cx, t) {
+    const x = cx - 13;
+    const y = 6;
+    const ex = cx - 8;
+    const ey = y + 5;
+    if (!reduced.matches && t % 47 === 0) {
+      // Parpadeo: se tapa el ojo ya pintado y se deja una raya.
+      rect(ex, ey, 17, 9, th.plaqueIn);
+      rect(ex + 1, ey + 4, 15, 1, S.OUTLINE);
+      return;
+    }
     const [dx, dy] = gaze(cx, t);
     const ix = ex + 8 + dx;
     const iy = ey + 4 + dy;
@@ -986,9 +966,10 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
         S.draw(ctx, S.SIGN_Q, stickX - 4, y - 14, signPal);
       } else {
         // Pide permiso: te muestra un papel para firmar.
-        drawMascot(a, p.x, p.y, { eyes: "up", armDy: [1, 1] });
-        S.draw(ctx, S.PAPER, p.x + 5, p.y + 5, signPal);
-        drawBubble(p.x + 12, p.y - 13 + (!reduced.matches && t % 8 < 4 ? -1 : 0), "#d93619", "hand");
+        const bob = breathe(a, t);
+        drawMascot(a, p.x, p.y + bob, { eyes: "up", armDy: [1, 1] });
+        S.draw(ctx, S.PAPER, p.x + 5, p.y + 5 + bob, signPal);
+        drawBubble(p.x + 12, p.y - 13 + bob + (!reduced.matches && t % 8 < 4 ? -1 : 0), "#d93619", "hand");
       }
     }
   }
@@ -1006,7 +987,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
 
   // --- Salida -----------------------------------------------------------------------
   function drawExitZone(th, t) {
-    const d = door();
+    const d = door(layout);
     S.draw(ctx, S.COAT_RACK, d.x - 10, d.y + 8, plainPal({}));
     S.draw(ctx, S.DOOR, d.x, d.y, doorPal);
     rect(d.x + 5, d.y - 3, 6, 3, "#1ad988"); // luz de salida
@@ -1018,8 +999,9 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       if (!atRest(p, tg)) continue;
       // Terminó: se despide con el maletín en la mano.
       const wave = !reduced.matches && t % 16 < 8;
-      drawMascot(a, p.x, p.y, { eyes: "happy", arms: [wave ? "up" : "side", "side"] });
-      S.draw(ctx, S.BRIEFCASE, p.x + 15, p.y + 7, mascotPalette(a.kind, false));
+      const bob = breathe(a, t);
+      drawMascot(a, p.x, p.y + bob, { eyes: "happy", arms: [wave ? "up" : "side", "side"] });
+      S.draw(ctx, S.BRIEFCASE, p.x + 15, p.y + 7 + bob, mascotPalette(a.kind, false));
     }
   }
   const doorPal = plainPal({ F: "#8a5a3c", D: "#a8714c", d: "#93603f", Y: "#f2c84b" });
@@ -1036,7 +1018,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     rect(cx + 1, cy + 11, cw - 2, 7, th.counterFront);
     for (let x = cx + 20; x < cx + cw - 18; x += 12) rect(x, cy + 13, 3, 1, th.deskTopHi);
     S.draw(ctx, S.COFFEE_MACHINE, cx + 4, cy - 3, coffeePal);
-    if (!reduced.matches) S.draw(ctx, S.STEAM[t % 2], cx + 6, cy - 7, steamPal);
+    if (!reduced.matches) S.draw(ctx, steam(t), cx + 6, cy - 7, steamPal);
     const sink = cx + Math.floor(cw / 2) - 6;
     rect(sink, cy + 7, 12, 3, "#9aa4a8");
     rect(sink + 1, cy + 8, 10, 1, "#7d878b");
@@ -1047,7 +1029,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     // Mesas con taburetes; los inactivos se sientan con su taza.
     const n = Math.max(1, Math.ceil(groups.kitchen.length / 2));
     const per = layout.unitsPerRow;
-    const left = kitchenLeft();
+    const left = kitchenLeft(layout, groups.kitchen.length);
     for (let u = 0; u < n; u++) {
       const ux = left + (u % per) * UNIT_W;
       const uy = z.y + LABEL_H + COUNTER_H + Math.floor(u / per) * layout.slotH;
@@ -1067,17 +1049,18 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       if (!atRest(p, tg)) return;
       const side = i % 2; // 0: a la izquierda de la mesa, 1: a la derecha
       const sip = !reduced.matches && (t + S.hash(a.name)) % 50 < 8;
+      const bob = sip ? 0 : breathe(a, t);
       const toTable = side ? "left" : "right";
       const arms = { left: "side", right: "side" };
       if (sip) arms[toTable] = "up";
-      drawMascot(a, p.x, p.y, { eyes: sip ? "closed" : "happy", legs: "none", arms: [arms.left, arms.right] });
+      drawMascot(a, p.x, p.y + bob, { eyes: sip ? "closed" : "happy", legs: "none", arms: [arms.left, arms.right] });
       const mugPal = mascotPalette(a.kind, false);
       if (sip) {
         S.draw(ctx, S.MUG, side ? p.x - 4 : p.x + 15, p.y + 1, mugPal);
       } else {
         const mx = side ? p.x - 9 : p.x + 20;
-        S.draw(ctx, S.MUG, mx, p.y + 8, mugPal);
-        if (!reduced.matches) S.draw(ctx, S.STEAM[(t + i) % 2], mx, p.y + 4, steamPal);
+        S.draw(ctx, S.MUG, mx, p.y + 8 + bob, mugPal);
+        if (!reduced.matches) S.draw(ctx, steam(t, i), mx, p.y + 4 + bob, steamPal);
       }
     });
   }
@@ -1090,7 +1073,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
   function drawOffice(th, t, walking) {
     const bySeat = new Map(visible.map((a) => [seatOf.get(a.id), a]));
     for (let seat = 0; seat < layout.office.seats; seat++) {
-      const { x, y } = podOrigin(seat);
+      const { x, y } = podOrigin(layout, seat);
       const a = bySeat.get(seat) ?? null;
       const here = Boolean(
         a && ZONE_OF[a.state] === "office" && !walking.has(a.id) && atRest(pos.get(a.id), targets.get(a.id)),
@@ -1107,6 +1090,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     const state = here ? a.state : null;
     const typing = state === "working" && !reduced.matches;
     const m = mascotOf(a);
+    const bob = here ? breathe(a, t) : 0; // respiración sutil en reposo
     if (here) {
       const gray = state === "disconnected";
       if (gray) ctx.globalAlpha = 0.55;
@@ -1116,7 +1100,7 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       if (state === "error") eyes = "x";
       else if (gray) eyes = "closed";
       else if (state === "working" && m.screen) eyes = "prompt";
-      drawMascot(a, x + 32 + shake, y + 10 + nod, { eyes, legs: "none", arms: ["none", "none"], gray });
+      drawMascot(a, x + 32 + shake, y + 10 + nod + bob, { eyes, legs: "none", arms: ["none", "none"], gray });
       ctx.globalAlpha = 1;
     }
 
@@ -1138,8 +1122,8 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     if (here && state !== "disconnected") {
       const pal = mascotPalette(a.kind, false);
       const l = typing ? t % 2 : 0;
-      S.draw(ctx, S.ARM_DOWN, x + 31, y + 11 + m.armY - l, pal);
-      S.draw(ctx, S.ARM_DOWN, x + 46, y + 11 + m.armY - (typing ? 1 - l : 0), pal, true);
+      S.draw(ctx, S.ARM_DOWN, x + 31, y + 11 + m.armY - l + bob, pal);
+      S.draw(ctx, S.ARM_DOWN, x + 46, y + 11 + m.armY - (typing ? 1 - l : 0) + bob, pal, true);
       if (typing) rect(x + 33 + ((t * 5) % 7) * 2, y + 23, 1, 1, m.colors.M);
     }
 
@@ -1176,6 +1160,20 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       );
     }
     return propPalettes.get(main);
+  }
+
+  // Una terminal repinta la misma pantalla muchas veces por segundo: guardamos el
+  // resultado de limpiar el ANSI y de rasterizar la línea, indexado por línea cruda.
+  const lineCache = new Map();
+  function lineInfo(raw) {
+    let c = lineCache.get(raw);
+    if (!c) {
+      const text = stripAnsi(raw);
+      c = { text, bits: miniLine(text, 16), selected: /[❯›»]/.test(text), endLen: Math.ceil(text.trimEnd().length / 3.6) };
+      if (lineCache.size >= 1000) lineCache.clear(); // cota simple para no crecer sin freno
+      lineCache.set(raw, c);
+    }
+    return c;
   }
 
   function drawMonitor(th, x, y, a, state, t, h) {
@@ -1236,22 +1234,22 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
       return;
     }
     rect(sx, sy, sw, sh, a.state === "error" ? "#3a1412" : "#17202d");
-    const lines = (a.last_lines ?? []).map(stripAnsi).filter((l) => l.trim() !== "").slice(-5);
-    lines.forEach((text, i) => {
+    const infos = (a.last_lines ?? []).map(lineInfo).filter((l) => l.text.trim() !== "").slice(-5);
+    infos.forEach((info, i) => {
       const ly = sy + 1 + i * 2;
-      const selected = /[❯›»]/.test(text);
       let color = a.state === "error" ? "#e0806c" : "#8ea3bd";
-      if (selected) color = accent;
-      if (selected && a.state === "waiting_input") {
+      if (info.selected) color = accent;
+      if (info.selected && a.state === "waiting_input") {
         rect(sx, ly, sw, 1, "#d93619");
         color = "#ffffff";
       }
-      miniLine(text, sw - 2).forEach((on, px) => on && rect(sx + 1 + px, ly, 1, 1, color));
+      const bits = info.bits;
+      for (let px = 0; px < bits.length; px++) if (bits[px]) rect(sx + 1 + px, ly, 1, 1, color);
     });
     if (state === "working" && t % 2 === 0) {
-      const last = lines.length ? lines[lines.length - 1] : "";
-      const end = Math.min(sw - 3, Math.ceil(last.trimEnd().length / 3.6) + 1);
-      rect(sx + 1 + end, sy + 1 + Math.max(0, lines.length - 1) * 2, 2, 1, "#e6edf5");
+      const last = infos.length ? infos[infos.length - 1] : null;
+      const end = last ? Math.min(sw - 3, last.endLen + 1) : 1;
+      rect(sx + 1 + end, sy + 1 + Math.max(0, infos.length - 1) * 2, 2, 1, "#e6edf5");
     }
     if (state === "error" && !reduced.matches) {
       // Humo saliendo del monitor.
@@ -1263,8 +1261,13 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     }
   }
 
+  const bubblePals = new Map(); // color -> paleta (el globo se repinta cada frame)
   function drawBubble(x, y, color, glyph) {
-    const pal = plainPal({ B: color, G: "#ffffff" });
+    let pal = bubblePals.get(color);
+    if (!pal) {
+      pal = plainPal({ B: color, G: "#ffffff" });
+      bubblePals.set(color, pal);
+    }
     S.draw(ctx, S.BUBBLE, x, y, pal);
     S.draw(ctx, S.GLYPHS[glyph], x + 3, y + 1, pal);
   }
@@ -1303,7 +1306,16 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     }
   }
   reduced.addEventListener?.("change", start);
-  new ResizeObserver(() => active && resize()).observe(root);
+  // Durante un arrastre el observer dispara muchas veces: se colapsa a un frame.
+  let resizeQueued = false;
+  new ResizeObserver(() => {
+    if (!active || resizeQueued) return;
+    resizeQueued = true;
+    requestAnimationFrame(() => {
+      resizeQueued = false;
+      if (active) resize();
+    });
+  }).observe(root);
   setInterval(() => active && tickPlates(), 1000);
   new MutationObserver(() => {
     S.clearSpriteCache();
@@ -1314,6 +1326,20 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
   // --- API -----------------------------------------------------------------------------
   function render({ agents: all, change }) {
     agents = all;
+    lastChange = change;
+    // Con la Oficina oculta no hay nada que pintar: se recuerda para la próxima
+    // vez que se muestre. Evita recalcular lugares y dibujar en cada mensaje WS.
+    if (!active) {
+      dirty = true;
+      return;
+    }
+    rebuild(change);
+    resize();
+    tickPlates();
+  }
+
+  /** Recalcula lugares, botones y orden de Tab. No dibuja: eso lo hacen resize/draw. */
+  function rebuild(change) {
     visible = [...agents.values()].filter((a) => !prefs.isDismissed(a));
     const { result, seats } = assignSeats(visible, prefs.seats());
     seatOf = result;
@@ -1326,29 +1352,57 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
         b.remove();
         buttons.delete(id);
         pos.delete(id);
+        journeys.delete(id);
+        facing.delete(id);
+        prevState.delete(id);
+        pulses.delete(id);
       }
     }
+    const reentering = []; // vuelven de una caída: entran por la puerta
     for (const a of visible) {
       if (!buttons.has(a.id)) buttons.set(a.id, createButton());
-      fillButton(buttons.get(a.id), a);
+      const b = buttons.get(a.id);
+      fillButton(b, a);
+      // De zona solo se cambia cuando el agente cambia de zona; si el botón
+      // tenía el foco, se devuelve al moverlo (mover un nodo lo desenfoca).
+      const g = zoneGroups[ZONE_OF[a.state] ?? "office"];
+      if (b.parentNode !== g) {
+        const focused = document.activeElement === b;
+        g.append(b);
+        if (focused) b.focus({ preventScroll: true });
+      }
+      // Transición de estado: reconectar (entra por la puerta) o reclamar
+      // atención (pulso). Todo lo demás ya se ve al cambiar de zona.
+      const before = prevState.get(a.id);
+      if (before && before !== a.state) {
+        if (before === RECONNECT_FROM && a.state !== RECONNECT_FROM && a.state !== "exited") reentering.push(a.id);
+        else if (PULSE_STATES.has(a.state) && !reduced.matches) pulses.set(a.id, performance.now());
+      }
+      prevState.set(a.id, a.state);
     }
     if (change?.kind === "snapshot") sawSnapshot = true;
-    // Un agente que llega con la página abierta entra por la puerta.
-    if (change?.kind === "agent_added" && sawSnapshot && layout && active && !reduced.matches) {
-      const d = door();
-      pos.set(change.agent.id, { x: d.x, y: d.y + 6 });
+    // Entran por la puerta: los recién llegados y los que vuelven de una caída.
+    const arriving = [...reentering];
+    if (change?.kind === "agent_added" && sawSnapshot) arriving.push(change.agent.id);
+    if (arriving.length && layout && !reduced.matches) {
+      const d = door(layout);
+      for (const id of arriving) pos.set(id, { x: d.x, y: d.y + 6 });
     }
-    // Orden de Tab: por lugar (te esperan, oficina, cocina, salida) y posición.
+    // Orden de prioridad (ZONE_ORDER): manda la navegación con flechas, no el
+    // orden del DOM (que queda estable). Dentro de la oficina, por asiento.
     const office = [...groups.office].sort((p, q) => seatOf.get(p.id) - seatOf.get(q.id));
-    const order = [...groups.queue, ...office, ...groups.kitchen, ...groups.exit];
-    const focused = document.activeElement;
-    order.forEach((a) => desks.append(buttons.get(a.id)));
-    if (focused && desks.contains(focused) && document.activeElement !== focused) focused.focus({ preventScroll: true });
+    const byZone = { queue: groups.queue, office, kitchen: groups.kitchen, exit: groups.exit };
+    deskOrder = ZONE_ORDER.flatMap((z) => byZone[z]).map((a) => a.id);
+    if (!deskOrder.includes(tabStop)) tabStop = deskOrder[0] ?? null;
+    for (const a of visible) buttons.get(a.id).tabIndex = a.id === tabStop ? 0 : -1;
     moved = change?.kind === "agent_updated" || change?.kind === "agent_added" || change?.kind === "agent_removed";
-    if (active) {
-      resize();
-      tickPlates();
-    }
+    dirty = false;
+  }
+
+  /** Mueve el único punto de tabulación a un escritorio (sin reordenar el DOM). */
+  function setTabStop(id) {
+    tabStop = id;
+    for (const [bid, b] of buttons) b.tabIndex = bid === id ? 0 : -1;
   }
 
   /** "Reordenar": escritorios por estado (te necesita primero) y luego por nombre. */
@@ -1363,7 +1417,8 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     active = on;
     if (on) {
       layoutKey = ""; // al mostrarse, todos en su lugar
-      moved = false;
+      if (dirty) rebuild(lastChange); // vuelca lo acumulado mientras estaba oculta
+      moved = false; // y aparecen colocados, sin caminar desde posiciones viejas
       resize();
       tickPlates();
       start();
@@ -1378,6 +1433,14 @@ export function createOfficeRenderer({ root, prefs, onOpen }) {
     b.scrollIntoView({ block: "nearest", behavior: "smooth" });
     b.focus({ preventScroll: true });
   }
+
+  // Flechas/Home/End recorren los escritorios en orden de prioridad sin tocar el DOM.
+  desks.addEventListener("keydown", (ev) => {
+    const id = nextDesk(deskOrder, document.activeElement?.dataset?.id, ev.key);
+    if (!id) return;
+    ev.preventDefault();
+    focusAgent(id);
+  });
 
   return { render, relayout, setActive, focusAgent };
 }
