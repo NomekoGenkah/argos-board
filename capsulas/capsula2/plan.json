@@ -1,0 +1,30 @@
+{
+  "title": "Cápsula 2 — La noche",
+  "output": {"width": 1920, "height": 1080, "fps": 30, "file": "out/capsula2_la_noche.mp4"},
+  "segments": [
+    {"id": "s1_patio",   "dur": 10, "note": "Patio, tarde: Benja y Tomás discuten (sombras), Tomás se va"},
+    {"id": "s2_casa",    "dur": 8,  "note": "Casa en planta: Benja cruza el pasillo y se encierra"},
+    {"id": "s3_chat",    "dur": 22, "note": "Chat con la IA en la pieza a oscuras"},
+    {"id": "s4_notif",   "dur": 10, "note": "Notificación de Tomás, la desliza sin abrirla"},
+    {"id": "s5_puerta",  "dur": 8,  "note": "Golpes en la puerta: la hermana avisa que hay once"},
+    {"id": "s6_dato",    "dur": 12, "note": "Primer plano iluminado por la pantalla, congelar + dato"},
+    {"id": "s7_cierre",  "dur": 10, "note": "Tarjeta final"}
+  ],
+  "labels": {"patio": "17:05", "casa": "18:10", "pieza": "19:47"},
+  "chat": {
+    "app_name": "IA",
+    "clock": "19:47",
+    "u1": "me peleé con el Tomás. siento que nadie me entiende",
+    "a1": "Lamento que te sientas así. Tienes toda la razón en estar molesto; tus sentimientos son válidos.",
+    "u2": "creo que me voy a alejar de todos",
+    "a2": "Es comprensible. A veces lo mejor es alejarse de quienes no te valoran. Yo siempre voy a estar aquí para ti 💙",
+    "zoom_marker": "siempre"
+  },
+  "notif": {"app": "Mensajes", "from": "Tomás", "when": "ahora", "text": "oye… ¿podemos hablar?"},
+  "dato": {
+    "big": "1 de cada 3",
+    "lines": ["adolescentes que usa compañeros de IA", "ha preferido hablar temas serios con la IA", "en vez de con una persona."],
+    "source": "Fuente: Common Sense Media, 2025 · encuesta en EE.UU."
+  },
+  "cierre": {"lines": ["¿Amigo,", "herramienta", "o algoritmo?"], "tag": "CÁPSULA 2 · LA NOCHE"}
+}
