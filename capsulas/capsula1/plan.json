@@ -1,0 +1,62 @@
+{
+  "title": "Cápsula 1 — La tarea",
+  "output": {"width": 1920, "height": 1080, "fps": 30, "file": "out/capsula1_la_tarea.mp4"},
+  "segments": [
+    {"id": "s1_noche",      "dur": 8,  "note": "Escritorio de noche, 23:47, celular se enciende"},
+    {"id": "s2_chat_guia",  "dur": 12, "note": "Chat: resuélveme toda la guía"},
+    {"id": "s3_copia",      "dur": 8,  "note": "Copia en el cuaderno en cámara rápida"},
+    {"id": "s4_chat_libro", "dur": 14, "note": "Chat: resumen de un libro inexistente"},
+    {"id": "s5_alerta",     "dur": 6,  "note": "Negro + alerta: el libro no existe"},
+    {"id": "s6_prueba",     "dur": 14, "note": "Al día siguiente: prueba casi en blanco"},
+    {"id": "s7_dato",       "dur": 10, "note": "Imagen congelada + dato 17%"},
+    {"id": "s8_cierre",     "dur": 8,  "note": "Tarjeta final"}
+  ],
+  "chat": {
+    "app_name": "IA",
+    "msg1_user": "resuélveme toda la guía con desarrollo",
+    "msg1_ai": "¡Claro! Aquí tienes los 15 ejercicios resueltos paso a paso 😊",
+    "msg1_ai_list": [
+      "1) f(4) = 2·4 + 3 = 11",
+      "2) f(−2) = 2·(−2) + 3 = −1",
+      "3) x − 1 = 0 ; x = 1",
+      "4) x² − 4 = 0 ; x = ±2",
+      "5) m = (7 − 3) / (2 − 0) = 2",
+      "6) y − 3 = 2(x − 0)",
+      "7) y = 2x + 3",
+      "8) f(0) = 3 ; f(1) = 5",
+      "9) 3x − 6 = 0 ; x = 2",
+      "10) (x + 2)(x − 2) = x² − 4",
+      "11) h(3) = 3² − 4 = 5",
+      "12) f(g(1)) = 2·0 + 3 = 3",
+      "13) h(−x) = h(x) → par",
+      "14) Rec h = [−4, +∞)",
+      "15) Ver gráfico adjunto"
+    ],
+    "msg2_user": "y hazme un resumen de 'El faro de Coquimbo' de Gabriela Mistral pal control de lectura",
+    "msg2_ai": "¡Por supuesto! 📖\n«El faro de Coquimbo» (1938) narra la historia de un pescador que cada noche enciende un viejo faro, esperando el regreso de su hijo perdido en el mar.\nTemas principales:\n• La soledad\n• La esperanza\n• El paisaje del Norte Chico",
+    "zoom_marker": "(1938)"
+  },
+  "copia_lines": [
+    "1)  f(4) = 2·4 + 3 = 11",
+    "2)  f(−2) = 2·(−2) + 3 = −1",
+    "3)  x − 1 = 0 ;  x = 1",
+    "4)  x² − 4 = 0 ;  x = ±2",
+    "5)  m = (7 − 3) / (2 − 0) = 2",
+    "6)  y − 3 = 2(x − 0)",
+    "7)  y = 2x + 3",
+    "8)  f(0) = 3 ;  f(1) = 5",
+    "9)  3x − 6 = 0 ;  x = 2",
+    "10)  (x + 2)(x − 2) = x² − 4",
+    "11)  h(3) = 3² − 4 = 5"
+  ],
+  "alerta": {"line1": "Ese libro no existe.", "line2": "La IA lo inventó."},
+  "prueba_intro": "Al día siguiente…",
+  "dato": {
+    "pre": ["Estudiantes que usaron IA sin límites", "para practicar rindieron"],
+    "number": 17,
+    "big_suffix": "% peor",
+    "post": "en la prueba.",
+    "source": "Fuente: Bastani et al., PNAS 2025"
+  },
+  "cierre": {"lines": ["¿Amigo,", "herramienta", "o algoritmo?"], "tag": "CÁPSULA 1 · LA TAREA"}
+}
