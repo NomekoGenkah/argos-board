@@ -15,6 +15,7 @@ class Look:
 
 
 BENJA = Look(hair=(34, 26, 22), jacket=(30, 42, 78), pack=(70, 74, 82))
+BENJA_CASA = Look(hair=(34, 26, 22), jacket=(30, 42, 78), pack=None)
 TOMAS = Look(hair=(120, 82, 46), jacket=(30, 42, 78), pack=(150, 40, 46), skin=(226, 182, 146))
 MAMA = Look(hair=(70, 44, 30), jacket=(150, 92, 110), skin=(220, 172, 138), hair_len=1.25)
 HERMANA = Look(hair=(46, 30, 24), jacket=(90, 140, 120), skin=(222, 176, 140), hair_len=1.35)

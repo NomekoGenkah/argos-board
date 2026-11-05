@@ -74,7 +74,7 @@ Si cambias cómo se dibuja un fondo, borra el `cache_*.png` correspondiente.
 | 0:28–0:42 | Chat: resumen de *El faro de Coquimbo* (inventado) | `s4_chat_libro` |
 | 0:42–0:48 | Alerta: "Ese libro no existe. La IA lo inventó." | `s5_alerta` |
 | 0:48–1:02 | Al día siguiente: prueba casi en blanco | `s6_prueba` |
-| 1:02–1:12 | Imagen congelada + dato 17 % (Bastani et al., PNAS 2025) | `s7_dato` |
+| 1:02–1:12 | Imagen congelada + dato: quienes dependieron de la IA para toda su práctica rindieron 17 % peor en la prueba sin IA (Bastani et al., PNAS 2025) | `s7_dato` |
 | 1:12–1:20 | Tarjeta final "¿Amigo, herramienta o algoritmo?" | `s8_cierre` |
 
 ## Para agregar las voces grabadas

@@ -57,7 +57,7 @@ borra el archivo de caché correspondiente.
 | 0:10–0:18 | Casa en planta, 18:10: "¿Benja? ¿Cómo te fue?" / "Bien." y portazo | `s2_casa` |
 | 0:18–0:40 | Pieza a oscuras, 19:47: chat con la IA | `s3_chat` |
 | 0:40–0:50 | Notificación de Tomás: "oye… ¿podemos hablar?"; la desliza sin abrirla | `s4_notif` |
-| 0:50–0:58 | Golpes en la puerta: "Benja, ¿estás bien? Hay once." | `s5_puerta` |
+| 0:50–0:58 | Benja sentado en la cama con el celular; golpes en la puerta: "Benja, ¿estás bien? Hay once." | `s5_puerta` |
 | 0:58–1:10 | Primer plano iluminado por la pantalla, congelar + dato (Common Sense Media, 2025) | `s6_dato` |
 | 1:10–1:20 | Tarjeta final "¿Amigo, herramienta o algoritmo?" | `s7_cierre` |
 

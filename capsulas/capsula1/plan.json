@@ -52,11 +52,11 @@
   "alerta": {"line1": "Ese libro no existe.", "line2": "La IA lo inventó."},
   "prueba_intro": "Al día siguiente…",
   "dato": {
-    "pre": ["Estudiantes que usaron IA sin límites", "para practicar rindieron"],
+    "pre": ["Estudiantes que dependieron de la IA", "para resolver toda su práctica rindieron"],
     "number": 17,
     "big_suffix": "% peor",
-    "post": "en la prueba.",
-    "source": "Fuente: Bastani et al., PNAS 2025"
+    "post": "en la prueba, cuando ya no tenían IA.",
+    "source": "Fuente: Bastani et al., PNAS 2025 · ~1.000 estudiantes de enseñanza media"
   },
   "cierre": {"lines": ["¿Amigo,", "herramienta", "o algoritmo?"], "tag": "CÁPSULA 1 · LA TAREA"}
 }

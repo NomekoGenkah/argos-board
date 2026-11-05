@@ -8,7 +8,7 @@ from PIL import Image, ImageDraw, ImageFilter
 
 from common import W, H, font, rrect, circle, prog, ease_in_out, ease_out, lerp, camera, drop_shadow, radial
 from gfx import (OUT, smooth_noise, to_img, planks, place, cache_png, time_label, fade, multiply)
-from people import BENJA, MAMA, HERMANA, person_top, paste_person, head_side, _shade
+from people import BENJA, BENJA_CASA, MAMA, HERMANA, person_top, paste_person, _shade
 import timeline as TL
 
 K = 2
@@ -249,10 +249,13 @@ def s2_frame(t):
 
 
 # ================================================================== bedroom (S5, S6, chat background)
-BED_PHONE = (985, 470)
-PHONE_W, PHONE_H = 118, 244        # 1x canvas coords of the phone on the pillow
-BED_PHONE_ANGLE = 18
-BED_HEAD = (1165, 392)
+# Benja sits up in bed, back against the pillow (bottom of the frame), legs under the blanket,
+# phone in both hands in front of him. Seen from above, the screen reads upright (over his shoulder).
+BED_PHONE = (1240, 636)
+PHONE_W, PHONE_H = 118, 244
+BED_PHONE_ANGLE = 3
+BENJA_BED = (1240, 836)
+BENJA_SCALE = 2.0
 DOOR_X = 470                   # wall between hallway (left) and the room
 
 
@@ -264,31 +267,22 @@ def bedroom_albedo():
     cv = to_img(arr).convert("RGBA")
     d = ImageDraw.Draw(cv)
     sh = (8 * K, 12 * K, 10 * K, 0.5)
-    # bed: frame, mattress, pillow, blanket
-    place(cv, rrect(760 * K, 1000 * K, 16 * K, (70, 54, 42, 255)), (1240 * K, 640 * K), 0, shadow=sh)
-    place(cv, rrect(720 * K, 960 * K, 26 * K, (226, 228, 236, 255)), (1240 * K, 640 * K), 0, shadow=None)
-    pillow = rrect(560 * K, 230 * K, 70 * K, (238, 240, 246, 255)).copy()
-    ImageDraw.Draw(pillow).line((40 * K, 115 * K, 520 * K, 118 * K), fill=(215, 218, 228), width=4 * K)
-    place(cv, pillow, (1240 * K, 330 * K), -3, shadow=(4 * K, 8 * K, 10 * K, 0.35))
-    blanket = Image.new("RGBA", (740 * K, 620 * K), (0, 0, 0, 0))
+    # bed: frame, mattress, pillow at the bottom (headboard side), blanket over his legs
+    place(cv, rrect(760 * K, 1000 * K, 16 * K, (70, 54, 42, 255)), (1240 * K, 580 * K), 0, shadow=sh)
+    place(cv, rrect(720 * K, 960 * K, 26 * K, (226, 228, 236, 255)), (1240 * K, 580 * K), 0, shadow=None)
+    pillow = rrect(560 * K, 200 * K, 70 * K, (238, 240, 246, 255)).copy()
+    ImageDraw.Draw(pillow).line((40 * K, 100 * K, 520 * K, 103 * K), fill=(215, 218, 228), width=4 * K)
+    place(cv, pillow, (1240 * K, 965 * K), 2, shadow=(4 * K, -6 * K, 10 * K, 0.35))
+    blanket = Image.new("RGBA", (720 * K, 700 * K), (0, 0, 0, 0))
     bd = ImageDraw.Draw(blanket)
-    bd.rounded_rectangle((0, 0, 740 * K - 1, 620 * K - 1), 40 * K, fill=(38, 52, 92, 255))
-    # the curled body under the blanket
-    bd.ellipse((60 * K, 10 * K, 520 * K, 360 * K), fill=(46, 62, 108, 255))
-    bd.ellipse((150 * K, -40 * K, 400 * K, 150 * K), fill=(50, 68, 116, 255))
-    bd.ellipse((200 * K, 230 * K, 640 * K, 560 * K), fill=(44, 60, 104, 255))
-    for i in range(7):
-        y = (60 + i * 80) * K
-        bd.arc((-200 * K, y - 300 * K, 900 * K, y + 300 * K), 70, 110, fill=(30, 42, 76, 255), width=5 * K)
-    place(cv, blanket, (1250 * K, 770 * K), -2, shadow=(4 * K, 6 * K, 10 * K, 0.4))
-    # his arm out of the blanket, hand by the phone
-    arm = Image.new("RGBA", (CW, CH), (0, 0, 0, 0))
-    ad = ImageDraw.Draw(arm)
-    ad.line(R(1250, 540, 1180, 590, 1110, 612, 1050, 602), fill=(104, 110, 128, 255), width=50 * K, joint="curve")
-    ad.ellipse(R(1012, 572, 1072, 628), fill=(214, 168, 132, 255))
-    sh_, pad_ = drop_shadow(arm.crop(R(900, 450, 1300, 720)), 8 * K, 0.45)
-    cv.alpha_composite(sh_, (int(900 * K - pad_ + 6 * K), int(450 * K - pad_ + 10 * K)))
-    cv.alpha_composite(arm)
+    bd.rounded_rectangle((0, 0, 720 * K - 1, 700 * K - 1), 40 * K, fill=(38, 52, 92, 255))
+    # knees up under the blanket, and the folds running down to his waist
+    for kx in (285, 435):
+        bd.ellipse(((kx - 85) * K, 300 * K, (kx + 85) * K, 470 * K), fill=(48, 64, 112, 255))
+        bd.ellipse(((kx - 55) * K, 330 * K, (kx + 35) * K, 410 * K), fill=(56, 74, 126, 255))
+    for i, x in enumerate((150, 250, 360, 470, 570)):
+        bd.line(((x + 20) * K, 40 * K, x * K, 300 * K, (x - 10 + i * 6) * K, 690 * K), fill=(30, 42, 76, 255), width=5 * K, joint="curve")
+    place(cv, blanket, (1240 * K, 445 * K), 0, shadow=(4 * K, 6 * K, 10 * K, 0.4))
     # night table + lamp (off) + headphones
     place(cv, rrect(170 * K, 170 * K, 8 * K, (110, 80, 56, 255)), (1740 * K, 300 * K), 0, shadow=sh)
     place(cv, circle(100 * K, (230, 222, 200, 255)), (1740 * K, 290 * K), 0, shadow=(4 * K, 6 * K, 6 * K, 0.4))
@@ -383,18 +377,47 @@ def phone_screen_on(frame, s, cx, cy, clock="19:52", brightness=1.0):
     return fr.convert("RGB")
 
 
+@lru_cache(maxsize=1)
+def hands_and_phone():
+    """Forearms from his shoulders to the phone, the phone body, and his hands holding it (2x canvas layer)."""
+    lay = Image.new("RGBA", (int(700 * K), int(600 * K)), (0, 0, 0, 0))
+    ox, oy = BED_PHONE[0] - 350, BED_PHONE[1] - 260          # layer origin in 1x canvas coords
+    d = ImageDraw.Draw(lay)
+    sx = BENJA_SCALE * 50
+    by = BENJA_BED[1] - 6
+    bot = BED_PHONE[1] + PHONE_H / 2
+    for side in (-1, 1):
+        sh_pt = (BENJA_BED[0] + side * sx - ox, by - oy)
+        hand = (BED_PHONE[0] + side * (PHONE_W / 2 - 4) - ox, bot - 34 - oy)
+        d.line([(sh_pt[0] * K, sh_pt[1] * K), (hand[0] * K, hand[1] * K)], fill=(34, 46, 84, 255), width=int(44 * K), joint="curve")
+        d.ellipse(((sh_pt[0] - 22) * K, (sh_pt[1] - 22) * K, (sh_pt[0] + 22) * K, (sh_pt[1] + 22) * K), fill=(34, 46, 84, 255))
+    sh, pad = drop_shadow(lay, 6 * K, 0.45)
+    out = Image.new("RGBA", lay.size, (0, 0, 0, 0))
+    out.alpha_composite(sh.crop((pad - 4 * K, pad - 8 * K, pad - 4 * K + lay.width, pad - 8 * K + lay.height)))
+    out.alpha_composite(lay)
+    pb = phone_body(K).rotate(BED_PHONE_ANGLE, resample=Image.BICUBIC, expand=True)
+    psh, ppad = drop_shadow(pb, 8 * K, 0.55)
+    px, py = (BED_PHONE[0] - ox) * K - pb.width / 2, (BED_PHONE[1] - oy) * K - pb.height / 2
+    out.alpha_composite(psh, (int(px - ppad + 6 * K), int(py - ppad + 10 * K)))
+    out.alpha_composite(pb, (int(px), int(py)))
+    d = ImageDraw.Draw(out)
+    skin = BENJA.skin
+    for side in (-1, 1):
+        hx, hy = BED_PHONE[0] + side * (PHONE_W / 2 - 2) - ox, bot - 40 - oy
+        d.ellipse(((hx - 24) * K, (hy - 30) * K, (hx + 24) * K, (hy + 30) * K), fill=skin + (255,))
+        tx = hx - side * 26
+        d.ellipse(((tx - 13) * K, (hy - 36) * K, (tx + 13) * K, (hy - 8) * K), fill=_shade(skin, 1.04) + (255,))
+    return out, ((ox + 350) * K, (oy + 300) * K)
+
+
 def bedroom_frame(t, s, cx, cy, head_look=0.0, sister=None, door_shake=0.0, clock="19:52"):
     base, L = bedroom_assets()
     cv = base.convert("RGBA")
-    # phone body on the pillow
-    pb = phone_body(K).rotate(BED_PHONE_ANGLE, resample=Image.BICUBIC, expand=True)
-    sh, pad = drop_shadow(pb, 6 * K, 0.5)
-    cv.alpha_composite(sh, (int(BED_PHONE[0] * K - pb.width / 2 - pad + 4 * K), int(BED_PHONE[1] * K - pb.height / 2 - pad + 6 * K)))
-    cv.alpha_composite(pb, (int(BED_PHONE[0] * K - pb.width / 2), int(BED_PHONE[1] * K - pb.height / 2)))
-    # Benja's head on the pillow, facing the phone; turns to the door when they knock
-    face = lerp(196, 150, head_look)
-    head = head_side(BENJA, 105 * K, face)
-    lit_paste(cv, head, (BED_HEAD[0] * K, BED_HEAD[1] * K), L)
+    # Benja sitting against the pillow, facing up the bed; turns his head to the door when they knock
+    benja = person_top(BENJA_CASA, BENJA_SCALE * K, 90, reach=(0.0, 0.0), head_turn=-58 * head_look)
+    lit_paste(cv, benja, (BENJA_BED[0] * K, BENJA_BED[1] * K), L)
+    hp, c = hands_and_phone()
+    lit_paste(cv, hp, c, L)
     # door leaf (closed), shaking on knocks
     leaf = Image.new("RGBA", (30 * K, 190 * K), (0, 0, 0, 0))
     ImageDraw.Draw(leaf).rectangle((8 * K, 0, 22 * K, 180 * K), fill=(176, 134, 94, 255))
@@ -418,10 +441,10 @@ def s5_frame(t):
         reach = max(reach, 0.75)
     sister = person_top(HERMANA, 1.0 * K, 0, reach=(0.1, reach), spread=(0, 0.1), head_turn=4 * math.sin(t))
     s = lerp(1.25, 1.36, prog(t, 0, 8))
-    fr = bedroom_frame(t, s, 860 * K, 520 * K, head_look=look, sister=sister, door_shake=knock)
+    fr = bedroom_frame(t, s, 900 * K, 560 * K, head_look=look, sister=sister, door_shake=knock)
     return fade(fr, prog(t, 0, 0.4))
 
 
 def closeup_frame(t):
-    s = lerp(2.4, 2.7, ease_out(prog(t, 0, 2.0)))
-    return bedroom_frame(t, s, 1090 * K, 450 * K)
+    s = lerp(2.25, 2.55, ease_out(prog(t, 0, 2.0)))
+    return bedroom_frame(t, s, 1240 * K, 735 * K)
