@@ -1,0 +1,36 @@
+{
+  "title": "Cápsula 3 — El grupo",
+  "output": {"width": 1920, "height": 1080, "fps": 30, "file": "out/capsula3_el_grupo.mp4"},
+  "segments": [
+    {"id": "s1_camino",   "dur": 8,  "note": "07:42, Benja camina al colegio con audífonos"},
+    {"id": "s2_grupo",    "dur": 17, "note": "Chat grupal 3°B: ráfaga de mensajes, imagen difuminada"},
+    {"id": "s3_reenviar", "dur": 10, "note": "Dedo sobre Reenviar; al fondo Martina entra al colegio"},
+    {"id": "s4_pasillo",  "dur": 15, "note": "Pasillo: se ríen al verla, revisa su celular y se aleja rápido"},
+    {"id": "s5_reenvias", "dur": 10, "note": "Vuelta al dedo sobre Reenviar, congelar: ¿Reenvías?"},
+    {"id": "s6_dato",     "dur": 7,  "note": "Dato Thorn 2025"},
+    {"id": "s7_cierre",   "dur": 8,  "note": "Tarjeta final"}
+  ],
+  "labels": {"camino": "07:42"},
+  "grupo": {
+    "name": "3°B 💀",
+    "members": "Seba, Cata, Diego, Nico, Javi, Martu, tú…",
+    "clock": "07:44",
+    "image_label": "imagen generada con IA",
+    "messages": [
+      {"from": "Seba",  "color": [255, 160, 80],  "text": "JAJAJA miren lo que hice con la Martu 😂"},
+      {"from": "Seba",  "color": [255, 160, 80],  "image": true},
+      {"from": "Cata",  "color": [240, 110, 170], "text": "nooo 💀"},
+      {"from": "Diego", "color": [110, 200, 255], "text": "jajaja manda más"},
+      {"from": "Nico",  "color": [140, 220, 120], "text": "wena Seba"},
+      {"from": "Javi",  "color": [200, 170, 255], "text": "cabros esto está mal…"}
+    ],
+    "menu": ["Responder", "Reenviar", "Copiar", "Destacar", "Eliminar"]
+  },
+  "pregunta": "¿Reenvías?",
+  "dato": {
+    "big": "1 de cada 8",
+    "lines": ["jóvenes conoce a alguien afectado", "por un deepfake sexual."],
+    "source": "Fuente: Thorn, 2025 · encuesta en EE.UU."
+  },
+  "cierre": {"lines": ["¿Amigo,", "herramienta", "o algoritmo?"], "tag": "CÁPSULA 3 · EL GRUPO"}
+}
