@@ -213,7 +213,25 @@ export function createDomRenderer({ cards, empty, conn, live, template, prefs, G
     item.querySelector(".term")?.addEventListener("dblclick", () => {
       onOpenAgent?.(a.id);
     });
-    views.set(a.id, createTermView(item.querySelector(".term"), { theme: prefs.termTheme() ?? DEFAULT_TERM_THEME, mode: prefs.termMode() ?? DEFAULT_TERM_MODE }));
+    const zoomReset = item.querySelector(".zoom-reset");
+    const showZoom = (zoom) => {
+      zoomReset.hidden = zoom === 1;
+      zoomReset.textContent = `${Math.round(zoom * 100)}%`;
+    };
+    const view = createTermView(item.querySelector(".term"), {
+      theme: prefs.termTheme() ?? DEFAULT_TERM_THEME,
+      mode: prefs.termMode() ?? DEFAULT_TERM_MODE,
+      zoom: prefs.termZoom(a.name),
+      onZoom: (zoom) => {
+        prefs.setTermZoom(item.dataset.name, zoom);
+        showZoom(zoom);
+      },
+    });
+    showZoom(view.zoom());
+    item.querySelector(".zoom-in").addEventListener("click", view.zoomIn);
+    item.querySelector(".zoom-out").addEventListener("click", view.zoomOut);
+    zoomReset.addEventListener("click", view.resetZoom);
+    views.set(a.id, view);
     const con = createConsole({ sendInput, voice, uploadFile });
     item.querySelector(".console-slot").append(con.el);
     consoles.set(a.id, con);

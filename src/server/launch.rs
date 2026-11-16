@@ -23,6 +23,7 @@ pub fn binary(kind: AgentKind) -> Option<&'static str> {
         AgentKind::Opencode => Some("opencode"),
         AgentKind::Agy => Some("agy"),
         AgentKind::Copilot => Some("copilot"),
+        AgentKind::Codex => Some("codex"),
         AgentKind::Generic => None,
     }
 }
@@ -150,6 +151,7 @@ impl Launcher {
                 AgentKind::Opencode,
                 AgentKind::Agy,
                 AgentKind::Copilot,
+                AgentKind::Codex,
             ]
             .into_iter()
             .filter(|k| binary(*k).and_then(find_in_path).is_some())

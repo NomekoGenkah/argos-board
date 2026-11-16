@@ -4,7 +4,7 @@
 import { Terminal } from "./vendor/xterm/xterm.mjs";
 import { WebglAddon } from "./vendor/xterm/addon-webgl.mjs";
 import { stripAnsi } from "./ansi.js";
-import { FLOOR_FONT, FLOOR_FONT_PHONE, fullFrame, gridOf, historyKey, LINE_HEIGHT, lastContentRow, pickFont, visibleFrame } from "./termgrid.js";
+import { FLOOR_FONT, FLOOR_FONT_PHONE, fullFrame, gridOf, historyKey, LINE_HEIGHT, lastContentRow, pickFont, stepZoom, visibleFrame, zoomedSize } from "./termgrid.js";
 import { DEFAULT_TERM_THEME, termTheme } from "./termthemes.js";
 
 const FONT_FAMILY = '"JetBrains Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace';
@@ -23,8 +23,9 @@ function whenFontReady() {
 /**
  * @param host elemento `.term` (la caja); dentro se monta la terminal.
  * @param opts.theme nombre del tema de terminal; opts.mode "fit" (entra completa) o "width" (ancho; alto con scroll).
+ * @param opts.zoom zoom inicial (1 = el del ajuste); opts.onZoom(zoom) avisa cada vez que cambia, para recordarlo.
  */
-export function createTermView(host, { theme = DEFAULT_TERM_THEME, mode = "auto" } = {}) {
+export function createTermView(host, { theme = DEFAULT_TERM_THEME, mode = "auto", zoom: initialZoom = 1, onZoom } = {}) {
   host.classList.add("term");
   const screenEl = document.createElement("div");
   screenEl.className = "term-screen";
@@ -40,6 +41,7 @@ export function createTermView(host, { theme = DEFAULT_TERM_THEME, mode = "auto"
   let histKey = null;
   let themeName = theme;
   let fitMode = mode;
+  let zoom = initialZoom;
   let fontOk = false;
   let anchored = true; // ¿sigue el final, o la persona subió a leer?
   let anchorTop = 0;
@@ -191,7 +193,14 @@ export function createTermView(host, { theme = DEFAULT_TERM_THEME, mode = "auto"
   function fit() {
     if (!term || !ready()) return;
     const { w, h } = inner();
-    const { size, scroll } = pickFont({ cols: term.cols, rows: term.rows, width: w, height: h, mode: fitMode, measure, slack: SLACK, tail, floor: phone.matches ? FLOOR_FONT_PHONE : FLOOR_FONT });
+    const picked = pickFont({ cols: term.cols, rows: term.rows, width: w, height: h, mode: fitMode, measure, slack: SLACK, tail, floor: phone.matches ? FLOOR_FONT_PHONE : FLOOR_FONT });
+    const size = zoomedSize(picked.size, zoom);
+    // Con zoom la terminal puede no entrar en ninguna de las dos direcciones: se mide con la letra final.
+    let scroll = picked.scroll;
+    if (zoom !== 1) {
+      const { cw, ch } = measure(size);
+      scroll = cw * term.cols > w + SLACK + 0.5 || ch * term.rows > h + SLACK + 0.5;
+    }
     if (term.options.fontSize !== size) term.options.fontSize = size;
     host.classList.toggle("term--scroll", scroll);
     anchored = true;
@@ -224,7 +233,29 @@ export function createTermView(host, { theme = DEFAULT_TERM_THEME, mode = "auto"
     }
   });
 
+  function setZoom(next, { notify = true } = {}) {
+    if (next === zoom) return;
+    zoom = next;
+    fit();
+    if (notify) onZoom?.(zoom);
+  }
+
+  // Ctrl + rueda (o el pellizco del trackpad) acerca y aleja sin mover la página.
+  host.addEventListener(
+    "wheel",
+    (ev) => {
+      if (!ev.ctrlKey || !ev.deltaY) return;
+      ev.preventDefault();
+      setZoom(stepZoom(zoom, ev.deltaY < 0 ? 1 : -1));
+    },
+    { passive: false },
+  );
+
   const api = {
+    zoomIn: () => setZoom(stepZoom(zoom, 1)),
+    zoomOut: () => setZoom(stepZoom(zoom, -1)),
+    resetZoom: () => setZoom(1),
+    zoom: () => zoom,
     update(agent) {
       latest = agent;
       if (source === (agent.grid ?? agent.last_lines) && term) return;
@@ -241,7 +272,7 @@ export function createTermView(host, { theme = DEFAULT_TERM_THEME, mode = "auto"
       fit();
     },
     fit,
-    state: () => (term ? { fontSize: term.options.fontSize, cols: term.cols, rows: term.rows, mode: fitMode } : null),
+    state: () => (term ? { fontSize: term.options.fontSize, cols: term.cols, rows: term.rows, mode: fitMode, zoom } : null),
     scrollToTop: () => term?.scrollToTop(),
     scrollToBottom: () => term?.scrollToBottom(),
     lineCount() {

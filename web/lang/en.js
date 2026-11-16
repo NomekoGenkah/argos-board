@@ -56,6 +56,9 @@ export default {
 
   // --- card ---
   "card.expand": "Open the full terminal",
+  "card.zoomIn": "Zoom in",
+  "card.zoomOut": "Zoom out",
+  "card.zoomReset": "Reset zoom",
   "card.stop": "Stop",
   "card.dismiss": "Dismiss",
   "card.project": "Project",

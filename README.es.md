@@ -10,7 +10,7 @@
 
 </div>
 
-Si usas `claude`, `opencode`, `agy` o `copilot` en varias terminales, pasas el día cambiando de ventana para ver cuál
+Si usas `claude`, `opencode`, `agy`, `copilot` o `codex` en varias terminales, pasas el día cambiando de ventana para ver cuál
 terminó, cuál se quedó esperando un permiso y cuál te hizo una pregunta. Argos Board los junta en una sola página, en
 vivo, y marca los que esperan por ti.
 

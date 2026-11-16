@@ -42,6 +42,9 @@ const MODE_COMMANDS = {
     { label: "/plan", text: "/plan", name: t("mode.plan") },
     { label: "/autopilot", text: "/autopilot", name: t("mode.autopilot") },
   ],
+  codex: [
+    { label: "/plan", text: "/plan", name: t("mode.plan") },
+  ],
   opencode: [
     { label: "Plan", text: "/mode plan", name: t("mode.planMode") },
   ],

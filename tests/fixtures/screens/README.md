@@ -10,6 +10,7 @@ de 120x40 con `argos-board run --dump-screens` y, donde hizo falta, con `tmux ca
 | `opencode` | OpenCode 1.18.35 con `deepseek/deepseek-flash` | permisos por defecto |
 | `agy` | Antigravity CLI 1.3.3 (Gemini 3.8 Flash) | configuración por defecto del usuario |
 | `copilot` | GitHub Copilot CLI 1.0.96 (modelo `auto`) | `Manual Approval` (por defecto), grabado el 2026-10-13 |
+| `codex` | Codex CLI 0.166.0 (GPT-6.1-Sol) | `-a on-request -s read-only` (permiso) y `/plan` (pregunta), grabado el 2026-11-05; sin `confianza` (la carpeta ya era de confianza) |
 
 Se eliminaron datos personales (email, rutas con el usuario). Las rutas del proyecto se
 reemplazaron por `/tmp/argos-calib/proyecto`.
@@ -17,7 +18,7 @@ reemplazaron por `/tmp/argos-calib/proyecto`.
 ## Formato
 
 ```
-# agente: <claude|opencode|agy|copilot>
+# agente: <claude|opencode|agy|copilot|codex>
 # categoria: <pregunta|permiso|confianza|fin_de_turno>
 # descripcion: ...
 # origen: ...

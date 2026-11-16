@@ -7,5 +7,6 @@ export const KINDS = {
   opencode: "OpenCode",
   agy: "Antigravity",
   copilot: "GitHub Copilot",
+  codex: "Codex",
   generic: t("kind.generic"),
 };

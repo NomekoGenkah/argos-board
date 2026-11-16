@@ -5,6 +5,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Codex CLI (`codex`) as a supported agent: detection profile calibrated against Codex 0.166.0 (questions and
+  command approvals), launchable from the page, own colour and pixel-art mascot.
+- Per-card zoom on the terminal (− / + buttons, Ctrl + wheel), remembered per agent.
+
+### Changed
+
+- `auto` terminal fit prefers a larger font with a little vertical scroll over a whole terminal that leaves much of
+  the card empty.
+
 ## [1.0.0] - 2026-10-19
 
 First stable release. Argos Board is a local web board that shows what your CLI coding agents are doing and tells you

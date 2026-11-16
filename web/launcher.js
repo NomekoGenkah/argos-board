@@ -5,7 +5,7 @@ import { t } from "./i18n.js";
 
 import { KINDS } from "./kinds.js";
 
-const KIND_ORDER = ["claude", "opencode", "agy", "copilot"];
+const KIND_ORDER = ["claude", "opencode", "agy", "copilot", "codex"];
 
 /** Carpetas recientes: los proyectos de los agentes a la vista, sin repetir y dentro de las raíces. */
 export function recentFolders(agents, roots = [], limit = 6) {

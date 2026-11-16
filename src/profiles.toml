@@ -37,6 +37,15 @@ waiting_input = ['↑/↓ select · enter accept', 'Do you trust the files in th
 waiting_approval = ['No, and tell Copilot what to do differently']
 error = []
 
+[profiles.codex]
+# Codex CLI 0.166.0: permiso para ejecutar un comando fuera del sandbox («No, and tell Codex what
+# to do differently») y la herramienta de preguntas (request_user_input, en modo /plan).
+# El diálogo de confianza en la carpeta («Do you trust the contents of this directory?») no se
+# grabó (la carpeta de calibración ya era de confianza): el patrón sale del código de Codex.
+waiting_input = ['tab to add notes \| enter to submit answer', 'Do you trust the contents of this directory\?']
+waiting_approval = ['No, and tell Codex what to do differently']
+error = []
+
 [profiles.generic]
 waiting_input = []
 waiting_approval = []

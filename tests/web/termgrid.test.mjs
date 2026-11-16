@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cardSizeFor, FLOOR_FONT, fullFrame, gridOf, historyKey, lastContentRow, MIN_FONT, pickFont, READABLE_FONT, ROW_RATIO, CELL_RATIO, visibleFrame } from "../../web/termgrid.js";
+import { cardSizeFor, FLOOR_FONT, fullFrame, gridOf, historyKey, lastContentRow, MIN_FONT, pickFont, MAX_ZOOM, MAX_ZOOM_FONT, MIN_ZOOM, READABLE_FONT, stepZoom, zoomedSize, ROW_RATIO, CELL_RATIO, visibleFrame } from "../../web/termgrid.js";
 
 const grid = (extra = {}) => ({ cols: 40, rows: 10, alt: false, cursor: null, history: [], lines: ["uno", "dos"], ...extra });
 
@@ -79,6 +79,17 @@ test("auto: si la terminal entera se lee, entra entera; si no, se ajusta al anch
   assert.ok(measure(wide.size).cw * 100 <= 900);
 });
 
+test("auto: si el redondeo de la celda deja la entera con mucho ancho vacío y el scroll es poco, prefiere letra grande", () => {
+  // 160×48 en 843×530: entera sale a 4 px por columna (640 de 843); al ancho, 5 px y un 18 % de alto de más.
+  const o = { cols: 160, rows: 48, width: 843, height: 530, mode: "auto" };
+  const r = pick(o);
+  assert.equal(measure(r.size).cw, 5);
+  assert.equal(r.scroll, true);
+  assert.ok(measure(r.size).cw * 160 <= 843);
+  // Si para ganar ancho habría que esconder mucho alto (aquí un 26 %), se queda entera.
+  assert.equal(pick({ cols: 120, rows: 40, width: 781, height: 508, mode: "auto" }).scroll, false);
+});
+
 test("la tarjeta nueva toma el ancho más chico, de los que reparten bien el lienzo, con letra legible", () => {
   const at = (containerPx, o = {}) => cardSizeFor({ containerPx, columns: 12, cellPx: 24, ...o });
   assert.equal(at(1568).w, 6, "en pantalla ancha, dos por fila");
@@ -110,4 +121,23 @@ test("la última fila con contenido es hasta donde importa mostrar", () => {
   assert.equal(lastContentRow(g(["a", "b", "\x1b[31m  \x1b[m", ""])), 1);
   assert.equal(lastContentRow(g(["a", "", "", ""], [3, 0])), 3, "el cursor también cuenta");
   assert.equal(lastContentRow(g(["", ""])), 0);
+});
+
+test("el zoom sube y baja por pasos, vuelve a 1 al cruzarlo y no pasa de sus límites", () => {
+  assert.equal(stepZoom(1, 1), 1.2);
+  assert.equal(stepZoom(1.2, -1), 1);
+  assert.equal(stepZoom(1, -1), 0.83);
+  let z = 1;
+  for (let i = 0; i < 30; i++) z = stepZoom(z, 1);
+  assert.equal(z, MAX_ZOOM);
+  for (let i = 0; i < 40; i++) z = stepZoom(z, -1);
+  assert.equal(z, MIN_ZOOM);
+});
+
+test("la letra con zoom multiplica la del ajuste, a pasos de 0,25 y con tope", () => {
+  assert.equal(zoomedSize(9, 1), 9);
+  assert.equal(zoomedSize(9, 2), 18);
+  assert.equal(zoomedSize(9.25, 1.2), 11);
+  assert.equal(zoomedSize(18, 4), MAX_ZOOM_FONT);
+  assert.equal(zoomedSize(6, 0.5), 5);
 });

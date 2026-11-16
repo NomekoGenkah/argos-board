@@ -21,6 +21,7 @@ function save(key, value) {
 }
 
 const layouts = load("argos-layout", {}); // nombre del agente -> { x, y, w, h }
+const zooms = load("argos-term-zoom", {}); // nombre del agente -> zoom de su terminal (solo si no es 1)
 const dismissed = load("argos-dismissed", {}); // id -> state_since al quitarla
 let seats = load("argos-seats", {}); // nombre del agente -> escritorio en la Oficina
 try {
@@ -92,6 +93,17 @@ export const prefs = {
   },
   setTermMode(mode) {
     save("argos-term-mode", mode);
+  },
+
+  // Zoom de la terminal de cada tarjeta (1 = el del ajuste).
+  termZoom(name) {
+    const v = zooms[name];
+    return typeof v === "number" && v > 0 ? v : 1;
+  },
+  setTermZoom(name, zoom) {
+    if (zoom === 1) delete zooms[name];
+    else zooms[name] = zoom;
+    save("argos-term-zoom", zooms);
   },
 
   // Disposición del tablero (lienzo | cuadrícula | foco), densidad y esquinas.

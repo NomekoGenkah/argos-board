@@ -39,6 +39,7 @@ fn kind_key(kind: AgentKind) -> &'static str {
         AgentKind::Opencode => "opencode",
         AgentKind::Agy => "agy",
         AgentKind::Copilot => "copilot",
+        AgentKind::Codex => "codex",
         AgentKind::Generic => "generic",
     }
 }
@@ -176,6 +177,7 @@ mod tests {
             ("opencode", AgentKind::Opencode),
             ("agy", AgentKind::Agy),
             ("copilot", AgentKind::Copilot),
+            ("codex", AgentKind::Codex),
         ] {
             let (profile, warnings) = Profile::build(kind, None);
             assert!(warnings.is_empty(), "{warnings:?}");

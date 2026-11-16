@@ -13,12 +13,26 @@ export const ROW_RATIO = 1.32 * LINE_HEIGHT;
 /** Por debajo de este tamaño la terminal ya no se lee: la caja hace scroll en vez de achicarla más. */
 export const MIN_FONT = 5;
 export const MAX_FONT = 18;
+/** Con zoom manual la letra puede pasar de MAX_FONT (la caja hace scroll); este es el tope. */
+export const MAX_ZOOM_FONT = 48;
+/** Límites y paso del zoom manual (multiplica la letra que eligió el ajuste automático). */
+export const MIN_ZOOM = 0.5;
+export const MAX_ZOOM = 4;
+export const ZOOM_STEP = 1.2;
 /** Con la terminal entera por debajo de esto no se lee: `auto` pasa a ajustar al ancho. */
 export const READABLE_FONT = 8;
 /** Lo más chica que `auto` deja la letra al ajustar al ancho (si no entra, hay scroll horizontal). */
 export const FLOOR_FONT = 7;
 /** En un celular se lee peor: el piso sube. */
 export const FLOOR_FONT_PHONE = 8.5;
+/**
+ * En `auto`, la terminal entera pierde frente al ajuste al ancho si este da celdas al menos tanto más
+ * anchas (xterm las redondea a píxeles enteros: pasar de 4 a 5 px por columna ya es un 25 %): se prefiere
+ * letra grande con un poco de scroll vertical antes que una terminal entera que deja media caja vacía.
+ */
+export const AUTO_WIDTH_GAIN = 1.15;
+/** ...siempre que el alto que sobra no pase de esta fracción de la caja (poco scroll: se pierden unas filas, no media pantalla). */
+export const AUTO_MAX_OVERFLOW = 1.2;
 /** Letra mínima con la que se dimensiona una tarjeta nueva. */
 export const TARGET_FONT = 8;
 
@@ -107,10 +121,28 @@ export function pickFont({ cols, rows, width, height, mode = "fit", measure, sla
   const whole = biggest(true);
   const overflows = (size) => measure(size).ch * rows > height + slack + 0.5;
   if (mode === "fit") return { size: whole.size, scroll: !whole.ok };
-  if (mode === "auto" && !tail && whole.ok && whole.size >= READABLE_FONT) return { size: whole.size, scroll: false };
   const byWidth = biggest(false);
+  if (mode === "auto" && !tail && whole.ok && whole.size >= READABLE_FONT) {
+    const wide = measure(byWidth.size);
+    const gain = byWidth.ok ? wide.cw / measure(whole.size).cw : 1;
+    if (gain < AUTO_WIDTH_GAIN || wide.ch * rows > height * AUTO_MAX_OVERFLOW) return { size: whole.size, scroll: false };
+  }
   const size = mode === "auto" ? Math.max(byWidth.size, floor) : byWidth.size;
   return { size, scroll: !byWidth.ok || size > byWidth.size || overflows(size) };
+}
+
+/** Zoom tras un paso (`dir` +1 acerca, -1 aleja), dentro de los límites y redondeado a centésimas; 1 es «sin zoom». */
+export function stepZoom(zoom, dir) {
+  const next = dir > 0 ? zoom * ZOOM_STEP : zoom / ZOOM_STEP;
+  const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, next));
+  return Math.abs(clamped - 1) < 0.05 ? 1 : Math.round(clamped * 100) / 100;
+}
+
+/** Letra final: la del ajuste por `zoom`, a pasos de FONT_STEP y sin salirse de MIN_FONT..MAX_ZOOM_FONT. */
+export function zoomedSize(size, zoom) {
+  if (zoom === 1) return size;
+  const raw = Math.min(MAX_ZOOM_FONT, Math.max(MIN_FONT, size * zoom));
+  return Math.round(raw / FONT_STEP) * FONT_STEP;
 }
 
 /** Los modos que se ofrecen en la página. */

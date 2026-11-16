@@ -56,6 +56,9 @@ export default {
 
   // --- tarjeta ---
   "card.expand": "Ver terminal completa",
+  "card.zoomIn": "Acercar",
+  "card.zoomOut": "Alejar",
+  "card.zoomReset": "Quitar el zoom",
   "card.stop": "Detener",
   "card.dismiss": "Quitar",
   "card.project": "Proyecto",

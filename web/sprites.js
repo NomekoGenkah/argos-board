@@ -71,6 +71,19 @@ ooMMMMMMMMMMMMoo
 ..oooooooooooo..
 `);
 
+// Codex: una nube redonda, como el icono de su CLI.
+const CODEX_BODY = art(`
+....oooooooo....
+..ooMMMMMMMMoo..
+.oMhhMMMMMMMMMo.
+oMhMMMMMMMMMMMMo
+oMMMMMMMMMMMMMMo
+oMMMMMMMMMMMMMMo
+.oMMMMMMMMMMMMo.
+..ommmmmmmmmmo..
+...oooooooooo...
+`);
+
 // Cualquier otro comando: un cubito marrón.
 const GENERIC_BODY = art(`
 ..oooooooooooo..
@@ -138,6 +151,18 @@ export const MASCOTS = {
     armY: 4,
     legs: [4, 11],
     colors: { M: "#8957e5", m: "#6e40c9", h: "#c4a8ff" },
+  },
+  codex: {
+    body: CODEX_BODY,
+    eyes: [
+      [4, 3],
+      [11, 3],
+    ],
+    eyeH: 3,
+    eyeColor: OUTLINE,
+    armY: 4,
+    legs: [4, 11],
+    colors: { M: "#10a37f", m: "#0b7a5f", h: "#8cf0cf" },
   },
   generic: {
     body: GENERIC_BODY,

@@ -5,15 +5,15 @@
 Esta es la referencia detallada: la página, los perfiles de detección, el acceso desde otros dispositivos, la seguridad y el desarrollo. Para instalar y empezar, usa el [README](../README.es.md).
 
 Tablero web local para ver en tiempo real el estado de varios agentes de código CLI
-(`claude`, `opencode`, `agy`, `copilot`, o cualquier otro comando) que corren en terminales distintas.
+(`claude`, `opencode`, `agy`, `copilot`, `codex`, o cualquier otro comando) que corren en terminales distintas.
 Observa a los agentes y, con permiso, también puedes escribirles y lanzarlos desde la página.
 
 Especificación completa: [`argos-board-spec.md`](argos-board-spec.md).
 
 > **Estados:** `working` / `idle` (por cambios en la pantalla del agente), `waiting_input` (el agente te hizo una
 > pregunta y espera tu respuesta), `waiting_approval` (pide permiso), `error`, `exited` y `disconnected`.
-> `waiting_input` está calibrado para `claude`, `opencode`, `agy` y `copilot`; `waiting_approval` para `claude` y
-> `copilot`; `error`
+> `waiting_input` está calibrado para `claude`, `opencode`, `agy`, `copilot` y `codex`; `waiting_approval` para `claude`,
+> `copilot` y `codex`; `error`
 > todavía no tiene patrones (ver *Perfiles de detección*).
 
 ```
@@ -61,7 +61,7 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
   agente que lleva más tiempo esperando; si nada espera, dice cuántos trabajan o hay error), *Nuevo agente*, el
   permiso para escribir (solo habla cuando falta) y *Ajustes*.
 - Una tarjeta por agente, con el color del agente en el borde izquierdo: Claude Code naranja, Antigravity (`agy`) azul,
-  GitHub Copilot (`copilot`) violeta, OpenCode blanco y cualquier otro comando marrón. La cabecera de la tarjeta es
+  GitHub Copilot (`copilot`) violeta, Codex (`codex`) verde, OpenCode blanco y cualquier otro comando marrón. La cabecera de la tarjeta es
   una línea: el ojo del agente, su nombre, el estado con el tiempo que lleva así y las acciones. Debajo, el proyecto
   y la rama. El ojo dice el estado sin necesitar el color: trabajando, la pupila llena; esperando, la pupila grande
   que late; inactivo, la pupila vacía; error, tachado; terminado o desconectado, el párpado cerrado. El color solo
@@ -119,7 +119,7 @@ wrapper se conecta en cuanto el servidor aparece (también tras reiniciarlo).
 - **Escribir en un agente**: cada tarjeta tiene una barra de una línea. Enter envía (el texto y luego Enter);
   Mayús+Enter agrega una línea; con la caja vacía, ↑, ↓ y Esc van directo al agente (para moverse en sus
   menús). El botón del teclado abre las teclas rápidas: ↑ ↓ Enter Esc Tab ⇧Tab, comandos rápidos de modo
-  (/plan, /auto según el agente) y Ctrl+C (se cierra con Esc o pulsando fuera). Probado con `claude`, `opencode`, `agy` y `copilot`. El botón de clip 📎 o arrastrar
+  (/plan, /auto según el agente) y Ctrl+C (se cierra con Esc o pulsando fuera). Probado con `claude`, `opencode`, `agy`, `copilot` y `codex`. El botón de clip 📎 o arrastrar
   archivos (.md, imágenes, etc.) los guarda en `.argos/uploads/` en el proyecto del agente y agrega su referencia
   (`@.argos/uploads/...`) a la consola. El lápiz de la cabecera dice si la página tiene
   permiso (*Escritura activa*, con su descripción al pasar el cursor, o *Solo lectura*, que al hacer clic explica
@@ -283,7 +283,7 @@ disposiciones, en español, en inglés y a 360 px.
   `argos-board run --no-input -- claude`, o para todos, `allow_input = false` en `config.toml`. La página
   nunca manda bytes crudos (texto sin caracteres de control, o teclas de una lista cerrada) y lo que escribes
   no se guarda en ningún log.
-- **Lanzar agentes** usa los mismos tokens. Solo se lanzan los tipos conocidos (`claude`, `opencode`, `agy`, `copilot`) con
+- **Lanzar agentes** usa los mismos tokens. Solo se lanzan los tipos conocidos (`claude`, `opencode`, `agy`, `copilot`, `codex`) con
   los argumentos de `config.toml`, nunca un comando que venga del navegador, y solo en carpetas dentro de
   `launch_roots`. *Detener* solo toca sesiones de tmux `argos-…` o procesos que lanzó ese mismo `serve`.
 - La salida de los agentes no se escribe a disco. Se guardan los tokens y los dispositivos emparejados (en

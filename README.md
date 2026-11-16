@@ -10,7 +10,7 @@
 
 </div>
 
-Running `claude`, `opencode`, `agy` or `copilot` in several terminals means constantly alt-tabbing to check which one
+Running `claude`, `opencode`, `agy`, `copilot` or `codex` in several terminals means constantly alt-tabbing to check which one
 finished, which one is stuck on a permission prompt and which one asked you a question. Argos Board puts them all on
 one page, live, and flags the ones that are waiting for you.
 
@@ -83,8 +83,8 @@ You can also launch agents from the page (**New agent**).
 | State | Meaning |
 |---|---|
 | `working` / `idle` | Detected from changes on the agent's screen |
-| `waiting_input` | The agent asked you a question (calibrated for `claude`, `opencode`, `agy`, `copilot`) |
-| `waiting_approval` | It asks for permission (calibrated for `claude`, `copilot`) |
+| `waiting_input` | The agent asked you a question (calibrated for `claude`, `opencode`, `agy`, `copilot`, `codex`) |
+| `waiting_approval` | It asks for permission (calibrated for `claude`, `copilot`, `codex`) |
 | `error` | Reserved: no patterns calibrated yet |
 | `exited` / `disconnected` | The agent ended / lost its server |
 
